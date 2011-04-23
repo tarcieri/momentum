@@ -1,8 +1,3 @@
-(ns picard.utils
-  (:import
-   [java.util.concurrent
-    Executors]))
+(ns picard.utils)
 
-(defn mk-thread-pool
-  []
-  (Executors/newCachedThreadPool))
+
