@@ -60,16 +60,24 @@
                        (if (= current waiting-for-response)
                          [incoming-request args]
                          [current args true])))
-    (.addListener (last-write netty/close-channel-future-listener))))
+    (.addListener last-write netty/close-channel-future-listener))
+  (fn [& args] (throw (Exception. "This request is finished"))))
+
+(defn- is-keepalive?
+  [req-keepalive? hdrs]
+  (and req-keepalive?
+       (or (hdrs "content-length")
+           (= (hdrs "transfer-encoding") "chunked"))))
 
 (defn- initialize-resp
-  [evt val req-state chan keepalive? streaming? last-write]
+  [evt [_ hdrs :as val] req-state chan keepalive? streaming? last-write]
   (when-not (= :respond evt)
     (throw (Exception. "Um... responses start with the head?")))
   (let [write (.write chan (resp-to-netty-resp val))]
     #(stream-or-finalize-resp %1 %2
                               req-state chan
-                              keepalive? streaming? write)))
+                              (is-keepalive? keepalive? hdrs)
+                              streaming? write)))
 
 (defn- downstream-fn
   [state channel keepalive?]
@@ -91,7 +99,6 @@
    since pipelining is not (yet?) supported. Also, if the connection
    does not support keep alives, the connection will get into this state."
   [_ _ _ _]
-  (println "BLOWING UP")
   (throw (Exception. "Not expecting a message right now")))
 
 (defn- transition-from-req-done
