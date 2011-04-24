@@ -20,7 +20,9 @@
       (println "Got body: " (.toString  val "UTF-8")))
     (when (= evt :done)
       (println "Finishing the request")
-      (downstream :respond [200 {"Content-Type" "text/plain"}])
+      (downstream :respond
+                  [200 {"Content-Type" "text/plain" "Content-Length" "12"}
+                   "Howdy folks\n"])
       (downstream :done nil))))
 
 (defn start-server

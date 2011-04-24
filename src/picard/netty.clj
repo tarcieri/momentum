@@ -32,6 +32,8 @@
    [java.util.concurrent
     Executors]))
 
+(def close-channel-future-listener ChannelFutureListener/CLOSE)
+
 (defmacro create-pipeline
   [& stages]
   (let [pipeline-var (gensym "pipeline")]
