@@ -9,6 +9,7 @@
    [org.jboss.netty.channel
     Channel]
    [org.jboss.netty.handler.codec.http
+    DefaultHttpChunk
     DefaultHttpResponse
     HttpChunk
     HttpHeaders
@@ -41,6 +42,10 @@
       (.setContent resp (formats/string->channel-buffer body)))
     resp))
 
+(defn- body-to-netty-chunk
+  [body]
+  (DefaultHttpChunk. (formats/string->channel-buffer body)))
+
 (defn- body-from-netty-req
   [^HttpMessage req]
   (.getContent req))
@@ -52,16 +57,24 @@
 
 (defn- stream-or-finalize-resp
   [evt val req-state chan keepalive? streaming? last-write]
-  (when (= :body evt)
-    (throw (Exception. "Not implemented yet...")))
+  (cond
+   (= :body evt)
+   (let [write (.write chan (body-to-netty-chunk val))]
+     #(stream-or-finalize-resp %1 %2
+                               req-state chan
+                               keepalive? true write))
 
-  (if keepalive?
-    (swap! req-state (fn [[current args]]
-                       (if (= current waiting-for-response)
-                         [incoming-request args]
-                         [current args true])))
-    (.addListener last-write netty/close-channel-future-listener))
-  (fn [& args] (throw (Exception. "This request is finished"))))
+   (= :done evt)
+   (do (if keepalive?
+         (swap! req-state (fn [[current args]]
+                            (if (= current waiting-for-response)
+                              [incoming-request args]
+                              [current args true])))
+         (.addListener last-write netty/close-channel-future-listener))
+       (fn [& args] (throw (Exception. "This request is finished"))))
+
+   :else
+   (throw (Exception. "Unknown event: " evt))))
 
 (defn- is-keepalive?
   [req-keepalive? hdrs]
