@@ -1,7 +1,8 @@
 (ns picard.core
   (:use [lamina.core])
   (:require
-   [picard.server :as srv])
+   [picard.server :as srv]
+   [picard.client :as clt])
   (:gen-class))
 
 ;; (my-app :headers {})
@@ -21,8 +22,9 @@
     (when (= evt :done)
       (println "Finishing the request")
       (downstream :respond
-                  [200 {"Content-Type" "text/plain" "Content-Length" "12"}
+                  [200 {"content-type" "text/plain" "content-length" "23"}
                    "Howdy folks\n"])
+      (downstream :body "That's all\n")
       (downstream :done nil))))
 
 (defn start-server
@@ -47,5 +49,6 @@
 
 (defn -main [& args]
   (println "Welcome to picard!")
-  (srv/start my-app)
+  ;; (srv/start my-app)
+  (srv/start (clt/mk-proxy))
   (deref (promise)))

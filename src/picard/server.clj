@@ -24,9 +24,14 @@
 
 (defn- headers-from-netty-req
   [^HttpMessage req]
-  (into {} (map
-            (fn [[k v]] [(str/lower-case k) v])
-            (.getHeaders req))))
+  (-> {}
+      (into (map
+             (fn [[k v]] [(str/lower-case k) v])
+             (.getHeaders req)))
+      (assoc :request-method (.. req getMethod toString)
+             :path-info (.getUri req)
+             :script-name ""
+             :server-name "Picard")))
 
 (defn- resp-to-netty-resp
   [[status hdrs body]]

@@ -26,11 +26,31 @@
     ChannelGroupFutureListener
     DefaultChannelGroup]
    [org.jboss.netty.channel.socket.nio
+    NioClientSocketChannelFactory
     NioServerSocketChannelFactory]
    [java.net
     InetSocketAddress]
    [java.util.concurrent
     Executors]))
+
+(defprotocol NETTY-FUTURE
+  (on-complete [future callback]))
+
+(extend-type ChannelGroupFuture
+  NETTY-FUTURE
+  (on-complete [future callback]
+    (.addListener future
+                  (reify ChannelGroupFutureListener
+                    (operationComplete [_ future]
+                      (callback future))))))
+
+(extend-type ChannelFuture
+  NETTY-FUTURE
+  (on-complete [future callback]
+    (.addListener future
+                  (reify ChannelFutureListener
+                    (operationComplete [_ future]
+                      (callback future))))))
 
 (def close-channel-future-listener ChannelFutureListener/CLOSE)
 
@@ -43,30 +63,6 @@
          (partition 2 stages))
       ~pipeline-var)))
 
-(defn wrap-channel-group-future
-  "Creates a pipeline stage that takes a Netty ChannelFuture,
-   and returns a Netty Channel."
-  [^ChannelGroupFuture future]
-  (let [ch (result-channel)]
-    (.addListener future (reify ChannelGroupFutureListener
-                           (operationComplete [_ future]
-                             (if (.isCompleteSuccess future)
-                               (success! ch (.getGroup future))
-                               (error! ch (Exception. "Channel-group op failed")))
-                             nil)))
-    ch))
-
-(defn wrap-channel-future
-  [^ChannelFuture future]
-  (let [ch (result-channel)]
-    (.addListener future (reify ChannelFutureListener
-                           (operationComplete [_ future]
-                             (if (.isSuccess future)
-                               (success! ch (.getChannel future))
-                               (error! ch (.getCause future)))
-                             nil)))
-    ch))
-
 (defn mk-thread-pool
   []
   (Executors/newCachedThreadPool))
@@ -76,6 +72,10 @@
   (ServerBootstrap.
    (NioServerSocketChannelFactory.
     (mk-thread-pool) (mk-thread-pool))))
+
+(defn- client-channel-factory
+  [thread-pool]
+  (NioClientSocketChannelFactory. thread-pool thread-pool))
 
 (defn message-event
   "Returns contents of message event, or nil if it's a
@@ -146,6 +146,17 @@
      channel-group
      (.bind server (InetSocketAddress. port)))
     (fn []
-      (run-pipeline (.close channel-group)
-                    wrap-channel-group-future
-                    (fn [_] (.releaseExternalResources server))))))
+      (on-complete (.close channel-group)
+                   (fn [_] (.releaseExternalResources server))))))
+
+(defn connect-client
+  ([pipeline addr on-connected]
+     (connect-client pipeline addr on-connected (mk-thread-pool)))
+  ([pipeline addr on-connected thread-pool]
+     (let [channel-factory (client-channel-factory thread-pool)
+           channel (.newChannel channel-factory pipeline)]
+       (println "Connecting to: " addr)
+       (on-complete
+        (.connect channel (InetSocketAddress. addr 80))
+        (fn [_] (on-connected channel)))
+       channel)))
