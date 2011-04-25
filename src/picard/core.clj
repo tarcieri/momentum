@@ -1,5 +1,4 @@
 (ns picard.core
-  (:use [lamina.core])
   (:require
    [picard.server :as srv]
    [picard.client :as clt])
@@ -30,22 +29,6 @@
 (defn start-server
   []
   (agent (srv/start my-app)))
-
-(defn stop-server
-  [server]
-  (send server
-        (fn [server]
-           (when server
-             (wait-for-message (server)))
-           nil)))
-
-(defn restart-server
-  [server]
-  (send server
-        (fn [server]
-          (when server
-            (wait-for-message (server)))
-          (srv/start my-app))))
 
 (defn -main [& args]
   (println "Welcome to picard!")

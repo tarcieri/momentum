@@ -1,7 +1,4 @@
 (ns picard.netty
-  (:use
-   [lamina.core]
-   [lamina.core.pipeline :only (success! error!)])
   (:require
    [picard.formats :as f])
   (:import

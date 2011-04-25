@@ -3,8 +3,6 @@
    [clojure.string :as str]
    [picard.netty :as netty]
    [picard.formats :as formats])
-  (:use
-   [lamina.core])
   (:import
    [org.jboss.netty.channel
     Channel]
