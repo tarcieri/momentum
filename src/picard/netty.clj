@@ -39,7 +39,8 @@
     (.addListener future
                   (reify ChannelGroupFutureListener
                     (operationComplete [_ future]
-                      (callback future))))))
+                      (callback future))))
+    future))
 
 (extend-type ChannelFuture
   NETTY-FUTURE
@@ -47,7 +48,8 @@
     (.addListener future
                   (reify ChannelFutureListener
                     (operationComplete [_ future]
-                      (callback future))))))
+                      (callback future))))
+    future))
 
 (def close-channel-future-listener ChannelFutureListener/CLOSE)
 
