@@ -17,15 +17,22 @@
   ;; Simple requests withq no body
   (doseq [method ["GET" "POST" "PUT" "DELETE" "HEAD"]]
     (running-call-home-app
-     (http-write method " / HTTP/1.1\r\n\r\n")
+     (http-write method " / HTTP/1.1\r\n"
+                 "Connection: close\r\n"
+                 "\r\n")
      (is (next-msgs
           :binding nil
           :request [{:server-name    server/SERVER-NAME
                      :script-name    ""
                      :path-info      "/"
-                     :request-method method} nil]
+                     :request-method method
+                     "connection"    "close"} nil]
           :done nil))
-     (response-is "HTTP/1.1 200 OK\r\n")))
+     (is (received-response
+          "HTTP/1.1 200 OK\r\n"
+          "content-type: text/plain\r\n"
+          "content-length: 5\r\n\r\n"
+          "Hello"))))
 
   ;; Simple request with a body
   (running-call-home-app
@@ -47,7 +54,7 @@
                    :path-info "/"
                    :request-method "POST"
                    "content-length" "600000"} nil]))
-   (no-waiting-messages)))
+   (is (not-receiving-messages))))
 
 (deftest multiple-keep-alive-requests
   (running-call-home-app

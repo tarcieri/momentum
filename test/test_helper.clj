@@ -12,6 +12,8 @@
    [java.util.concurrent
     TimeUnit]))
 
+(declare ch in out)
+
 ;; ### TEST APPLICATIONS
 (defn call-home-app
   [ch]
@@ -21,8 +23,8 @@
       (enqueue ch [evt val])
       (when (= evt :done)
         (resp :respond [200 {"content-type" "text/plain"
-                             "content-length" "6"}])
-        (resp :body "Hello\n")
+                             "content-length" "5"}])
+        (resp :body "Hello")
         (resp :done nil)))))
 
 ;; ### HELPER FUNCTIONS
@@ -33,8 +35,6 @@
        (try
          (f (.getInputStream sock) (.getOutputStream sock))
          (finally (.close sock))))))
-
-(declare ch in out)
 
 (defn with-fresh-conn*
   [f]
@@ -65,8 +65,13 @@
   (.flush out))
 
 (defn http-read
-  []
-  (repeatedly #(.read in)))
+  ([] (http-read in))
+  ([in]
+     (lazy-seq
+      (let [byte (.read in)]
+        (if (<= 0 byte)
+          (cons byte (http-read in))
+          [])))))
 
 (defn http-request
   [method path hdrs]
@@ -127,3 +132,24 @@
                        :expected expected# :actual actual#})
            (do-report {:type :fail :message ~msg
                        :expected expected# :actual actual#}))))))
+
+(defmethod assert-expr 'not-receiving-messages [msg form]
+  `(do
+     (Thread/sleep 50)
+     (if (= (count ch))
+       (do-report {:type :pass :message ~msg
+                   :expected nil :actual nil})
+       (do-report {:type :fail :message ~msg
+                   :expected nil :actual (next-msg)}))))
+
+(defmethod assert-expr 'received-response [msg form]
+  (let [expected (rest form)]
+    `(let [in#       in
+           expected# (str ~@expected)
+           actual#   (.get (future (apply str (map char (http-read in#))))
+                           50 TimeUnit/MILLISECONDS)]
+       (if (= expected# actual#)
+         (do-report {:type :pass :message ~msg
+                     :expected expected# :actual actual#})
+         (do-report {:type :fail :message ~msg
+                     :expected expected# :actual actual#})))))
