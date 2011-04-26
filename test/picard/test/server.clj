@@ -33,7 +33,7 @@
                "Content-Length: 5\r\n\r\n"
                "Hello\r\n\r\n")
    (next-msg-is :binding)
-   (next-msg-is-req-with-hdrs {"content-length" "5"})))
+   (next-msg-is-req-including-hdrs {"content-length" "5"})))
 
 (deftest request-callback-happens-before-body-is-recieved
   (running-call-home-app
@@ -47,3 +47,11 @@
                :request-method "POST"
                "content-length" "600000"} nil])
    (no-waiting-messages)))
+
+(deftest multiple-keep-alive-requests
+  (running-call-home-app
+   (http-write "GET / HTTP/1.1\r\n\r\n"
+               "GET /foo HTTP/1.1\r\n\r\n")
+   (next-msgs-are
+    :binding nil
+    :request [(includes-hdrs {:path-info "/"}) nil])))

@@ -98,10 +98,24 @@
   []
   (wait-for-message ch 50))
 
+(defn match-values
+  [val val*]
+  (cond
+   (set? val)
+   ((first val) val*)
+
+   (and (vector? val) (= (count val) (count val*)))
+   (every? #(apply match-values %) (map vector val val*))
+
+   :else
+   (= val val*)))
+
 (defn next-msg-is
   ([evt] (next-msg-is evt nil))
   ([evt val]
-     (is (= [evt val] (normalize-req (next-msg))))))
+     (let [[evt* val*] (next-msg)]
+       (when-not (and (= evt evt*) (match-values val val*))
+         (is (= [evt val] [evt* val*]))))))
 
 (defn next-msgs-are
   [& pairs]
@@ -124,12 +138,17 @@
     (is (= http
            (.get resp 50 TimeUnit/MILLISECONDS)))))
 
-(defn is-req-with-hdrs
+(defn includes-hdrs
+  [hdrs]
+  #{(fn [actual]
+      (= hdrs (select-keys actual (keys hdrs))))})
+
+(defn is-req-including-hdrs
   [[evt val] hdrs]
   (is (= :request evt))
   (let [[actual-headers] val]
     (is (= hdrs (select-keys actual-headers (keys hdrs))))))
 
-(defn next-msg-is-req-with-hdrs
+(defn next-msg-is-req-including-hdrs
   [hdrs]
   (is-req-with-hdrs (next-msg) hdrs))

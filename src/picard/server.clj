@@ -148,7 +148,7 @@
     ;; Send the HTTP headers upstream
     (if (.isChunked msg)
       (do
-        (upstream :request [headers])
+        (upstream :request [headers nil])
         (partial transition-to-streaming-body upstream))
       (do
         (upstream :request
