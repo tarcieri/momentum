@@ -16,10 +16,12 @@
 (defn call-home-app
   [ch]
   (fn [resp]
+    (enqueue ch [:binding nil])
     (fn [evt val]
       (enqueue ch [evt val])
       (when (= evt :done)
-        (resp :respond [200 {"content-type" "text/plain" "content-length" "6"}])
+        (resp :respond [200 {"content-type" "text/plain"
+                             "content-length" "6"}])
         (resp :body "Hello\n")
         (resp :done nil)))))
 
@@ -34,25 +36,46 @@
 
 (declare ch in out)
 
+(defn with-fresh-conn*
+  [f]
+  (connect (fn [in out] (binding [in in out out] (f)))))
+
+(defmacro with-fresh-conn
+  [& stmts]
+  `(with-fresh-conn* (fn [] ~@stmts)))
+
 (defn running-app*
   [app f]
-  (let [ch (channel)
-        stop-fn (server/start (app ch))]
+  (let [stop-fn (server/start app)]
     (try
       (connect
        (fn [in out]
-         (binding [ch ch in in out out] (f))))
+         (binding [in in out out] (f))))
       (finally (stop-fn)))))
 
 (defmacro running-call-home-app
   [& stmts]
-  `(running-app* call-home-app (fn [] ~@stmts)))
+  `(binding [ch (channel)]
+    (running-app* (call-home-app ch) (fn [] ~@stmts))))
 
-(defn write
+(defn http-write
   [& strs]
   (doseq [s strs]
     (.write out (.getBytes s)))
   (.flush out))
+
+(defn http-read
+  []
+  (repeatedly #(.read in)))
+
+(defn http-request
+  [method path hdrs]
+  (http-write method " " path " HTTP/1.1\r\n\r\n"))
+
+(defn http-get
+  ([path] (http-get path {}))
+  ([path hdrs]
+     (http-request "GET" path hdrs)))
 
 (defn normalize-body
   [val]
@@ -76,8 +99,14 @@
   (wait-for-message ch 50))
 
 (defn next-msg-is
-  [evt val]
-  (is (= [evt val] (normalize-req (next-msg)))))
+  ([evt] (next-msg-is evt nil))
+  ([evt val]
+     (is (= [evt val] (normalize-req (next-msg))))))
+
+(defn next-msgs-are
+  [& pairs]
+  (doseq [[evt val] (partition 2 pairs)]
+    (next-msg-is evt val)))
 
 (defn no-waiting-messages
   []
