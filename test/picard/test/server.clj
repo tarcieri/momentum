@@ -1,7 +1,8 @@
 (ns picard.test.server
   (:use
    [clojure.test]
-   [lamina.core])
+   [lamina.core]
+   [test-helper])
   (:require
    [picard.server :as server])
   (:import
@@ -12,74 +13,34 @@
    [java.util.concurrent
     TimeUnit]))
 
-(defn call-home-app
-  [ch]
-  (fn [resp]
-    (fn [evt val]
-      (enqueue ch [evt val])
-      (when (= evt :done)
-        (resp :respond [200 {"content-type" "text/plain" "content-length" "6"}])
-        (resp :body "Hello\n")
-        (resp :done nil)))))
+(deftest simple-requests
+  ;; Simple requests with no body
+  (doseq [method ["GET" "POST" "PUT" "DELETE" "HEAD"]]
+    (running-call-home-app
+     (write method " / HTTP/1.1\r\n\r\n")
+     (next-msg-is
+      :request [{:server-name    server/SERVER-NAME
+                 :script-name    ""
+                 :path-info      "/"
+                 :request-method method} nil])
+     (next-msg-is :done nil)
+     (response-is "HTTP/1.1 200 OK\r\n")))
 
-(defn connect
-  [f]
-  (let [sock (Socket. "127.0.0.1" 4040)]
-    (try
-      (f (.getInputStream sock) (.getOutputStream sock))
-      (finally
-       (.close sock)))))
-
-(declare ch in out)
-
-(defmacro running-call-home-app
-  [& stmts]
-  `(let [ch# (channel)
-         stop-fn# (server/start (call-home-app ch#))]
-     (Thread/sleep 100)
-     (try
-       (connect
-        (fn [in# out#]
-          (binding [ch  ch#
-                    in  in#
-                    out out#]
-            ~@stmts)))
-       (finally
-        (stop-fn#)))))
-
-(defn write
-  [& strs]
-  (doseq [s strs]
-    (.write out (.getBytes s))))
-
-(defn normalize-msg
-  [[evt val]]
-  (if (instance? ChannelBuffer val)
-    [evt (.toString val "UTF-8")]
-    [evt val]))
-
-(defn next-msg-is
-  [evt val]
-  (is (= [evt val] (normalize-msg (wait-for-message ch)))))
-
-(defn resp-is
-  [& strs]
-  (let [http (apply str strs)
-        in   in
-        resp (future
-               (let [stream (repeatedly (count http) #(.read in))]
-                 (apply str (map char stream))))]
-    (is (= http
-           (.get resp 50 TimeUnit/MILLISECONDS)))))
-
-(deftest simple
+  ;; Simple request with a body
   (running-call-home-app
-   (write "GET / HTTP/1.1\r\n\r\n")
+   (write "POST / HTTP/1.1\r\n"
+          "Content-Length: 5\r\n\r\n"
+          "Hello\r\n\r\n")
+   (next-msg-is-req-with-hdrs {"content-length" "5"})))
+
+(deftest request-callback-happens-before-body-is-recieved
+  (running-call-home-app
+   (write "POST / HTTP/1.1\r\n"
+          "Content-Length: 600000\r\n\r\n")
    (next-msg-is
-    :headers {:server-name "Picard"
-              :script-name ""
-              :path-info "/"
-              :request-method "GET"})
-   (next-msg-is :body "")
-   (next-msg-is :done nil)
-   (resp-is "HTTP/1.1 200 OK\r\n")))
+    :request [{:server-name server/SERVER-NAME
+                :script-name ""
+                :path-info "/"
+                :request-method "POST"
+                "content-length" "600000"} nil])
+   (no-waiting-messages)))

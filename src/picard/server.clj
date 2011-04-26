@@ -1,6 +1,7 @@
 (ns picard.server
   (:require
    [clojure.string :as str]
+   [picard]
    [picard.netty :as netty]
    [picard.formats :as formats])
   (:import
@@ -20,6 +21,8 @@
     HttpResponseStatus
     HttpVersion]))
 
+(def SERVER-NAME (str "Picard " picard/VERSION " - *FACEPALM*"))
+
 (defn- headers-from-netty-req
   [^HttpMessage req]
   (-> {}
@@ -29,7 +32,7 @@
       (assoc :request-method (.. req getMethod toString)
              :path-info (.getUri req)
              :script-name ""
-             :server-name "Picard")))
+             :server-name SERVER-NAME)))
 
 (defn- resp-to-netty-resp
   [[status hdrs body]]
@@ -54,9 +57,7 @@
   (.getContent req))
 
 ;; Declare some functions in advance -- letfn might be better
-(def incoming-request)
-(def stream-request-body)
-(def waiting-for-response)
+(declare incoming-request stream-request-body waiting-for-response)
 
 (defn- stream-or-finalize-resp
   [evt val req-state chan keepalive? streaming? last-write]
@@ -142,14 +143,19 @@
 
 (defn- incoming-request
   [[app opts] state channel ^HttpMessage msg]
-  (let [upstream (app (downstream-fn state channel (HttpHeaders/isKeepAlive msg)))]
+  (let [upstream (app (downstream-fn state channel (HttpHeaders/isKeepAlive msg)))
+        headers  (headers-from-netty-req msg)]
     ;; Send the HTTP headers upstream
-    (upstream :headers (headers-from-netty-req msg))
-
     (if (.isChunked msg)
-      (partial transition-to-streaming-body upstream)
       (do
-        (upstream :body (.getContent msg))
+        (upstream :request [headers])
+        (partial transition-to-streaming-body upstream))
+      (do
+        (upstream :request
+                  [headers
+                   (if (headers "content-length")
+                     (.getContent msg)
+                     nil)])
         (upstream :done nil)
         transition-from-req-done))))
 

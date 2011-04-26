@@ -138,12 +138,9 @@
         channel-group (DefaultChannelGroup.)]
     ;; Create the pipeline factory based on the passed
     ;; function
-    (.setPipelineFactory
-     server
-     (mk-pipeline-factory channel-group pipeline-fn))
-    (.add
-     channel-group
-     (.bind server (InetSocketAddress. port)))
+    (.setPipelineFactory server
+                         (mk-pipeline-factory channel-group pipeline-fn))
+    (.add channel-group (.bind server (InetSocketAddress. port)))
     (fn []
       (on-complete (.close channel-group)
                    (fn [_] (.releaseExternalResources server))))))
@@ -154,7 +151,6 @@
   ([pipeline addr on-connected thread-pool]
      (let [channel-factory (client-channel-factory thread-pool)
            channel (.newChannel channel-factory pipeline)]
-       (println "Connecting to: " addr)
        (on-complete
         (.connect channel (InetSocketAddress. addr 80))
         (fn [_] (on-connected channel)))
