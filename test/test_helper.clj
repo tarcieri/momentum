@@ -79,20 +79,7 @@
 
 (defn normalize-body
   [val]
-  (if (instance? ChannelBuffer) (.toString val "UTF-8") val))
-
-(defn normalize-req
-  [[evt val :as req]]
-  (cond
-   (= evt :request)
-   (let [[hdrs body] val]
-     [evt [hdrs (normalize-body body)]])
-
-   (= evt :body)
-   [evt (normalize-body val)]
-
-   :else
-   req))
+  (if (instance? ChannelBuffer val) (.toString val "UTF-8") val))
 
 (defn next-msg
   []
@@ -108,19 +95,7 @@
    (every? #(apply match-values %) (map vector val val*))
 
    :else
-   (= val val*)))
-
-(defn next-msg-is
-  ([evt] (next-msg-is evt nil))
-  ([evt val]
-     (let [[evt* val*] (next-msg)]
-       (when-not (and (= evt evt*) (match-values val val*))
-         (is (= [evt val] [evt* val*]))))))
-
-(defn next-msgs-are
-  [& pairs]
-  (doseq [[evt val] (partition 2 pairs)]
-    (next-msg-is evt val)))
+   (= val (normalize-body val*))))
 
 (defn no-waiting-messages
   []
@@ -143,12 +118,12 @@
   #{(fn [actual]
       (= hdrs (select-keys actual (keys hdrs))))})
 
-(defn is-req-including-hdrs
-  [[evt val] hdrs]
-  (is (= :request evt))
-  (let [[actual-headers] val]
-    (is (= hdrs (select-keys actual-headers (keys hdrs))))))
-
-(defn next-msg-is-req-including-hdrs
-  [hdrs]
-  (is-req-with-hdrs (next-msg) hdrs))
+(defmethod assert-expr 'next-msgs [msg form]
+  (let [[_ & stmts] form]
+    `(doseq [expected# (partition 2 [~@stmts])]
+       (let [actual# (next-msg)]
+         (if (match-values (vec expected#) actual#)
+           (do-report {:type :pass :message ~msg
+                       :expected expected# :actual actual#})
+           (do-report {:type :fail :message ~msg
+                       :expected expected# :actual actual#}))))))
