@@ -4,6 +4,7 @@
    [lamina.core]
    [test-helper])
   (:require
+   [picard]
    [picard.server :as server])
   (:import
    [org.jboss.netty.buffer
@@ -22,7 +23,7 @@
                  "\r\n")
      (is (next-msgs
           :binding nil
-          :request [{:server-name    server/SERVER-NAME
+          :request [{:server-name    picard/SERVER-NAME
                      :script-name    ""
                      :path-info      "/"
                      :request-method method
@@ -121,7 +122,7 @@
                "Content-Length: 10000\r\n\r\n")
    (is (next-msgs
         :binding nil
-        :request [{:server-name     server/SERVER-NAME
+        :request [{:server-name     picard/SERVER-NAME
                    :script-name     ""
                    :path-info       "/"
                    :request-method  "POST"

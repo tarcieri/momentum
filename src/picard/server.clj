@@ -3,7 +3,7 @@
    [clojure.string :as str]
    [picard]
    [picard.netty :as netty]
-   [picard.formats :as formats])
+   [picard.utils :as utils])
   (:import
    [org.jboss.netty.channel
     Channel
@@ -22,41 +22,6 @@
     HttpResponseStatus
     HttpVersion]))
 
-(def SERVER-NAME (str "Picard " picard/VERSION " - *FACEPALM*"))
-
-(defn- headers-from-netty-req
-  [^HttpRequest req]
-  (-> {}
-      (into (map
-             (fn [[k v]] [(str/lower-case k) v])
-             (.getHeaders req)))
-      (assoc :request-method (.. req getMethod toString)
-             :path-info (.getUri req)
-             :script-name ""
-             :server-name SERVER-NAME)))
-
-(defn- resp-to-netty-resp
-  [[status hdrs body]]
-  (let [resp (DefaultHttpResponse.
-               HttpVersion/HTTP_1_1 (HttpResponseStatus/valueOf status))]
-    (doseq [[k v-or-vals] hdrs]
-      (when-not (nil? v-or-vals)
-        (if (string? v-or-vals)
-          (.addHeader resp (name k) v-or-vals)
-          (doseq [val v-or-vals]
-            (.addHeader resp (name k) v-or-vals)))))
-    (when body
-      (.setContent resp (formats/string->channel-buffer body)))
-    resp))
-
-(defn- body-to-netty-chunk
-  [body]
-  (DefaultHttpChunk. (formats/string->channel-buffer body)))
-
-(defn- body-from-netty-req
-  [^HttpMessage req]
-  (.getContent req))
-
 ;; Declare some functions in advance -- letfn might be better
 (declare incoming-request stream-request-body waiting-for-response)
 
@@ -64,7 +29,7 @@
   [evt val req-state chan keepalive? streaming? last-write]
   (cond
    (= :body evt)
-   (let [write (.write chan (body-to-netty-chunk val))]
+   (let [write (.write chan (utils/mk-netty-chunk val))]
      #(stream-or-finalize-resp %1 %2
                                req-state chan
                                keepalive? true write))
@@ -91,7 +56,7 @@
   [evt [_ hdrs :as val] req-state chan keepalive? streaming? last-write]
   (when-not (= :respond evt)
     (throw (Exception. "Um... responses start with the head?")))
-  (let [write (.write chan (resp-to-netty-resp val))]
+  (let [write (.write chan (utils/resp->netty-resp val))]
     #(stream-or-finalize-resp %1 %2
                               req-state chan
                               (is-keepalive? keepalive? hdrs)
@@ -156,7 +121,7 @@
   [state ch ^HttpMessage msg [app opts]]
   ;; [[app opts] state channel ^HttpMessage msg]
   (let [upstream (app (downstream-fn state ch (HttpHeaders/isKeepAlive msg)))
-        headers  (headers-from-netty-req msg)]
+        headers  (utils/netty-req->hdrs msg)]
 
     ;; Add the upstream handler to the state
     (register-upstream-handler state upstream)
