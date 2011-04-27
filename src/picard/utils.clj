@@ -13,6 +13,7 @@
     DefaultHttpRequest
     DefaultHttpResponse
     HttpMessage
+    HttpMethod
     HttpRequest
     HttpResponse
     HttpResponseStatus
@@ -69,7 +70,8 @@
   (returning
    msg
    (doseq [[k v-or-vals] hdrs]
-     (when-not (nil? v-or-vals)
+     (when (and (string? k)
+                (not (nil? v-or-vals)))
        (if (string? v-or-vals)
          (.addHeader msg (name k) v-or-vals)
          (doseq [val v-or-vals]
@@ -80,12 +82,28 @@
   (DefaultHttpResponse. HttpVersion/HTTP_1_1
     (HttpResponseStatus/valueOf status)))
 
+(defn- mk-netty-req
+  [method path]
+  (DefaultHttpRequest.
+    HttpVersion/HTTP_1_1
+    method path))
+
 (defn resp->netty-resp
   [[status hdrs body]]
   (returning [netty-resp (mk-netty-response status)]
              (netty-assoc-hdrs netty-resp hdrs)
              (when body
                (.setContent netty-resp (*->channel-buffer body)))))
+
+(defn req->netty-req
+  [[hdrs body]]
+  (returning
+   [netty-req (mk-netty-req
+               (HttpMethod. (hdrs :request-method))
+               (hdrs :path-info))]
+   (netty-assoc-hdrs netty-req hdrs)
+   (when body
+     (.setContent netty-req (*->channel-buffer body)))))
 
 (defn mk-netty-chunk
   [body]

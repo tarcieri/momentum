@@ -172,3 +172,40 @@
           :done    nil
           :pause   nil
           :resume  nil)))))
+
+(deftest ^{:focus true} telling-the-server-to-chill-out
+  (with-channels
+    [ch ch2]
+    (running-app
+     (fn [resp]
+       (receive-all
+        ch2
+        (fn [_] (resp :resume nil)))
+       (enqueue ch [:binding nil])
+       (fn [evt val]
+         (enqueue ch [evt val])
+         (when (= :request evt)
+           (resp :pause nil))
+         (when (= :done evt)
+           (resp :respond [200 {"content-type" "text/plain"
+                                "content-length" "5"} "Hello"])
+           (resp :done nil))
+         1))
+
+     ;; Now some tests
+     (http-write "POST / HTTP/1.1\r\n"
+                 "Transfer-Encoding: chunked\r\n"
+                 "Connection: close\r\n\r\n"
+                 "5\r\nHello\r\n5\r\nWorld\r\n0\r\n\r\n")
+
+     (is (next-msgs
+          :binding nil
+          :request :dont-care))
+     (is (not-receiving-messages))
+
+     (enqueue ch2 :resume)
+
+     (is (next-msgs
+          :body "Hello"
+          :body "World"
+          :done nil)))))

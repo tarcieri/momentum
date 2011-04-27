@@ -1,8 +1,9 @@
 (ns picard.client
   (:require
    [clojure.string :as str]
-   [picard.netty :as netty]
-   [picard.pool :as pool])
+   [picard.netty   :as netty]
+   [picard.pool    :as pool]
+   [picard.utils   :as utils])
   (:import
    [org.jboss.netty.handler.codec.http
     DefaultHttpRequest
@@ -48,12 +49,36 @@
    :encoder (HttpRequestEncoder.)
    :handler (netty-bridge resp)))
 
+(defn- waiting-for-response
+  [_ _]
+  (throw (Exception. "I'm not in a good place right now.")))
+
+(defn- incoming-request
+  [state resp]
+  (fn [evt val]
+    (when-not (= :request evt)
+      (throw (Exception. "Picard is confused... requests start witht he head.")))
+    (netty/connect-client
+     (create-pipeline resp)
+     (val "host")
+     (fn [ch] (.write ch (utils/req->netty-req val)))
+     (swap! state (fn [_] waiting-for-response)))))
+
+(defn- initial-state
+  [resp]
+  (let [state (atom nil)]
+    (swap! state (fn [_] (incoming-request state resp)))
+    state))
+
 (defn mk-proxy
   []
   (fn [resp]
-    (fn [evt val]
-      (when (= :headers evt)
-        (netty/connect-client
-         (create-pipeline resp)
-         (val "host")
-         (fn [ch] (.write ch (headers-to-netty-req val))))))))
+    (let [state (initial-state resp)]
+      (fn [evt val]
+        (@state evt val)
+        ;; (when (= :headers evt)
+        ;;   (netty/connect-client
+        ;;    (create-pipeline resp)
+        ;;    (val "host")
+        ;;    (fn [ch] (.write ch (headers-to-netty-req val)))))
+        ))))

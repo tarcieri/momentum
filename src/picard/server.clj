@@ -63,19 +63,27 @@
                               streaming? write)))
 
 (defn- downstream-fn
-  [state channel keepalive?]
+  [state ^Channel ch keepalive?]
   ;; The state of the response needs to be tracked
   (let [next-fn (atom #(initialize-resp
                         %1 %2
-                        state channel
+                        state ch
                         keepalive? false nil))]
 
     ;; The upstream application will call this function to
     ;; send the response back to the client
     (fn [evt val]
-      (let [current @next-fn]
-        (swap! next-fn (constantly (current evt val)))
-        true))))
+      (cond
+       (= evt :pause)
+       (.setReadable ch false)
+
+       (= evt :resume)
+       (.setReadable ch true)
+
+       :else
+       (let [current @next-fn]
+         (swap! next-fn (constantly (current evt val)))
+         true)))))
 
 (defn- waiting-for-response
   "The HTTP request has been processed and the response is pending.
@@ -119,9 +127,9 @@
 
 (defn- incoming-request
   [state ch ^HttpMessage msg [app opts]]
-  ;; [[app opts] state channel ^HttpMessage msg]
-  (let [upstream (app (downstream-fn state ch (HttpHeaders/isKeepAlive msg)))
-        headers  (utils/netty-req->hdrs msg)]
+  (let [keepalive? (HttpHeaders/isKeepAlive msg)
+        upstream   (app (downstream-fn state ch keepalive?))
+        headers    (utils/netty-req->hdrs msg)]
 
     ;; Add the upstream handler to the state
     (register-upstream-handler state upstream)
@@ -159,7 +167,8 @@
 
    responded?: Whether or not the application has responded to the current
                request"
-  (let [state (atom [incoming-request [app opts]])]
+  (let [state     (atom [incoming-request [app opts]])
+        writable? (atom true)]
     (netty/message-or-channel-state-event-stage
      (fn [^Channel ch msg ch-state]
        (cond
@@ -167,11 +176,15 @@
         (let [[next-fn args] @state]
           (next-fn state ch msg args))
 
-        (= ch-state ChannelState/INTEREST_OPS)
+        (and (= ch-state ChannelState/INTEREST_OPS)
+             (not= (.isWritable ch) @writable?))
         (if-let [upstream (get-upstream state)]
-          (if (.isWritable ch)
-            (upstream :resume nil)
-            (upstream :pause nil))))
+          (swap! writable?
+                 (fn [was-writable?]
+                   (if was-writable?
+                     (upstream :pause nil)
+                     (upstream :resume nil))
+                   (not was-writable?)))))
        nil))))
 
 (defn- create-pipeline
