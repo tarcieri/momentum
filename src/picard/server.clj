@@ -103,9 +103,10 @@
 (defn- downstream-fn
   [state channel keepalive?]
   ;; The state of the response needs to be tracked
-  (let [next-fn (atom #(initialize-resp %1 %2
-                                        state channel
-                                        keepalive? false nil))]
+  (let [next-fn (atom #(initialize-resp
+                        %1 %2
+                        state channel
+                        keepalive? false nil))]
 
     ;; The upstream application will call this function to
     ;; send the response back to the client
@@ -126,37 +127,48 @@
   "State transition from an HTTP request has finished being processed.
    If the response has already been sent, then the next state is to
    listen for new requests."
-  [upstream [_ [app opts] responded?]]
-  (if responded?
-    [incoming-request [app opts]]
-    [waiting-for-response [app opts upstream]]))
+  [state]
+  (swap! state
+         (fn [[_ [app opts upstream] responded?]]
+           (if responded?
+             [incoming-request [app opts]]
+             [waiting-for-response [app opts upstream]]))))
 
 (defn- transition-to-streaming-body
-  [upstream [_ [app opts] responded?]]
-  [stream-request-body [app opts upstream] responded?])
+  [state]
+  (swap! state
+         (fn [[_ args responded?]]
+           [stream-request-body args responded?])))
+
+(defn- register-upstream-handler
+  [state upstream]
+  (swap! state
+         (fn [[f [app opts] responded?]]
+           [f [app opts upstream] responded?])))
 
 (defn- stream-request-body
-  [[app opts upstream] _  _ ^HttpChunk chunk]
+  [state _ ^HttpChunk chunk [app opts upstream]]
+  [[_ _ upstream] _  _ ^HttpChunk chunk]
   (if (.isLast chunk)
     (do
       (upstream :done nil)
-      (partial transition-from-req-done upstream))
-    (do
-      (upstream :body (.getContent chunk))
-      (partial transition-to-streaming-body upstream))))
+      (transition-from-req-done state))
+    (upstream :body (.getContent chunk))))
 
 (defn- incoming-request
-  [[app opts] state channel ^HttpMessage msg]
-  (let [upstream (app (downstream-fn state channel (HttpHeaders/isKeepAlive msg)))
+  [state ch ^HttpMessage msg [app opts]]
+  ;; [[app opts] state channel ^HttpMessage msg]
+  (let [upstream (app (downstream-fn state ch (HttpHeaders/isKeepAlive msg)))
         headers  (headers-from-netty-req msg)]
-    ;; HACK - Set the state to include the upstream
-    (swap! state (fn [[f]] [f [app opts upstream]]))
+
+    ;; Add the upstream handler to the state
+    (register-upstream-handler state upstream)
 
     ;; Send the HTTP headers upstream
     (if (.isChunked msg)
       (do
         (upstream :request [headers nil])
-        (partial transition-to-streaming-body upstream))
+        (transition-to-streaming-body state))
       (do
         (upstream :request
                   [headers
@@ -164,7 +176,7 @@
                      (.getContent msg)
                      nil)])
         (upstream :done nil)
-        (partial transition-from-req-done upstream)))))
+        (transition-from-req-done state)))))
 
 (defn- netty-bridge
   [app opts]
@@ -191,7 +203,7 @@
           (instance? MessageEvent evt)
           (let [msg (.getMessage ^MessageEvent evt)
                 [next-fn args] @state]
-            (swap! state (next-fn args state ch msg)))
+            (next-fn state ch msg args))
 
           (and (instance? ChannelStateEvent evt)
                (= ChannelState/INTEREST_OPS
