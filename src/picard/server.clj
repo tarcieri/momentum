@@ -6,7 +6,11 @@
    [picard.formats :as formats])
   (:import
    [org.jboss.netty.channel
-    Channel]
+    Channel
+    ChannelEvent
+    ChannelState
+    ChannelStateEvent
+    MessageEvent]
    [org.jboss.netty.handler.codec.http
     DefaultHttpChunk
     DefaultHttpResponse
@@ -122,10 +126,10 @@
   "State transition from an HTTP request has finished being processed.
    If the response has already been sent, then the next state is to
    listen for new requests."
-  [[_ args responded?]]
+  [upstream [_ [app opts] responded?]]
   (if responded?
-    [incoming-request args]
-    [waiting-for-response args]))
+    [incoming-request [app opts]]
+    [waiting-for-response [app opts upstream]]))
 
 (defn- transition-to-streaming-body
   [upstream [_ [app opts] responded?]]
@@ -136,7 +140,7 @@
   (if (.isLast chunk)
     (do
       (upstream :done nil)
-      transition-from-req-done)
+      (partial transition-from-req-done upstream))
     (do
       (upstream :body (.getContent chunk))
       (partial transition-to-streaming-body upstream))))
@@ -145,6 +149,9 @@
   [[app opts] state channel ^HttpMessage msg]
   (let [upstream (app (downstream-fn state channel (HttpHeaders/isKeepAlive msg)))
         headers  (headers-from-netty-req msg)]
+    ;; HACK - Set the state to include the upstream
+    (swap! state (fn [[f]] [f [app opts upstream]]))
+
     ;; Send the HTTP headers upstream
     (if (.isChunked msg)
       (do
@@ -157,7 +164,7 @@
                      (.getContent msg)
                      nil)])
         (upstream :done nil)
-        transition-from-req-done))))
+        (partial transition-from-req-done upstream)))))
 
 (defn- netty-bridge
   [app opts]
@@ -175,11 +182,26 @@
    responded?: Whether or not the application has responded to the current
                request"
   (let [state (atom [incoming-request [app opts]])]
-    (netty/message-stage
-     (fn [ch msg]
-        (let [[next-fn args] @state]
-          (swap! state (next-fn args state ch msg))
-          nil)))))
+    (netty/upstream-stage
+     (fn [^ChannelEvent evt]
+       (let [ch ^Channel (.getChannel evt)]
+         (cond
+          ;; If we got a message, then we need to
+          ;; run it through the state machine
+          (instance? MessageEvent evt)
+          (let [msg (.getMessage ^MessageEvent evt)
+                [next-fn args] @state]
+            (swap! state (next-fn args state ch msg)))
+
+          (and (instance? ChannelStateEvent evt)
+               (= ChannelState/INTEREST_OPS
+                  ^ChannelState (.getState ^ChannelStateEvent evt)))
+          (let [[_ [_ _ upstream]] @state]
+            (when upstream
+             (if (.isWritable ch)
+               (upstream :resume nil)
+               (upstream :pause nil))))))
+       nil))))
 
 (defn- create-pipeline
   [app]

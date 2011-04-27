@@ -10,9 +10,10 @@
    [java.net
     Socket]
    [java.util.concurrent
+    TimeoutException
     TimeUnit]))
 
-(declare ch in out)
+(declare ch ch2 in out drain)
 
 ;; ### TEST APPLICATIONS
 (defn call-home-app
@@ -32,9 +33,12 @@
   ([f] (connect f 4040))
   ([f port]
      (let [sock (Socket. "127.0.0.1" port)]
-       (try
-         (f (.getInputStream sock) (.getOutputStream sock))
-         (finally (.close sock))))))
+       (let [in (.getInputStream sock) out (.getOutputStream sock)]
+         (try
+           (f in out)
+           (finally
+            (drain in)
+            (.close sock)))))))
 
 (defn with-fresh-conn*
   [f]
@@ -53,10 +57,23 @@
          (binding [in in out out] (f))))
       (finally (stop-fn)))))
 
+(defmacro running-app
+  [app & stmts]
+  `(running-app* ~app (fn [] ~@stmts)))
+
+(defn with-channels*
+  [f]
+  (binding [ch (channel) ch2 (channel)]
+    (f ch ch2)))
+
+(defmacro with-channels
+  [args & stmts]
+  `(with-channels* (fn ~args ~@stmts)))
+
 (defmacro running-call-home-app
   [& stmts]
   `(binding [ch (channel)]
-    (running-app* (call-home-app ch) (fn [] ~@stmts))))
+     (running-app* (call-home-app ch) (fn [] ~@stmts))))
 
 (defn http-write
   [& strs]
@@ -73,6 +90,10 @@
           (cons byte (http-read in))
           [])))))
 
+(defn drain
+  [in]
+  (doall (http-read in)))
+
 (defn http-request
   [method path hdrs]
   (http-write method " " path " HTTP/1.1\r\n\r\n"))
@@ -88,11 +109,14 @@
 
 (defn next-msg
   []
-  (wait-for-message ch 50))
+  (wait-for-message ch 100))
 
 (defn match-values
   [val val*]
   (cond
+   (= val :dont-care)
+   true
+
    (set? val)
    ((first val) val*)
 
@@ -102,12 +126,6 @@
    :else
    (= val (normalize-body val*))))
 
-(defn no-waiting-messages
-  []
-  (Thread/sleep 50)
-  (when-not (= 0 (count ch))
-    (next-msg-is [nil nil])))
-
 (defn response-is
   [& strs]
   (let [http (apply str strs)
@@ -116,7 +134,7 @@
                (let [stream (repeatedly (count http) #(.read in))]
                  (apply str (map char stream))))]
     (is (= http
-           (.get resp 50 TimeUnit/MILLISECONDS)))))
+           (.get resp 100 TimeUnit/MILLISECONDS)))))
 
 (defn includes-hdrs
   [hdrs]
@@ -126,12 +144,16 @@
 (defmethod assert-expr 'next-msgs [msg form]
   (let [[_ & stmts] form]
     `(doseq [expected# (partition 2 [~@stmts])]
-       (let [actual# (next-msg)]
-         (if (match-values (vec expected#) actual#)
-           (do-report {:type :pass :message ~msg
-                       :expected expected# :actual actual#})
+       (try
+         (let [actual# (next-msg)]
+           (if (match-values (vec expected#) actual#)
+             (do-report {:type :pass :message ~msg
+                         :expected expected# :actual actual#})
+             (do-report {:type :fail :message ~msg
+                         :expected expected# :actual actual#})))
+         (catch TimeoutException e#
            (do-report {:type :fail :message ~msg
-                       :expected expected# :actual actual#}))))))
+                       :expected expected# :actual "<TIMEOUT>"}))))))
 
 (defmethod assert-expr 'not-receiving-messages [msg form]
   `(do

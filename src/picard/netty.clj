@@ -101,6 +101,7 @@
       ;; Temporary ghetto exception tracking
       (if (instance? ExceptionEvent evt)
         (let [cause (.getCause ^ExceptionEvent evt)]
+          (println "GOT AN EXCEPTION")
           (println (.getMessage cause))
           (.printStackTrace cause)))
       (if-let [upstream-evt (handler evt)]
