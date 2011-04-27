@@ -116,6 +116,19 @@
      (when-let [msg (message-event evt)]
        (handler (.getChannel ^MessageEvent evt) msg)))))
 
+(defn message-or-channel-state-event-stage
+  "Creates an upstream stage that captures MessageEvents and ChannelStateEvents"
+  [handler]
+  (upstream-stage
+   (fn [evt]
+     (let [ch (.getChannel ^ChannelEvent evt)]
+      (cond
+       (instance? MessageEvent evt)
+       (handler ch (.getMessage ^MessageEvent evt) nil)
+
+       (instance? ChannelStateEvent evt)
+       (handler ch nil (.getState ^ChannelStateEvent evt)))))))
+
 (defn- mk-pipeline-factory
   [^ChannelGroup channel-group pipeline-fn & args]
   (reify ChannelPipelineFactory

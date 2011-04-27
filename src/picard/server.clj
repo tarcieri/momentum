@@ -7,10 +7,7 @@
   (:import
    [org.jboss.netty.channel
     Channel
-    ChannelEvent
-    ChannelState
-    ChannelStateEvent
-    MessageEvent]
+    ChannelState]
    [org.jboss.netty.handler.codec.http
     DefaultHttpChunk
     DefaultHttpResponse
@@ -28,7 +25,7 @@
 (def SERVER-NAME (str "Picard " picard/VERSION " - *FACEPALM*"))
 
 (defn- headers-from-netty-req
-  [^HttpMessage req]
+  [^HttpRequest req]
   (-> {}
       (into (map
              (fn [[k v]] [(str/lower-case k) v])
@@ -178,6 +175,10 @@
         (upstream :done nil)
         (transition-from-req-done state)))))
 
+(defn- get-upstream
+  [state]
+  (let [[_ [_ _ upstream]] @state] upstream))
+
 (defn- netty-bridge
   [app opts]
   "Bridges the netty pipeline API to the picard API. This is done with
@@ -194,25 +195,18 @@
    responded?: Whether or not the application has responded to the current
                request"
   (let [state (atom [incoming-request [app opts]])]
-    (netty/upstream-stage
-     (fn [^ChannelEvent evt]
-       (let [ch ^Channel (.getChannel evt)]
-         (cond
-          ;; If we got a message, then we need to
-          ;; run it through the state machine
-          (instance? MessageEvent evt)
-          (let [msg (.getMessage ^MessageEvent evt)
-                [next-fn args] @state]
-            (next-fn state ch msg args))
+    (netty/message-or-channel-state-event-stage
+     (fn [^Channel ch msg ch-state]
+       (cond
+        msg
+        (let [[next-fn args] @state]
+          (next-fn state ch msg args))
 
-          (and (instance? ChannelStateEvent evt)
-               (= ChannelState/INTEREST_OPS
-                  ^ChannelState (.getState ^ChannelStateEvent evt)))
-          (let [[_ [_ _ upstream]] @state]
-            (when upstream
-             (if (.isWritable ch)
-               (upstream :resume nil)
-               (upstream :pause nil))))))
+        (= ch-state ChannelState/INTEREST_OPS)
+        (if-let [upstream (get-upstream state)]
+          (if (.isWritable ch)
+            (upstream :resume nil)
+            (upstream :pause nil))))
        nil))))
 
 (defn- create-pipeline
