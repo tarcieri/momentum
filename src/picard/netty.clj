@@ -1,6 +1,4 @@
 (ns picard.netty
-  (:require
-   [picard.formats :as f])
   (:import
    [org.jboss.netty.bootstrap
     ServerBootstrap]

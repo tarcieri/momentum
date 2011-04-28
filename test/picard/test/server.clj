@@ -27,8 +27,8 @@
                      :script-name    ""
                      :path-info      "/"
                      :request-method method
-                     "connection"    "close"} nil]
-          :done nil))
+                     "connection"    "close"} nil]))
+     (is (not-receiving-messages))
      (is (received-response
           "HTTP/1.1 200 OK\r\n"
           "content-type: text/plain\r\n"
@@ -44,7 +44,8 @@
                "Hello")
    (is (next-msgs
         :binding nil
-        :request [(includes-hdrs {"content-length" "5"}) "Hello"]))))
+        :request [(includes-hdrs {"content-length" "5"}) "Hello"]))
+   (is (not-receiving-messages))))
 
 (deftest keepalive-requests
   (running-call-home-app
@@ -55,10 +56,8 @@
    (is (next-msgs
         :binding nil
         :request [(includes-hdrs {:request-method "GET" :path-info "/"}) nil]
-        :done    nil
         :binding nil
         :request [(includes-hdrs {:request-method "GET" :path-info "/foo"}) nil]
-        :done    nil
         :binding nil
         :request [(includes-hdrs {:request-method "POST" :path-info "/bar"
                                   "connection" "close"}) nil]))
@@ -84,7 +83,7 @@
                "5\r\nHello\r\n0\r\n\r\n")
    (is (next-msgs
         :binding nil
-        :request [(includes-hdrs {"transfer-encoding" "chunked"}) nil]
+        :request [(includes-hdrs {"transfer-encoding" "chunked"}) :chunked]
         :body    "Hello"
         :done    nil))))
 
@@ -95,7 +94,7 @@
                "5\r\nHello\r\n6\r\n World\r\n0\r\n\r\n")
    (is (next-msgs
         :binding nil
-        :request [(includes-hdrs {"transfer-encoding" "chunked"}) nil]
+        :request [(includes-hdrs {"transfer-encoding" "chunked"}) :chunked]
         :body    "Hello"
         :body    " World"
         :done    nil))
@@ -104,7 +103,7 @@
                "6\r\nZomG!!\r\n9\r\nINCEPTION\r\n0\r\n\r\n")
    (is (next-msgs
         :binding nil
-        :request [(includes-hdrs {"transfer-encoding" "chunked"}) nil]
+        :request [(includes-hdrs {"transfer-encoding" "chunked"}) :chunked]
         :body    "ZomG!!"
         :body    "INCEPTION"
         :done    nil))
@@ -112,8 +111,7 @@
                "Connection: close\r\n\r\n")
    (is (next-msgs
         :binding nil
-        :request [(includes-hdrs {"connection" "close"}) nil]
-        :done    nil))))
+        :request [(includes-hdrs {"connection" "close"}) nil]))))
 
 (deftest request-callback-happens-before-body-is-recieved
   (running-call-home-app
@@ -127,18 +125,9 @@
                    :path-info       "/"
                    :request-method  "POST"
                    "connection"     "close"
-                   "content-length" "10000"} nil]))
+                   "content-length" "10000"} :chunked]))
    (is (not-receiving-messages))
    (http-write (apply str (for [x (range 10000)] "a")))))
-
-(deftest multiple-keep-alive-requests
-  (running-call-home-app
-   (http-write "GET / HTTP/1.1\r\n\r\n"
-               "GET /foo HTTP/1.1\r\n"
-               "Connection: close\r\n\r\n")
-   (is (next-msgs
-        :binding nil
-        :request [(includes-hdrs {:path-info "/"}) nil]))))
 
 (deftest telling-the-application-to-chill-out
   (with-channels
@@ -156,8 +145,8 @@
              (resp :done nil))
            ;; Start the crazy network hammering once the
            ;; request has been received
-           (when (= :done evt)
-             (resp :respond [200 {"transfer-encoding" "chunked"}])
+           (when (= :request evt)
+             (resp :respond [200 {"transfer-encoding" "chunked"} :chunked])
              (loop []
                (resp :body "28\r\nLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLO\r\n")
                (if @latch (recur)))))))
@@ -169,11 +158,10 @@
      (is (next-msgs
           :binding nil
           :request :dont-care
-          :done    nil
           :pause   nil
           :resume  nil)))))
 
-(deftest ^{:focus true} telling-the-server-to-chill-out
+(deftest telling-the-server-to-chill-out
   (with-channels
     [ch ch2]
     (running-app
@@ -188,9 +176,7 @@
            (resp :pause nil))
          (when (= :done evt)
            (resp :respond [200 {"content-type" "text/plain"
-                                "content-length" "5"} "Hello"])
-           (resp :done nil))
-         1))
+                                "content-length" "5"} "Hello"]))))
 
      ;; Now some tests
      (http-write "POST / HTTP/1.1\r\n"

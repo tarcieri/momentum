@@ -22,11 +22,9 @@
     (enqueue ch [:binding nil])
     (fn [evt val]
       (enqueue ch [evt val])
-      (when (= evt :done)
+      (when (= evt :request)
         (resp :respond [200 {"content-type" "text/plain"
-                             "content-length" "5"}])
-        (resp :body "Hello")
-        (resp :done nil)))))
+                             "content-length" "5"} "Hello"])))))
 
 ;; ### HELPER FUNCTIONS
 (defn connect

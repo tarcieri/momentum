@@ -90,10 +90,12 @@
 
 (defn resp->netty-resp
   [[status hdrs body]]
-  (returning [netty-resp (mk-netty-response status)]
+  (returning [netty-resp ^HttpMessage (mk-netty-response status)]
              (netty-assoc-hdrs netty-resp hdrs)
              (when body
-               (.setContent netty-resp (*->channel-buffer body)))))
+               (if (= :chunked body)
+                 (.setChunked netty-resp true)
+                 (.setContent netty-resp (*->channel-buffer body))))))
 
 (defn req->netty-req
   [[hdrs body]]
