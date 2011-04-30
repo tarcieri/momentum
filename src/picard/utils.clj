@@ -28,6 +28,12 @@
          ~retval))
     `(do ~@stmts ~val)))
 
+(defmacro swap-then!
+  [atom swap-fn then-fn]
+  `(let [res# (swap! ~atom ~swap-fn)]
+     (~then-fn res#)
+     res#))
+
 (defn string->byte-buffer
   ([s] (string->byte-buffer s "UTF-8"))
   ([s charset]
@@ -45,7 +51,12 @@
 (defn *->channel-buffer
   "Obviously not fully implemented yet"
   [thing]
-  (string->channel-buffer thing))
+  (cond
+   (instance? ChannelBuffer thing)
+   thing
+
+   :else
+   (string->channel-buffer thing)))
 
 (defn netty-msg->hdrs
   [^HttpMessage req]
@@ -60,6 +71,14 @@
     :path-info      (.getUri req)
     :script-name    ""
     :server-name    picard/SERVER-NAME))
+
+(defn netty-resp->resp
+  [^HttpResponse resp]
+  [(.. resp getStatus getCode)
+   (netty-msg->hdrs resp)
+   (if (.isChunked resp)
+    :chunked
+    (.getContent resp))])
 
 (defn netty-msg->body
   [^HttpMessage msg]

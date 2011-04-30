@@ -167,7 +167,7 @@
     `(let [in#       in
            expected# (str ~@expected)
            actual#   (.get (future (apply str (map char (http-read in#))))
-                           50 TimeUnit/MILLISECONDS)]
+                           100 TimeUnit/MILLISECONDS)]
        (if (= expected# actual#)
          (do-report {:type :pass :message ~msg
                      :expected expected# :actual actual#})

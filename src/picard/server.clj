@@ -1,9 +1,9 @@
 (ns picard.server
+  (:use [picard.utils])
   (:require
    [clojure.string :as str]
    [picard]
-   [picard.netty :as netty]
-   [picard.utils :as utils])
+   [picard.netty :as netty])
   (:import
    [org.jboss.netty.channel
     Channel
@@ -25,12 +25,6 @@
 ;; Declare some functions in advance -- letfn might be better
 (declare incoming-request stream-request-body waiting-for-response)
 
-(defmacro swap-then!
-  [atom swap-fn then-fn]
-  `(let [res# (swap! ~atom ~swap-fn)]
-     (~then-fn res#)
-     res#))
-
 (defn- fresh-args
   [args]
   (-> args
@@ -38,14 +32,17 @@
       (assoc :last-args args)))
 
 (defn- finalize-ch
-  [{keepalive? :keepalive? last-write :last-write}]
-  (when-not last-write
-    (throw (Exception. "Somehow the last-write is nil")))
-  (when-not keepalive?
-    (.addListener last-write netty/close-channel-future-listener)))
+  [ch {keepalive? :keepalive? streaming? :streaming? last-write :last-write}]
+  (let [last-write (if streaming?
+                     (.write ch HttpChunk/LAST_CHUNK)
+                     last-write)]
+    (when-not last-write
+      (throw (Exception. "Somehow the last-write is nil")))
+    (when-not keepalive?
+      (.addListener last-write netty/close-channel-future-listener))))
 
 (defn- finalize-resp
-  [state]
+  [state ch]
   (swap-then!
    state
    (fn [[current args]]
@@ -54,19 +51,19 @@
        [current (assoc args :responded? true)]))
    (fn [[next-fn {args :last-args}]]
      (when (= next-fn incoming-request)
-       (finalize-ch args))))
+       (finalize-ch ch args))))
   (fn [& args] (throw (Exception. "This response is finished"))))
 
 (defn- stream-or-finalize-resp
   [state ch evt val]
   (cond
    (= :body evt)
-   (let [write (.write ch (utils/mk-netty-chunk val))]
+   (let [write (.write ch (mk-netty-chunk val))]
      (swap! state (fn [[f args]] [f (assoc args :last-write write)]))
      #(stream-or-finalize-resp state ch %1 %2))
 
    (= :done evt)
-   (finalize-resp state)
+   (finalize-resp state ch)
 
    :else
    (throw (Exception. "Unknown event: " evt))))
@@ -81,15 +78,16 @@
   [state ch evt [_ hdrs body :as val]]
   (when-not (= :respond evt)
     (throw (Exception. "Um... responses start with the head?")))
-  (let [write (.write ch (utils/resp->netty-resp val))]
+  (let [write (.write ch (resp->netty-resp val))]
     (swap! state
            (fn [[f {keepalive? :keepalive? :as args}]]
              [f (assoc args
+                  :streaming? (= :chunked body)
                   :keepalive? (is-keepalive? keepalive? hdrs)
                   :last-write write)]))
     (if (= :chunked body)
       #(stream-or-finalize-resp state ch %1 %2)
-      (finalize-resp state))))
+      (finalize-resp state ch))))
 
 (defn- downstream-fn
   [state ^Channel ch]
@@ -129,7 +127,7 @@
   "State transition from an HTTP request has finished being processed.
    If the response has already been sent, then the next state is to
    listen for new requests."
-  [state]
+  [state ch]
   (swap-then!
    state
    (fn [[_ args]]
@@ -138,25 +136,25 @@
        [waiting-for-response args]))
    (fn [[next-fn {args :last-args :as lol}]]
      (when (= next-fn incoming-request)
-       (finalize-ch args)))))
+       (finalize-ch ch args)))))
 
 (defn- transition-to-streaming-body
   [state]
   (swap! state (fn [[_ args]] [stream-request-body args])))
 
 (defn- stream-request-body
-  [state _ ^HttpChunk chunk {upstream :upstream}]
+  [state ch ^HttpChunk chunk {upstream :upstream}]
   (if (.isLast chunk)
     (do
       (upstream :done nil)
-      (transition-from-req-done state))
+      (transition-from-req-done state ch))
     (upstream :body (.getContent chunk))))
 
 (defn- incoming-request
   [state ch ^HttpMessage msg {app :app :as args}]
   (let [keepalive? (HttpHeaders/isKeepAlive msg)
         upstream   (app (downstream-fn state ch))
-        headers    (utils/netty-req->hdrs msg)]
+        headers    (netty-req->hdrs msg)]
 
     ;; Add the upstream handler to the state
     (swap! state (fn [[_ args]]
@@ -175,7 +173,7 @@
                    (if (headers "content-length")
                      (.getContent msg)
                      nil)])
-        (transition-from-req-done state)))))
+        (transition-from-req-done state ch)))))
 
 (defn- netty-bridge
   [app opts]

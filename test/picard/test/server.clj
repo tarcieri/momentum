@@ -15,6 +15,7 @@
     TimeUnit]))
 
 (deftest simple-requests
+  (println "simple-requests")
   ;; Simple requests withq no body
   (doseq [method ["GET" "POST" "PUT" "DELETE" "HEAD"]]
     (running-call-home-app
@@ -36,6 +37,7 @@
           "Hello")))))
 
 (deftest simple-request-with-body
+  (println "simple-request-with-body")
   ;; Simple request with a body
   (running-call-home-app
    (http-write "POST / HTTP/1.1\r\n"
@@ -48,6 +50,7 @@
    (is (not-receiving-messages))))
 
 (deftest keepalive-requests
+  (println "keepalive-requests")
   (running-call-home-app
    (http-write "GET / HTTP/1.1\r\n\r\n"
                "GET /foo HTTP/1.1\r\n\r\n"
@@ -76,6 +79,7 @@
         "Hello"))))
 
 (deftest single-chunked-request
+  (println "single-chunked-request")
   (running-call-home-app
    (http-write "POST / HTTP/1.1\r\n"
                "Connection: close\r\n"
@@ -87,7 +91,26 @@
         :body    "Hello"
         :done    nil))))
 
+(deftest single-chunked-response
+  (println "single-chunked-response")
+  (running-app
+   (fn [resp]
+     (fn [evt val]
+       (when (= :request evt)
+         (resp :respond [200 {"transfer-encoding" "chunked"} :chunked])
+         (resp :body "Hello")
+         (resp :done nil))))
+
+   (http-write "GET / HTTP/1.1\r\n"
+               "Connection: close\r\n\r\n")
+
+   (is (received-response
+        "HTTP/1.1 200 OK\r\n"
+        "transfer-encoding: chunked\r\n\r\n"
+        "5\r\nHello\r\n0\r\n\r\n"))))
+
 (deftest chunked-requests-keep-alive
+  (println "chunked-requests-keep-alive")
   (running-call-home-app
    (http-write "POST / HTTP/1.1\r\n"
                "Transfer-Encoding: chunked\r\n\r\n"
@@ -114,6 +137,7 @@
         :request [(includes-hdrs {"connection" "close"}) nil]))))
 
 (deftest request-callback-happens-before-body-is-recieved
+  (println "request-callback-happens-before-body-is-received")
   (running-call-home-app
    (http-write "POST / HTTP/1.1\r\n"
                "Connection: close\r\n"
@@ -129,7 +153,8 @@
    (is (not-receiving-messages))
    (http-write (apply str (for [x (range 10000)] "a")))))
 
-(deftest telling-the-application-to-chill-out
+(deftest ^{:focus true} telling-the-application-to-chill-out
+  (println "telling-the-application-to-chill-out")
   (with-channels
     [ch _]
     (running-app
@@ -162,6 +187,7 @@
           :resume  nil)))))
 
 (deftest telling-the-server-to-chill-out
+  (println "telling-the-server-to-chill-out")
   (with-channels
     [ch ch2]
     (running-app
