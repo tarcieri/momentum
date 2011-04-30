@@ -13,7 +13,7 @@
     TimeoutException
     TimeUnit]))
 
-(declare ch ch2 in out drain)
+(declare ch ch2 sock in out drain)
 
 ;; ### TEST APPLICATIONS
 (defn call-home-app
@@ -33,14 +33,14 @@
      (let [sock (Socket. "127.0.0.1" port)]
        (let [in (.getInputStream sock) out (.getOutputStream sock)]
          (try
-           (f in out)
+           (f sock in out)
            (finally
             (drain in)
             (.close sock)))))))
 
 (defn with-fresh-conn*
   [f]
-  (connect (fn [in out] (binding [in in out out] (f)))))
+  (connect (fn [sock in out] (binding [sock sock in in out out] (f)))))
 
 (defmacro with-fresh-conn
   [& stmts]
@@ -51,8 +51,8 @@
   (let [stop-fn (server/start app)]
     (try
       (connect
-       (fn [in out]
-         (binding [in in out out] (f))))
+       (fn [sock in out]
+         (binding [sock sock in in out out] (f))))
       (finally (stop-fn)))))
 
 (defmacro running-app
@@ -87,6 +87,10 @@
         (if (<= 0 byte)
           (cons byte (http-read in))
           [])))))
+
+(defn socket-closed?
+  []
+  (.isInputShutdown sock))
 
 (defn drain
   [in]
@@ -173,3 +177,12 @@
                      :expected expected# :actual actual#})
          (do-report {:type :fail :message ~msg
                      :expected expected# :actual actual#})))))
+
+(defmethod assert-expr 'closed-socket [msg form]
+  `(do
+     (Thread/sleep 30)
+     (if (socket-closed?)
+       (do-report {:type :pass :message ~msg
+                   :expected true :actual true})
+       (do-report {:type :fail :message ~msg
+                   :expected true :actual false}))))

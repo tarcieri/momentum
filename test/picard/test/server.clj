@@ -78,6 +78,20 @@
         "content-length: 5\r\n\r\n"
         "Hello"))))
 
+(deftest returning-connection-close-terminates-connection
+  (println "returning-connection-close-terminates-connection")
+  (running-app
+   (fn [resp]
+     (fn [evt val]
+       (resp :respond [200 {"connection" "close"} "Hello"])))
+
+   (http-write "GET / HTTP/1.1\r\n\r\n")
+
+   (is (received-response
+        "HTTP/1.1 200 OK\r\n"
+        "connection: close\r\n\r\n"
+        "Hello"))))
+
 (deftest single-chunked-request
   (println "single-chunked-request")
   (running-call-home-app
@@ -153,7 +167,7 @@
    (is (not-receiving-messages))
    (http-write (apply str (for [x (range 10000)] "a")))))
 
-(deftest ^{:focus true} telling-the-application-to-chill-out
+(deftest telling-the-application-to-chill-out
   (println "telling-the-application-to-chill-out")
   (with-channels
     [ch _]

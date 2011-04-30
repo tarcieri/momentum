@@ -71,6 +71,7 @@
 (defn- is-keepalive?
   [req-keepalive? hdrs]
   (and req-keepalive?
+       (not= "close" (hdrs "connection"))
        (or (hdrs "content-length")
            (= (hdrs "transfer-encoding") "chunked"))))
 
