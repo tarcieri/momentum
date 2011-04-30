@@ -32,12 +32,13 @@
       (assoc :last-args args)))
 
 (defn- finalize-ch
-  [ch {keepalive? :keepalive? streaming? :streaming? last-write :last-write}]
-  (let [last-write (if streaming?
+  [ch {:keys [keepalive? streaming? chunked? last-write]}]
+  (let [last-write (if (and streaming? chunked?)
                      (.write ch HttpChunk/LAST_CHUNK)
                      last-write)]
     (when-not last-write
       (throw (Exception. "Somehow the last-write is nil")))
+
     (when-not keepalive?
       (.addListener last-write netty/close-channel-future-listener))))
 
@@ -84,6 +85,7 @@
            (fn [[f {keepalive? :keepalive? :as args}]]
              [f (assoc args
                   :streaming? (= :chunked body)
+                  :chunked?   (= (hdrs "transfer-encoding") "chunked")
                   :keepalive? (is-keepalive? keepalive? hdrs)
                   :last-write write)]))
     (if (= :chunked body)

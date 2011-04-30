@@ -92,6 +92,23 @@
         "connection: close\r\n\r\n"
         "Hello"))))
 
+(deftest returning-connection-close-and-chunks
+  (println "returning-connection-close-and-chunks")
+  (running-app
+   (fn [resp]
+     (fn [evt val]
+       (resp :respond [200 {"connection" "close"} :chunked])
+       (resp :body "Hello ")
+       (resp :body "world")
+       (resp :done nil)))
+
+   (http-write "GET / HTTP/1.1\r\n\r\n")
+
+   (is (received-response
+        "HTTP/1.1 200 OK\r\n"
+        "connection: close\r\n\r\n"
+        "Hello world"))))
+
 (deftest single-chunked-request
   (println "single-chunked-request")
   (running-call-home-app
