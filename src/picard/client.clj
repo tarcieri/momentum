@@ -24,7 +24,7 @@
        (if (instance? HttpResponse msg)
          (resp :respond (netty-resp->resp msg))
          (if (.isLast msg)
-           (and (resp :done nil) (println "Finishing the response"))
+           (resp :done nil)
            (resp :body (.getContent msg)))))
      nil)))
 
