@@ -86,61 +86,46 @@
   (when (instance? ChannelEvent evt)
     (.getChannel ^ChannelEvent evt)))
 
-(defn- channel-state-event
+(defn channel-state-event
   [evt]
   (when (instance? ChannelStateEvent evt)
-    (.getChannel ^ChannelStateEvent evt)))
+    (.getState ^ChannelStateEvent evt)))
 
 (defn upstream-stage
   "Creates a pipeline state for upstream events."
   [handler]
   (reify ChannelUpstreamHandler
     (handleUpstream [_ ctx evt]
+      ;; (println evt)
       ;; Temporary ghetto exception tracking
       (if (instance? ExceptionEvent evt)
         (let [cause (.getCause ^ExceptionEvent evt)]
           (println "GOT AN EXCEPTION")
           (println (.getMessage cause))
           (.printStackTrace cause)))
-      (if-let [upstream-evt (handler evt)]
-        (.sendUpstream ctx upstream-evt)
-        (.sendUpstream ctx evt)))))
+      (handler (.getChannel evt) evt)
+      (.sendUpstream ctx evt))))
 
-(defn message-stage
-  "Creates a final upstream stage that only captures MessageEvents."
-  [handler]
-  (upstream-stage
-   (fn [evt]
-     (when-let [msg (message-event evt)]
-       (handler (.getChannel ^MessageEvent evt) msg)))))
-
-(defn message-or-channel-state-event-stage
-  "Creates an upstream stage that captures MessageEvents and ChannelStateEvents"
-  [handler]
-  (upstream-stage
-   (fn [evt]
-     (let [ch (.getChannel ^ChannelEvent evt)]
-      (cond
-       (instance? MessageEvent evt)
-       (handler ch (.getMessage ^MessageEvent evt) nil)
-
-       (instance? ChannelStateEvent evt)
-       (handler ch nil (.getState ^ChannelStateEvent evt)))))))
+;; (defn message-stage
+;;   "Creates a final upstream stage that only captures MessageEvents."
+;;   [handler]
+;;   (upstream-stage
+;;    (fn [evt]
+;;      (when-let [msg (message-event evt)]
+;;        (handler (.getChannel ^MessageEvent evt) msg)))))
 
 (defn- mk-pipeline-factory
   [^ChannelGroup channel-group pipeline-fn & args]
   (reify ChannelPipelineFactory
     (getPipeline [_]
       (let [pipeline ^ChannelPipeline (apply pipeline-fn args)]
-        (when false
-          (.addFirst pipeline
-                    "channel-listener"
-                    (upstream-stage
-                     (fn [evt]
-                       (when-let [ch ^Channel (channel-state-event evt)]
-                         (when (= ChannelState/OPEN (.getState evt))
-                           (.add channel-group ch)))
-                       nil))))
+        (.addFirst pipeline
+                   "channel-listener"
+                   (upstream-stage
+                    (fn [ch evt]
+                      (when-let [state (channel-state-event evt)]
+                        (when (= ChannelState/OPEN state)
+                          (.add channel-group ch))))))
         pipeline))))
 
 (defn start-server

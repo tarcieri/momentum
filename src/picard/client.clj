@@ -18,15 +18,15 @@
 
 (defn- netty-bridge
   [state resp]
-  (netty/message-or-channel-state-event-stage
-   (fn [_ msg ch-state]
-     (when msg
-       (if (instance? HttpResponse msg)
-         (resp :respond (netty-resp->resp msg))
-         (if (.isLast msg)
-           (resp :done nil)
-           (resp :body (.getContent msg)))))
-     nil)))
+  (netty/upstream-stage
+   (fn [ch evt]
+     (cond-let
+      [msg (netty/message-event evt)]
+      (if (instance? HttpResponse msg)
+        (resp :respond (netty-resp->resp msg))
+        (if (.isLast msg)
+          (resp :done nil)
+          (resp :body (.getContent msg))))))))
 
 (defn- chunked?
   [[_ _ body]]

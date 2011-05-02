@@ -178,6 +178,11 @@
                      nil)])
         (transition-from-req-done state ch)))))
 
+(defn- handle-ch-interest-change
+  [ch [_ {upstream :upstream}] writable?]
+  (when (and upstream (not= (.isWritable ch) @writable?))
+    (swap-then! writable? not #(upstream (if % :resume :pause) nil))))
+
 (defn- netty-bridge
   [app opts]
   "Bridges the netty pipeline API to the picard API. This is done with
@@ -195,23 +200,20 @@
                request"
   (let [state     (atom [incoming-request {:app app :opts opts}])
         writable? (atom true)]
-    (netty/message-or-channel-state-event-stage
-     (fn [^Channel ch msg ch-state]
-       (cond
-        msg
+    (netty/upstream-stage
+     (fn [ch evt]
+       (cond-let
+        ;; An actual HTTP message has been received
+        [msg (netty/message-event evt)]
         (let [[next-fn args] @state]
           (next-fn state ch msg args))
 
-        (and (= ch-state ChannelState/INTEREST_OPS)
-             (not= (.isWritable ch) @writable?))
-        (if-let [[_ {upstream :upstream}] @state]
-          (swap! writable?
-                 (fn [was-writable?]
-                   (if was-writable?
-                     (upstream :pause nil)
-                     (upstream :resume nil))
-                   (not was-writable?)))))
-       nil))))
+        ;; The channel interest has changed to writable
+        ;; or not writable
+        [ch-state (netty/channel-state-event evt)]
+        (cond
+         (= ch-state ChannelState/INTEREST_OPS)
+         (handle-ch-interest-change ch @state writable?)))))))
 
 (defn- create-pipeline
   [app]

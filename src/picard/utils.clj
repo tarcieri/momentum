@@ -28,6 +28,15 @@
          ~retval))
     `(do ~@stmts ~val)))
 
+(defmacro cond-let
+  ([] nil)
+  ([binding clause & rest]
+     (if (= :else binding)
+       clause
+       `(if-let ~binding
+          ~clause
+          (cond-let ~@rest)))))
+
 (defmacro swap-then!
   [atom swap-fn then-fn]
   `(let [res# (swap! ~atom ~swap-fn)]

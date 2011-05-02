@@ -167,6 +167,29 @@
         :binding nil
         :request [(includes-hdrs {"connection" "close"}) nil]))))
 
+(deftest ^{:focus true} aborting-a-request
+  (println "aborting-a-request")
+  (with-channels
+    [ch _]
+    (running-app
+     (fn [resp]
+       (enqueue ch [:binding nil])
+       (fn [evt val]
+         (enqueue ch [evt val])
+         (when (= :done evt)
+           (resp [200 {"connection" "close"} "Hello"]))))
+
+     (http-write "POST / HTTP/1.1\r\n"
+                 "Content-Length: 10000\r\n\r\n"
+                 "TROLLOLOLOLOLOLLLOLOLOLLOL")
+
+     (close-socket)
+
+     (is (next-msgs
+          :binding nil
+          :request [:dont-care :chunked]
+          :abort   nil)))))
+
 (deftest request-callback-happens-before-body-is-recieved
   (println "request-callback-happens-before-body-is-received")
   (running-call-home-app

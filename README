@@ -6,6 +6,10 @@ FIXME: write description
 
 FIXME: write
 
+## Todo
+
+* Handle disconnects mid request by sending out an :abort event
+
 ## License
 
 Copyright (C) 2010 FIXME

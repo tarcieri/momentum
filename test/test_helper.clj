@@ -35,7 +35,8 @@
          (try
            (f sock in out)
            (finally
-            (drain in)
+            (when-not (.isClosed sock)
+             (drain in))
             (.close sock)))))))
 
 (defn with-fresh-conn*
@@ -88,9 +89,14 @@
           (cons byte (http-read in))
           [])))))
 
+(defn close-socket
+  []
+  (.flush out)
+  (.close sock))
+
 (defn socket-closed?
   []
-  (.isInputShutdown sock))
+  (.isClosed sock))
 
 (defn drain
   [in]
