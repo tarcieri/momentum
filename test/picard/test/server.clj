@@ -167,7 +167,7 @@
         :binding nil
         :request [(includes-hdrs {"connection" "close"}) nil]))))
 
-(deftest ^{:focus true} aborting-a-request
+(deftest aborting-a-request
   (println "aborting-a-request")
   (with-channels
     [ch _]
