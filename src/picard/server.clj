@@ -42,27 +42,31 @@
     (when-not keepalive?
       (.addListener last-write netty/close-channel-future-listener))))
 
+(defn- finalized-resp
+  [_ _]
+  (throw (Exception. "This response is finished")))
+
 (defn- finalize-resp
   [state ch]
   (swap-then!
    state
-   (fn [[up-f dn-f args]]
+   (fn [[up-f _ args]]
      (if (= up-f waiting-for-response)
-       [incoming-request dn-f (fresh-args args)]
-       [up-f dn-f (assoc args :responded? true)]))
+       [incoming-request nil (fresh-args args)]
+       [up-f finalize-resp (assoc args :responded? true)]))
    (fn [[next-fn _ {args :last-args}]]
      (when (= next-fn incoming-request)
-       (finalize-ch ch args))))
-  (fn [& args] (throw (Exception. "This response is finished"))))
+       (finalize-ch ch args)))))
 
 (defn- stream-or-finalize-resp
   [state ch evt val]
   (cond
    (= :body evt)
    (let [write (.write ch (mk-netty-chunk val))]
-     (swap! state (fn [[up-f dn-f args]]
-                    [up-f dn-f (assoc args :last-write write)]))
-     #(stream-or-finalize-resp state ch %1 %2))
+     (swap!
+      state
+      (fn [[up-f _ args]]
+        [up-f stream-or-finalize-resp (assoc args :last-write write)])))
 
    (= :done evt)
    (finalize-resp state ch)
@@ -82,36 +86,39 @@
   (when-not (= :respond evt)
     (throw (Exception. "Um... responses start with the head?")))
   (let [write (.write ch (resp->netty-resp val))]
+    (if (not= :chunked body)
+      (finalize-resp state ch))
     (swap! state
            (fn [[up-f dn-f {keepalive? :keepalive? :as args}]]
-             [up-f dn-f (assoc args
-                          :streaming? (= :chunked body)
-                          :chunked?   (= (hdrs "transfer-encoding") "chunked")
-                          :keepalive? (is-keepalive? keepalive? hdrs)
-                          :last-write write)]))
-    (if (= :chunked body)
-      #(stream-or-finalize-resp state ch %1 %2)
-      (finalize-resp state ch))))
+             [up-f
+              (if (= :chunked body)
+                stream-or-finalize-resp
+                finalize-resp)
+              (assoc args
+                :streaming? (= :chunked body)
+                :chunked?   (= (hdrs "transfer-encoding") "chunked")
+                :keepalive? (is-keepalive? keepalive? hdrs)
+                :last-write write)]))))
 
 (defn- downstream-fn
   [state ^Channel ch]
   ;; The state of the response needs to be tracked
-  (let [next-fn (atom #(initialize-resp state ch %1 %2))]
+  (swap!
+   state
+   (fn [[up-f _ args]] [up-f initialize-resp args]))
 
-    ;; The upstream application will call this function to
-    ;; send the response back to the client
-    (fn [evt val]
-      (cond
-       (= evt :pause)
-       (.setReadable ch false)
+  (fn [evt val]
+    (cond
+     (= evt :pause)
+     (.setReadable ch false)
 
-       (= evt :resume)
-       (.setReadable ch true)
+     (= evt :resume)
+     (.setReadable ch true)
 
-       :else
-       (let [current @next-fn]
-         (swap! next-fn (constantly (current evt val)))))
-      true)))
+     :else
+     (let [[_ dn-f _] @state]
+       (dn-f state ch evt val)))
+    true))
 
 (defn- waiting-for-response
   "The HTTP request has been processed and the response is pending.
