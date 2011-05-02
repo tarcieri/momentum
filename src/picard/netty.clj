@@ -89,7 +89,7 @@
 (defn channel-state-event
   [evt]
   (when (instance? ChannelStateEvent evt)
-    (.getState ^ChannelStateEvent evt)))
+    [(.getState ^ChannelStateEvent evt) (.getValue ^ChannelStateEvent evt)]))
 
 (defn upstream-stage
   "Creates a pipeline state for upstream events."

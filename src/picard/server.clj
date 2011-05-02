@@ -46,6 +46,10 @@
   [_ _]
   (throw (Exception. "This response is finished")))
 
+(defn- aborted-req
+  [_ _]
+  (throw (Exception. "This request has been aborted")))
+
 (defn- finalize-resp
   [state ch]
   (swap-then!
@@ -194,6 +198,16 @@
   (when (and upstream (not= (.isWritable ch) @writable?))
     (swap-then! writable? not #(upstream (if % :resume :pause) nil))))
 
+(defn- handle-ch-disconnected
+  [state]
+  (let [[_ _ {upstream :upstream}] @state]
+    (when upstream
+      (upstream :abort nil)
+      (swap!
+       state
+       (fn [[up-f _ args]]
+         [up-f aborted-req args])))))
+
 (defn- netty-bridge
   [app opts]
   "Bridges the netty pipeline API to the picard API. This is done with
@@ -221,10 +235,14 @@
 
         ;; The channel interest has changed to writable
         ;; or not writable
-        [ch-state (netty/channel-state-event evt)]
+        [[ch-state val] (netty/channel-state-event evt)]
         (cond
          (= ch-state ChannelState/INTEREST_OPS)
-         (handle-ch-interest-change ch @state writable?)))))))
+         (handle-ch-interest-change ch @state writable?)
+
+         (and (= ch-state ChannelState/CONNECTED)
+              (nil? val))
+         (handle-ch-disconnected state)))))))
 
 (defn- create-pipeline
   [app]
