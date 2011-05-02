@@ -46,11 +46,11 @@
   [state ch]
   (swap-then!
    state
-   (fn [[current args]]
-     (if (= current waiting-for-response)
-       [incoming-request (fresh-args args)]
-       [current (assoc args :responded? true)]))
-   (fn [[next-fn {args :last-args}]]
+   (fn [[up-f dn-f args]]
+     (if (= up-f waiting-for-response)
+       [incoming-request dn-f (fresh-args args)]
+       [up-f dn-f (assoc args :responded? true)]))
+   (fn [[next-fn _ {args :last-args}]]
      (when (= next-fn incoming-request)
        (finalize-ch ch args))))
   (fn [& args] (throw (Exception. "This response is finished"))))
@@ -60,7 +60,8 @@
   (cond
    (= :body evt)
    (let [write (.write ch (mk-netty-chunk val))]
-     (swap! state (fn [[f args]] [f (assoc args :last-write write)]))
+     (swap! state (fn [[up-f dn-f args]]
+                    [up-f dn-f (assoc args :last-write write)]))
      #(stream-or-finalize-resp state ch %1 %2))
 
    (= :done evt)
@@ -82,12 +83,12 @@
     (throw (Exception. "Um... responses start with the head?")))
   (let [write (.write ch (resp->netty-resp val))]
     (swap! state
-           (fn [[f {keepalive? :keepalive? :as args}]]
-             [f (assoc args
-                  :streaming? (= :chunked body)
-                  :chunked?   (= (hdrs "transfer-encoding") "chunked")
-                  :keepalive? (is-keepalive? keepalive? hdrs)
-                  :last-write write)]))
+           (fn [[up-f dn-f {keepalive? :keepalive? :as args}]]
+             [up-f dn-f (assoc args
+                          :streaming? (= :chunked body)
+                          :chunked?   (= (hdrs "transfer-encoding") "chunked")
+                          :keepalive? (is-keepalive? keepalive? hdrs)
+                          :last-write write)]))
     (if (= :chunked body)
       #(stream-or-finalize-resp state ch %1 %2)
       (finalize-resp state ch))))
@@ -133,17 +134,17 @@
   [state ch]
   (swap-then!
    state
-   (fn [[_ args]]
+   (fn [[_ dn-f args]]
      (if (args :responded?)
-       [incoming-request (fresh-args args)]
-       [waiting-for-response args]))
-   (fn [[next-fn {args :last-args :as lol}]]
+       [incoming-request dn-f (fresh-args args)]
+       [waiting-for-response dn-f args]))
+   (fn [[next-fn _ {args :last-args :as lol}]]
      (when (= next-fn incoming-request)
        (finalize-ch ch args)))))
 
 (defn- transition-to-streaming-body
   [state]
-  (swap! state (fn [[_ args]] [stream-request-body args])))
+  (swap! state (fn [[_ dn-f args]] [stream-request-body dn-f args])))
 
 (defn- stream-request-body
   [state ch ^HttpChunk chunk {upstream :upstream}]
@@ -160,10 +161,12 @@
         headers    (netty-req->hdrs msg)]
 
     ;; Add the upstream handler to the state
-    (swap! state (fn [[_ args]]
-                   [handling-request (assoc args
-                                       :keepalive? keepalive?
-                                       :upstream   upstream)]))
+    (swap! state (fn [[_ dn-f args]]
+                   [handling-request
+                    dn-f
+                    (assoc args
+                      :keepalive? keepalive?
+                      :upstream   upstream)]))
 
     ;; Send the HTTP headers upstream
     (if (.isChunked msg)
@@ -171,6 +174,7 @@
         (upstream :request [headers :chunked])
         (transition-to-streaming-body state))
       (do
+        ;; TODO: maybe the body should always be sent?
         (upstream :request
                   [headers
                    (if (headers "content-length")
@@ -179,7 +183,7 @@
         (transition-from-req-done state ch)))))
 
 (defn- handle-ch-interest-change
-  [ch [_ {upstream :upstream}] writable?]
+  [ch [_ _ {upstream :upstream}] writable?]
   (when (and upstream (not= (.isWritable ch) @writable?))
     (swap-then! writable? not #(upstream (if % :resume :pause) nil))))
 
@@ -198,14 +202,14 @@
 
    responded?: Whether or not the application has responded to the current
                request"
-  (let [state     (atom [incoming-request {:app app :opts opts}])
+  (let [state     (atom [incoming-request nil {:app app :opts opts}])
         writable? (atom true)]
     (netty/upstream-stage
      (fn [ch evt]
        (cond-let
         ;; An actual HTTP message has been received
         [msg (netty/message-event evt)]
-        (let [[next-fn args] @state]
+        (let [[next-fn _ args] @state]
           (next-fn state ch msg args))
 
         ;; The channel interest has changed to writable
