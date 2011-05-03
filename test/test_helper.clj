@@ -1,7 +1,7 @@
 (ns test-helper
   (:use
    [clojure.test]
-   [lamina.core])
+   [lamina.core :exclude [timeout]])
   (:require
    [picard.server :as server])
   (:import
@@ -74,6 +74,11 @@
   `(binding [ch (channel)]
      (running-app* (call-home-app ch) (fn [] ~@stmts))))
 
+(defmacro timeout-after
+  [ms & body]
+  `(let [f# (future ~@body)]
+     (.get f# ~ms TimeUnit/MILLISECONDS)))
+
 (defn http-write
   [& strs]
   (doseq [s strs]
@@ -84,7 +89,7 @@
   ([] (http-read in))
   ([in]
      (lazy-seq
-      (let [byte (.read in)]
+      (let [byte (timeout-after 500 (.read in))]
         (if (<= 0 byte)
           (cons byte (http-read in))
           [])))))
@@ -117,7 +122,7 @@
 
 (defn next-msg
   []
-  (wait-for-message ch 100))
+  (wait-for-message ch 200))
 
 (defn match-values
   [val val*]

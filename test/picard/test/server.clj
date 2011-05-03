@@ -190,6 +190,31 @@
           :request [:dont-care :chunked]
           :abort   nil)))))
 
+(deftest applications-raising-errors
+  (println "applications-raising-errors")
+  (with-channels
+    [ch _]
+    (running-app
+     (fn [resp]
+       (fn [evt val]
+         (enqueue ch [evt val])
+         (throw (Exception. "TROLL APP IS TROLLIN'"))))
+
+     (http-write "GET / HTTP/1.1\r\n\r\n")
+
+     (is (next-msgs
+          :request :dont-care
+          :abort   :dont-care))
+
+     (is (not-receiving-messages)))))
+
+(deftest sending-gibberish
+  (println "sending-gibberish")
+  (running-call-home-app
+   (http-write "lololol wtf is happening?\r\n")
+
+   (is (not-receiving-messages))))
+
 (deftest request-callback-happens-before-body-is-recieved
   (println "request-callback-happens-before-body-is-received")
   (running-call-home-app
@@ -239,6 +264,68 @@
           :request :dont-care
           :pause   nil
           :resume  nil)))))
+
+(deftest raising-error-during-pause-event
+  (println "raising-error-during-pause-event")
+  (with-channels
+    [ch _]
+    (running-app
+     (fn [resp]
+       (let [latch (atom true)]
+        (fn [evt val]
+          (enqueue ch [evt val])
+          (when (= :pause evt)
+            (swap! latch (fn [_] false))
+            (throw (Exception. "fail")))
+          (when (= :request evt)
+            (resp :respond [200 {"transfer-encoding" "chunked"} :chunked])
+            (loop []
+              (resp :body "28\r\nLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLO\r\n")
+              (if @latch (recur)))))))
+
+     (http-write "GET / HTTP/1.1\r\n"
+                 "Connection: close\r\n\r\n")
+
+     (drain in)
+
+     (is (next-msgs
+          :request :dont-care
+          :pause   nil
+          :abort   :dont-care))
+
+     (is (not-receiving-messages)))))
+
+(deftest raising-error-during-resume-event
+  (println "raising-error-during-resume-event")
+  (with-channels
+    [ch _]
+    (running-app
+     (fn [resp]
+       (let [latch (atom true)]
+         (fn [evt val]
+           (enqueue ch [evt val])
+           (when (= :pause evt)
+             (swap! latch (fn [_] false)))
+           (when (= :resume evt)
+             (throw (Exception. "fail")))
+           (when (= :request evt)
+             (resp :respond [200 {"transfer-encoding" "chunked"} :chunked])
+             (loop []
+               (resp :body "28\r\nLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLO\r\n")
+               (if @latch (recur)))))))
+
+     (http-write "GET / HTTP/1.1\r\n"
+                 "Connection: close\r\n\r\n")
+
+     (drain in)
+
+     (is (next-msgs
+          :request :dont-care
+          :pause   nil
+          :resume  nil
+          :abort   :dont-care))
+
+     (is (not-receiving-messages)))))
 
 (deftest telling-the-server-to-chill-out
   (println "telling-the-server-to-chill-out")

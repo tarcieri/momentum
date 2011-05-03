@@ -132,6 +132,19 @@
   [_ _ _ _]
   (throw (Exception. "Not expecting a message right now")))
 
+(defn- handle-err
+  [state ch err]
+  (let [[_ _ {upstream :upstream}] @state]
+    (when upstream
+      (try
+        (upstream :abort err)
+        (catch Exception e nil))
+      (swap!
+       state
+       (fn [[_ _ args]]
+         [nil aborted-req (dissoc args :upstream)])))
+    (.close ch)))
+
 (defn- handling-request
   "The initial HTTP request is being handled and we're not expected
    further messages"
@@ -185,7 +198,6 @@
         (upstream :request [headers :chunked])
         (transition-to-streaming-body state))
       (do
-        ;; TODO: maybe the body should always be sent?
         (upstream :request
                   [headers
                    (if (headers "content-length")
@@ -242,7 +254,10 @@
 
          (and (= ch-state ChannelState/CONNECTED)
               (nil? val))
-         (handle-ch-disconnected state)))))))
+         (handle-ch-disconnected state))
+
+        [err (netty/exception-event evt)]
+        (handle-err state ch err))))))
 
 (defn- create-pipeline
   [app]

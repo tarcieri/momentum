@@ -91,18 +91,16 @@
   (when (instance? ChannelStateEvent evt)
     [(.getState ^ChannelStateEvent evt) (.getValue ^ChannelStateEvent evt)]))
 
+(defn exception-event
+  [evt]
+  (when (instance? ExceptionEvent evt)
+    (.getCause ^ExceptionEvent evt)))
+
 (defn upstream-stage
   "Creates a pipeline state for upstream events."
   [handler]
   (reify ChannelUpstreamHandler
     (handleUpstream [_ ctx evt]
-      ;; (println evt)
-      ;; Temporary ghetto exception tracking
-      (if (instance? ExceptionEvent evt)
-        (let [cause (.getCause ^ExceptionEvent evt)]
-          (println "GOT AN EXCEPTION")
-          (println (.getMessage cause))
-          (.printStackTrace cause)))
       (handler (.getChannel evt) evt)
       (.sendUpstream ctx evt))))
 
