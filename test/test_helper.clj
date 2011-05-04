@@ -36,7 +36,7 @@
            (f sock in out)
            (finally
             (when-not (.isClosed sock)
-              (try (drain in) (catch TimeoutException e nil)))
+              (try (drain in) (catch Exception e)))
             (.close sock)))))))
 
 (defn with-fresh-conn*

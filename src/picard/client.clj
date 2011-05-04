@@ -101,7 +101,8 @@
 (defn- finalize-request
   [current-state]
   (if (= request-complete (.next-up-fn current-state))
-    (throw (Exception. "Not implemented yet"))))
+    (let [ch (.ch current-state)]
+      (.close ch))))
 
 (defn- initial-response
   [state ^HttpResponse msg args]
