@@ -18,8 +18,8 @@
    :encoder (HttpRequestEncoder.)))
 
 (defn- mk-conn
-  [host success error]
-  (netty/connect-client (create-pipeline) host success))
+  [[host port] success error]
+  (netty/connect-client (create-pipeline) host port success))
 
 (defn- return-conn
   [conn handler success]
@@ -28,31 +28,31 @@
 
 (defn checkout-conn
   "Calls success fn with the channel"
-  ([pool host handler success] (checkout-conn pool host handler success nil))
-  ([pool host handler success error]
+  ([pool addr handler success] (checkout-conn pool addr handler success nil))
+  ([pool addr handler success error]
      (if-let [conn (dosync
-                    (let [{[conn :as conns] host :as m} @pool]
+                    (let [{[conn :as conns] addr :as m} @pool]
                       (when conn
                         (ref-set
                          pool
                          (if (empty? conns)
-                           (dissoc m host)
-                           (assoc m host (pop conns))))
+                           (dissoc m addr)
+                           (assoc m addr (pop conns))))
                         conn)))]
        (return-conn conn handler success)
-       (mk-conn host #(return-conn % handler success) error))))
+       (mk-conn addr #(return-conn % handler success) error))))
 
 (defn checkin-conn
   "Returns a connection to the pool"
-  [pool host ^Channel conn]
+  [pool addr ^Channel conn]
   (when (.isOpen conn)
     (.. conn getPipeline removeLast)
     (dosync
      (alter
       pool
-      (fn [{conns host :as m}]
+      (fn [{conns addr :as m}]
         (assoc m
-          host (conj (or conns QUEUE) conn)))))))
+          addr (conj (or conns QUEUE) conn)))))))
 
 (defn mk-pool
  []

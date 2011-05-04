@@ -141,12 +141,12 @@
                    (fn [_] (.releaseExternalResources server))))))
 
 (defn connect-client
-  ([pipeline addr on-connected]
-     (connect-client pipeline addr on-connected (mk-thread-pool)))
-  ([pipeline addr on-connected thread-pool]
+  ([pipeline host port on-connected]
+     (connect-client pipeline host port on-connected (mk-thread-pool)))
+  ([pipeline host port on-connected thread-pool]
      (let [channel-factory (client-channel-factory thread-pool)
            channel (.newChannel channel-factory pipeline)]
        (on-complete
-        (.connect channel (InetSocketAddress. addr 80))
+        (.connect channel (InetSocketAddress. host port))
         (fn [_] (on-connected channel)))
        channel)))

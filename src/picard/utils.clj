@@ -111,10 +111,12 @@
     (HttpResponseStatus/valueOf status)))
 
 (defn- mk-netty-req
-  [method path]
+  [method uri]
+  (when (not (or method uri))
+    (throw (Exception. "Need to specify both the HTTP method and URI")))
   (DefaultHttpRequest.
     HttpVersion/HTTP_1_1
-    method path))
+    method uri))
 
 (defn resp->netty-resp
   [[status hdrs body]]

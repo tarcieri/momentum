@@ -36,7 +36,7 @@
            (f sock in out)
            (finally
             (when-not (.isClosed sock)
-             (drain in))
+              (try (drain in) (catch TimeoutException e nil)))
             (.close sock)))))))
 
 (defn with-fresh-conn*
@@ -121,8 +121,8 @@
   (if (instance? ChannelBuffer val) (.toString val "UTF-8") val))
 
 (defn next-msg
-  []
-  (wait-for-message ch 200))
+  ([] (next-msg ch))
+  ([ch] (wait-for-message ch 200)))
 
 (defn match-values
   [val val*]
@@ -154,19 +154,27 @@
   #{(fn [actual]
       (= hdrs (select-keys actual (keys hdrs))))})
 
+(defn- next-msgs-for
+  [ch msg stmts]
+  `(doseq [expected# (partition 2 [~@stmts])]
+     (try
+       (let [actual# (next-msg ~ch)]
+         (if (match-values (vec expected#) actual#)
+           (do-report {:type :pass :message ~msg
+                       :expected expected# :actual actual#})
+           (do-report {:type :fail :message ~msg
+                       :expected expected# :actual actual#})))
+       (catch TimeoutException e#
+         (do-report {:type :fail :message ~msg
+                     :expected expected# :actual "<TIMEOUT>"})))))
+
 (defmethod assert-expr 'next-msgs [msg form]
   (let [[_ & stmts] form]
-    `(doseq [expected# (partition 2 [~@stmts])]
-       (try
-         (let [actual# (next-msg)]
-           (if (match-values (vec expected#) actual#)
-             (do-report {:type :pass :message ~msg
-                         :expected expected# :actual actual#})
-             (do-report {:type :fail :message ~msg
-                         :expected expected# :actual actual#})))
-         (catch TimeoutException e#
-           (do-report {:type :fail :message ~msg
-                       :expected expected# :actual "<TIMEOUT>"}))))))
+    (next-msgs-for ch msg stmts)))
+
+(defmethod assert-expr 'next-msgs-for [msg form]
+  (let [[_ ch & stmts] form]
+    (next-msgs-for ch msg stmts)))
 
 (defmethod assert-expr 'not-receiving-messages [msg form]
   `(do
