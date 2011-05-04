@@ -91,6 +91,14 @@
   (when (instance? ChannelStateEvent evt)
     [(.getState ^ChannelStateEvent evt) (.getValue ^ChannelStateEvent evt)]))
 
+(defn channel-connect-event?
+  "Whether or not the passed channel event is a channel
+   connect event"
+  [evt]
+  (let [[state val] (channel-state-event evt)]
+    (and (= ChannelState/CONNECTED state)
+         (not (nil? val)))))
+
 (defn exception-event
   [evt]
   (when (instance? ExceptionEvent evt)
@@ -117,13 +125,13 @@
   (reify ChannelPipelineFactory
     (getPipeline [_]
       (let [pipeline ^ChannelPipeline (pipeline-fn)]
-        (.addFirst pipeline
-                   "channel-listener"
-                   (upstream-stage
-                    (fn [ch evt]
-                      (when-let [state (channel-state-event evt)]
-                        (when (= ChannelState/OPEN state)
-                          (.add channel-group ch))))))
+        (.addFirst
+         pipeline "channel-listener"
+         (upstream-stage
+          (fn [ch evt]
+            (when-let [state (channel-state-event evt)]
+              (when (= ChannelState/OPEN state)
+                (.add channel-group ch))))))
         pipeline))))
 
 (defn start-server

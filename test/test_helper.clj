@@ -3,6 +3,7 @@
    [clojure.test]
    [lamina.core :exclude [timeout]])
   (:require
+   [picard.netty  :as netty]
    [picard.server :as server])
   (:import
    [org.jboss.netty.buffer
@@ -13,7 +14,7 @@
     TimeoutException
     TimeUnit]))
 
-(declare ch ch2 sock in out drain)
+(declare ch ch2 netty-evts sock in out drain)
 
 ;; ### TEST APPLICATIONS
 (defn call-home-app
@@ -47,13 +48,25 @@
   [& stmts]
   `(with-fresh-conn* (fn [] ~@stmts)))
 
+(defn add-tracking-to-pipeline
+  [evts pipeline]
+  (.addBefore
+   pipeline "handler" "track-msgs"
+   (netty/upstream-stage
+    (fn [_ evt]
+      (swap! evts (fn [cur-evts] (conj cur-evts evt))))))
+  pipeline)
+
 (defn running-app*
   [app f]
-  (let [stop-fn (server/start app)]
+  (let [netty-evts    (atom [])
+        pipeline-fn   #(add-tracking-to-pipeline netty-evts %)
+        stop-fn       (server/start app {:pipeline-fn pipeline-fn})]
     (try
       (connect
        (fn [sock in out]
-         (binding [sock sock in in out out] (f))))
+         (binding [sock sock in in out out netty-evts netty-evts]
+           (f))))
       (finally (stop-fn)))))
 
 (defmacro running-app
@@ -73,6 +86,15 @@
   [& stmts]
   `(binding [ch (channel)]
      (running-app* (call-home-app ch) (fn [] ~@stmts))))
+
+(defmacro running-hello-world-app
+  [& stmts]
+  `(running-app*
+    (fn [resp#]
+      (fn [evt# val#]
+        (when (= :request evt#)
+          (resp# :respond [200 {"content-length" "5"} "Hello"]))))
+    (fn [] ~@stmts)))
 
 (defmacro timeout-after
   [ms & body]
@@ -153,6 +175,10 @@
   [hdrs]
   #{(fn [actual]
       (= hdrs (select-keys actual (keys hdrs))))})
+
+(defn netty-connect-evts
+  []
+  (filter netty/channel-connect-event? @netty-evts))
 
 (defn- next-msgs-for
   [ch msg stmts]

@@ -269,6 +269,10 @@
 (defn start
   "Starts an HTTP server on the specified port."
   ([app]
-     (start app {:port 4040}))
+     (start app {}))
   ([app opts]
-     (netty/start-server #(create-pipeline app) opts)))
+     (netty/start-server
+      #(create-pipeline app)
+      (merge
+       {:port 4040}
+       opts))))

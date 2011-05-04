@@ -7,6 +7,7 @@
    [picard.client :as client]))
 
 (deftest simple-requests
+  (println "simple-requests")
   (with-channels
     [ch ch2]
     (doseq [method ["GET" "POST" "PUT" "DELETE" "HEAD"]]
@@ -40,6 +41,7 @@
                         "Hello"]))))))
 
 (deftest receiving-a-chunked-body
+  (println "receiving-a-chunked-body")
   (with-channels
     [ch ch2]
     (running-app
@@ -70,6 +72,7 @@
           :done      nil)))))
 
 (deftest sending-a-chunked-body
+  (println "sending-a-chunked-body")
   (with-channels
     [ch ch2]
     (running-app
@@ -105,3 +108,31 @@
           ch2
           :connected nil
           :respond   [200 {"connection" "close" "content-length" "5"} "Hello"])))))
+
+(deftest ^{:focus true} simple-keep-alive-requests
+  (println "simple-keep-alive-requests")
+  (with-channels
+    [_ ch2]
+    (running-hello-world-app
+     (client/request
+      ["localhost" 4040]
+      [{:path-info "/" :request-method "GET"}]
+      (fn [_ evt val] (enqueue ch2 [evt val])))
+
+     (is (next-msgs-for
+          ch2
+          :connected nil
+          :respond   [200 {"content-length" "5"} "Hello"]))
+
+     (client/request
+      ["localhost" 4040]
+      [{:path-info "/" :request-method "GET" "connection" "close"}]
+      (fn [_ evt val] (enqueue ch2 [evt val])))
+
+     (is (next-msgs-for
+          ch2
+          :connected nil
+          :respond   [200 {"content-length" "5"} "Hello"]))
+
+     (is (= 1
+            (count (netty-connect-evts)))))))
