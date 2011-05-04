@@ -102,7 +102,7 @@
                 (not (nil? v-or-vals)))
        (if (string? v-or-vals)
          (.addHeader msg (name k) v-or-vals)
-         (doseq [val v-or-vals]
+         (doseq [val v-or-vals]8
            (.addHeader msg (name k) v-or-vals)))))))
 
 (defn- mk-netty-response
@@ -135,7 +135,9 @@
                (hdrs :path-info))]
    (netty-assoc-hdrs netty-req hdrs)
    (when body
-     (.setContent netty-req (*->channel-buffer body)))))
+     (if (= :chunked body)
+       (.setChunked netty-req true)
+       (.setContent netty-req (*->channel-buffer body))))))
 
 (defn mk-netty-chunk
   [body]

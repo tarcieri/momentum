@@ -68,3 +68,40 @@
           :body      "Hello"
           :body      "World"
           :done      nil)))))
+
+(deftest sending-a-chunked-body
+  (with-channels
+    [ch ch2]
+    (running-app
+     (fn [resp]
+       (fn [evt val]
+         (enqueue ch [evt val])
+         (when (= :done evt)
+           (resp :respond [200
+                           {"connection" "close"
+                            "content-length" "5"}
+                           "Hello"]))))
+
+     (client/request
+      ["localhost" 4040]
+      [{:path-info          "/"
+        :request-method     "GET"
+        "transfer-encoding" "chunked"} :chunked]
+      (fn [upstream evt val]
+        (enqueue ch2 [evt val])
+        (when (= :connected evt)
+          (upstream :body "Foo!")
+          (upstream :body "Bar!")
+          (upstream :done nil))))
+
+     (is (next-msgs-for
+          ch
+          :request [(includes-hdrs {"transfer-encoding" "chunked"}) :chunked]
+          :body    "Foo!"
+          :body    "Bar!"
+          :done    nil))
+
+     (is (next-msgs-for
+          ch2
+          :connected nil
+          :respond   [200 {"connection" "close" "content-length" "5"} "Hello"])))))

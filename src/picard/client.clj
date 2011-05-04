@@ -17,6 +17,11 @@
     HttpResponseDecoder
     HttpVersion]))
 
+;; TODO: A big issue that still needs to be handed is that
+;;       all events that happen after a write has occured
+;;       must not happen immedietly, but after the write
+;;       future has completed.
+
 (defrecord State [addr ch next-up-fn next-dn-fn upstream downstream])
 
 (defn- chunked?
@@ -61,8 +66,19 @@
 ;;             (swap! state (fn [f args] [f (assoc args :ch :pending)]))
 ;;             (resp :pause nil)))))))
 
-(defn- connection-pending
+(defn- request-complete
   [_ _ _ _]
+  ;; Just ignore abort events, throw if anything else
+  (throw (Exception. "The request is complete")))
+
+(defn- finalize-request
+  [current-state]
+  (if (= request-complete (.next-up-fn current-state))
+    (let [ch (.ch current-state)]
+      (.close ch))))
+
+(defn- connection-pending
+  [_ _ _]
   ;; Need to be able to handle abortiong
   (throw (Exception. "The connection has not yet been established")))
 
@@ -70,14 +86,22 @@
   [_ _ _ _]
   (throw (Exception. "Not implemented yet")))
 
-(defn- request-complete
-  [_ _ _ _]
-  ;; Just ignore abort events, throw if anything else
-  (throw (Exception. "The request is complete")))
-
 (defn- stream-or-finalize-request
-  [_ _ _ _]
-  (throw (Exception. "Not implemented yet")))
+  [state evt val current-state]
+  (let [ch (.ch current-state)]
+    (if (= :done evt)
+      (do (.write ch HttpChunk/LAST_CHUNK)
+          (swap-then!
+           state
+           (fn [current-state]
+             (cond
+              (nil? (.next-dn-fn current-state))
+              (assoc current-state :next-up-fn request-complete)
+
+              :else
+              (assoc current-state :next-up-fn response-pending)))
+           finalize-request))
+      (.write ch (mk-netty-chunk val)))))
 
 (defn- stream-or-finalize-response
   [state ^HttpChunk msg args]
@@ -97,12 +121,6 @@
            (fn [current-state]
              )))
       (downstream-fn upstream-fn :body (.getContent msg)))))
-
-(defn- finalize-request
-  [current-state]
-  (if (= request-complete (.next-up-fn current-state))
-    (let [ch (.ch current-state)]
-      (.close ch))))
 
 (defn- initial-response
   [state ^HttpResponse msg args]
@@ -146,7 +164,7 @@
   [state]
   (fn [evt val]
     (let [current-state @state]
-      ((.next-up-fn current-state) evt val current-state))))
+      ((.next-up-fn current-state) state evt val current-state))))
 
 (defn- mk-initial-state
   [addr downstream-fn]
@@ -181,7 +199,6 @@
            ;; When the request has successfully been
            ;; written, move the state of the exchange forward
            (fn [_]
-             (downstream-fn upstream-fn :connected nil)
              ;; TODO: handle returning the connection to the pool
              (swap-then!
               state
@@ -202,7 +219,8 @@
                  ;; the response to complete.
                  :else
                  (assoc current-state :next-up-fn response-pending)))
-              finalize-request))))))))
+              finalize-request)
+             (downstream-fn upstream-fn :connected nil))))))))
 
 (defn mk-proxy
   ([] (mk-proxy (pool/mk-pool)))
