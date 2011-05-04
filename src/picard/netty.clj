@@ -113,10 +113,10 @@
 ;;        (handler (.getChannel ^MessageEvent evt) msg)))))
 
 (defn- mk-pipeline-factory
-  [^ChannelGroup channel-group pipeline-fn & args]
+  [^ChannelGroup channel-group pipeline-fn]
   (reify ChannelPipelineFactory
     (getPipeline [_]
-      (let [pipeline ^ChannelPipeline (apply pipeline-fn args)]
+      (let [pipeline ^ChannelPipeline (pipeline-fn)]
         (.addFirst pipeline
                    "channel-listener"
                    (upstream-stage
@@ -129,16 +129,27 @@
 (defn start-server
   "Starts a server. Returns a function that stops the server"
   [pipeline-fn {port :port :as options}]
-  (let [server (mk-server-bootstrap)
+  (let [server        (mk-server-bootstrap)
         channel-group (DefaultChannelGroup.)]
     ;; Create the pipeline factory based on the passed
     ;; function
-    (.setPipelineFactory server
-                         (mk-pipeline-factory channel-group pipeline-fn))
+    (.setPipelineFactory
+     server
+     (mk-pipeline-factory
+      channel-group
+      ;; If the user passed in a pipeline function, wrap the
+      ;; base pipeline function with the user's function. Supplied
+      ;; pipeline functions must take in a pipeline and return
+      ;; the new pipeline.
+      (if-let [user-pipeline-fn (options :pipeline-fn)]
+        #(user-pipeline-fn (pipeline-fn))
+        pipeline-fn)))
+
     (.add channel-group (.bind server (InetSocketAddress. port)))
-    (fn []
-      (on-complete (.close channel-group)
-                   (fn [_] (.releaseExternalResources server))))))
+
+    ;; Return a server shutdown function
+    (fn [] (on-complete (.close channel-group)
+                       (fn [_] (.releaseExternalResources server))))))
 
 (defn connect-client
   ([pipeline host port on-connected]

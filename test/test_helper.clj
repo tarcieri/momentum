@@ -170,7 +170,7 @@
 
 (defmethod assert-expr 'next-msgs [msg form]
   (let [[_ & stmts] form]
-    (next-msgs-for ch msg stmts)))
+    (next-msgs-for `ch msg stmts)))
 
 (defmethod assert-expr 'next-msgs-for [msg form]
   (let [[_ ch & stmts] form]

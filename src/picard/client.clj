@@ -67,9 +67,9 @@
 ;;             (resp :pause nil)))))))
 
 (defn- request-complete
-  [_ _ _ _]
-  ;; Just ignore abort events, throw if anything else
-  (throw (Exception. "The request is complete")))
+  [_ evt _ _]
+  (when-not (= :abort evt)
+   (throw (Exception. "The request is complete"))))
 
 (defn- finalize-request
   [current-state]
@@ -179,6 +179,10 @@
                     upstream-fn        ;; Upstream handler (external interface)
                     downstream-fn)))   ;; Downstream handler (passed in)
     [state upstream-fn]))
+
+;; Alias so that the pool namespace doesn't have to be required as
+;; well as the client namespace
+(def mk-pool pool/mk-pool)
 
 (defn request
   ([addr req downstream-fn]

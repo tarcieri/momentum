@@ -264,7 +264,7 @@
   (netty/create-pipeline
    :decoder (HttpRequestDecoder.)
    :encoder (HttpResponseEncoder.)
-   :bridge  (netty-bridge app {})))
+   :handler (netty-bridge app {})))
 
 (defn start
   "Starts an HTTP server on the specified port."
