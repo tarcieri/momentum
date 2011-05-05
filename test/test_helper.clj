@@ -93,10 +93,9 @@
 (defmacro running-hello-world-app
   [& stmts]
   `(running-app*
-    (fn [resp#]
-      (fn [evt# val#]
-        (when (= :request evt#)
-          (resp# :respond [200 {"content-length" "5"} "Hello"]))))
+    (fn [resp# req#]
+      (resp# :respond [200 {"content-length" "5"} "Hello"])
+      (fn [evt# val#] true))
     (fn [] ~@stmts)))
 
 (defmacro timeout-after

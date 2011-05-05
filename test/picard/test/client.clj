@@ -12,13 +12,13 @@
     [ch ch2]
     (doseq [method ["GET" "POST" "PUT" "DELETE" "HEAD"]]
       (running-app
-       (fn [resp]
-         (fn [evt val]
-           (enqueue ch [evt val])
-           (resp :respond [200
-                           {"content-length" "5"
-                            "connection" "close"}
-                           "Hello"])))
+       (fn [resp request]
+         (enqueue ch [:request request])
+         (resp :respond [200
+                         {"content-length" "5"
+                          "connection" "close"}
+                         "Hello"])
+         (fn [evt val] (enqueue ch [evt val])))
 
        (client/request
         ["localhost" 4040]
@@ -44,15 +44,15 @@
   (with-channels
     [ch ch2]
     (running-app
-     (fn [resp]
-       (fn [evt val]
-         (enqueue ch [evt val])
-         (resp :respond [200
-                         {"transfer-encoding" "chunked"}
-                         :chunked])
-         (resp :body "Hello")
-         (resp :body "World")
-         (resp :done nil)))
+     (fn [resp request]
+       (enqueue ch [:request request])
+       (resp :respond [200
+                       {"transfer-encoding" "chunked"}
+                       :chunked])
+       (resp :body "Hello")
+       (resp :body "World")
+       (resp :done nil)
+       (fn [evt val] (enqueue ch [evt val])))
 
      (client/request
       ["localhost" 4040]
@@ -74,7 +74,8 @@
   (with-channels
     [ch ch2]
     (running-app
-     (fn [resp]
+     (fn [resp request]
+       (enqueue ch [:request request])
        (fn [evt val]
          (enqueue ch [evt val])
          (when (= :done evt)
