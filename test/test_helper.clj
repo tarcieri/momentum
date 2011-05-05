@@ -19,13 +19,14 @@
 ;; ### TEST APPLICATIONS
 (defn call-home-app
   [ch]
-  (fn [resp]
-    (enqueue ch [:binding nil])
+  (fn [resp req]
+    (enqueue ch [:request req])
+    (resp :respond [200
+                    {"content-type" "text/plain"
+                     "content-length" "5"}
+                    "Hello"])
     (fn [evt val]
-      (enqueue ch [evt val])
-      (when (= evt :request)
-        (resp :respond [200 {"content-type" "text/plain"
-                             "content-length" "5"} "Hello"])))))
+      (enqueue ch [evt val]))))
 
 ;; ### HELPER FUNCTIONS
 (defn connect
@@ -54,6 +55,8 @@
    pipeline "handler" "track-msgs"
    (netty/upstream-stage
     (fn [_ evt]
+      ;; (if-let [err (netty/exception-event evt)]
+      ;;   (.printStackTrace err))
       (swap! evts (fn [cur-evts] (conj cur-evts evt))))))
   pipeline)
 
@@ -179,6 +182,10 @@
 (defn netty-connect-evts
   []
   (filter netty/channel-connect-event? @netty-evts))
+
+(defn netty-exception-events
+  []
+  (filter netty/exception-event @netty-evts))
 
 (defn- next-msgs-for
   [ch msg stmts]

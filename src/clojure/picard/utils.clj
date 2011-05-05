@@ -81,6 +81,15 @@
     :script-name    ""
     :server-name    picard/SERVER-NAME))
 
+(defn netty-req->req
+  [^HttpMessage req]
+  (let [hdrs (netty-req->hdrs req)]
+    [hdrs
+     (cond
+      (.isChunked req)        :chunked
+      (hdrs "content-length") (.getContent req)
+      :else                   nil)]))
+
 (defn netty-resp->resp
   [^HttpResponse resp]
   [(.. resp getStatus getCode)

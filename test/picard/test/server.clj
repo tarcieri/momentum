@@ -23,7 +23,6 @@
                  "Connection: close\r\n"
                  "\r\n")
      (is (next-msgs
-          :binding nil
           :request [{:server-name    picard/SERVER-NAME
                      :script-name    ""
                      :path-info      "/"
@@ -45,7 +44,6 @@
                "Content-Length: 5\r\n\r\n"
                "Hello")
    (is (next-msgs
-        :binding nil
         :request [(includes-hdrs {"content-length" "5"}) "Hello"]))
    (is (not-receiving-messages))))
 
@@ -57,11 +55,8 @@
                "POST /bar HTTP/1.1\r\n"
                "connection: close\r\n\r\n")
    (is (next-msgs
-        :binding nil
         :request [(includes-hdrs {:request-method "GET" :path-info "/"}) nil]
-        :binding nil
         :request [(includes-hdrs {:request-method "GET" :path-info "/foo"}) nil]
-        :binding nil
         :request [(includes-hdrs {:request-method "POST" :path-info "/bar"
                                   "connection" "close"}) nil]))
    (is (received-response
@@ -78,12 +73,12 @@
         "content-length: 5\r\n\r\n"
         "Hello"))))
 
-(deftest returning-connection-close-terminates-connection
+(deftest ^{:focus true} returning-connection-close-terminates-connection
   (println "returning-connection-close-terminates-connection")
   (running-app
-   (fn [resp]
-     (fn [evt val]
-       (resp :respond [200 {"connection" "close"} "Hello"])))
+   (fn [resp request]
+     (resp :respond [200 {"connection" "close"} "Hello"])
+     (fn [evt val] true))
 
    (http-write "GET / HTTP/1.1\r\n\r\n")
 
@@ -95,12 +90,12 @@
 (deftest returning-connection-close-and-chunks
   (println "returning-connection-close-and-chunks")
   (running-app
-   (fn [resp]
-     (fn [evt val]
-       (resp :respond [200 {"connection" "close"} :chunked])
-       (resp :body "Hello ")
-       (resp :body "world")
-       (resp :done nil)))
+   (fn [resp request]
+     (resp :respond [200 {"connection" "close"} :chunked])
+     (resp :body "Hello ")
+     (resp :body "world")
+     (resp :done nil)
+     (fn [evt val] true))
 
    (http-write "GET / HTTP/1.1\r\n\r\n")
 
@@ -117,7 +112,6 @@
                "Transfer-Encoding: chunked\r\n\r\n"
                "5\r\nHello\r\n0\r\n\r\n")
    (is (next-msgs
-        :binding nil
         :request [(includes-hdrs {"transfer-encoding" "chunked"}) :chunked]
         :body    "Hello"
         :done    nil))))
@@ -125,12 +119,11 @@
 (deftest single-chunked-response
   (println "single-chunked-response")
   (running-app
-   (fn [resp]
-     (fn [evt val]
-       (when (= :request evt)
-         (resp :respond [200 {"transfer-encoding" "chunked"} :chunked])
-         (resp :body "Hello")
-         (resp :done nil))))
+   (fn [resp request]
+     (resp :respond [200 {"transfer-encoding" "chunked"} :chunked])
+     (resp :body "Hello")
+     (resp :done nil)
+     (fn [evt val] true))
 
    (http-write "GET / HTTP/1.1\r\n"
                "Connection: close\r\n\r\n")
@@ -140,14 +133,13 @@
         "transfer-encoding: chunked\r\n\r\n"
         "5\r\nHello\r\n0\r\n\r\n"))))
 
-(deftest chunked-requests-keep-alive
+(deftest ^{:focus true} chunked-requests-keep-alive
   (println "chunked-requests-keep-alive")
   (running-call-home-app
    (http-write "POST / HTTP/1.1\r\n"
                "Transfer-Encoding: chunked\r\n\r\n"
                "5\r\nHello\r\n6\r\n World\r\n0\r\n\r\n")
    (is (next-msgs
-        :binding nil
         :request [(includes-hdrs {"transfer-encoding" "chunked"}) :chunked]
         :body    "Hello"
         :body    " World"
@@ -156,7 +148,6 @@
                "Transfer-Encoding: chunked\r\n\r\n"
                "6\r\nZomG!!\r\n9\r\nINCEPTION\r\n0\r\n\r\n")
    (is (next-msgs
-        :binding nil
         :request [(includes-hdrs {"transfer-encoding" "chunked"}) :chunked]
         :body    "ZomG!!"
         :body    "INCEPTION"
@@ -164,7 +155,6 @@
    (http-write "GET / HTTP/1.1\r\n"
                "Connection: close\r\n\r\n")
    (is (next-msgs
-        :binding nil
         :request [(includes-hdrs {"connection" "close"}) nil]))))
 
 (deftest aborting-a-request
@@ -172,8 +162,8 @@
   (with-channels
     [ch _]
     (running-app
-     (fn [resp]
-       (enqueue ch [:binding nil])
+     (fn [resp request]
+       (enqueue ch [:request request])
        (fn [evt val]
          (enqueue ch [evt val])
          (when (= :done evt)
@@ -186,7 +176,6 @@
      (close-socket)
 
      (is (next-msgs
-          :binding nil
           :request [:dont-care :chunked]
           :abort   nil)))))
 
@@ -195,18 +184,15 @@
   (with-channels
     [ch _]
     (running-app
-     (fn [resp]
-       (fn [evt val]
-         (enqueue ch [evt val])
-         (throw (Exception. "TROLL APP IS TROLLIN'"))))
+     (fn [resp request]
+       (enqueue ch [:request request])
+       (throw (Exception. "TROLL APP IS TROLLIN'")))
 
      (http-write "GET / HTTP/1.1\r\n\r\n")
 
-     (is (next-msgs
-          :request :dont-care
-          :abort   :dont-care))
-
-     (is (not-receiving-messages)))))
+     (is (not-receiving-messages))
+     (is (= 0
+            (count (netty-exception-events)))))))
 
 (deftest sending-gibberish
   (println "sending-gibberish")
@@ -222,7 +208,6 @@
                "Connection: close\r\n"
                "Content-Length: 10000\r\n\r\n")
    (is (next-msgs
-        :binding nil
         :request [{:server-name     picard/SERVER-NAME
                    :script-name     ""
                    :path-info       "/"
@@ -237,30 +222,29 @@
   (with-channels
     [ch _]
     (running-app
-     (fn [resp]
-       (enqueue ch [:binding nil])
+     (fn [resp request]
+       (enqueue ch [:request request])
+       (resp :respond [200 {"transfer-encoding" "chunked"} :chunked])
        ;; The latch will let us pause
        (let [latch (atom true)]
+         (send-off
+          (agent nil)
+          (fn [_]
+            (loop []
+              (resp :body "28\r\nLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLO\r\n")
+              (if @latch (recur)))))
          (fn [evt val]
            (enqueue ch [evt val])
            (when (= :pause evt)
              (swap! latch (fn [_] false)))
            (when (= :resume evt)
-             (resp :done nil))
-           ;; Start the crazy network hammering once the
-           ;; request has been received
-           (when (= :request evt)
-             (resp :respond [200 {"transfer-encoding" "chunked"} :chunked])
-             (loop []
-               (resp :body "28\r\nLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLO\r\n")
-               (if @latch (recur)))))))
+             (resp :done nil)))))
 
      ;; Now the tests
      (http-write "GET / HTTP/1.1\r\n"
                  "Connection: close\r\n\r\n")
      (drain in)
      (is (next-msgs
-          :binding nil
           :request :dont-care
           :pause   nil
           :resume  nil)))))
@@ -270,18 +254,21 @@
   (with-channels
     [ch _]
     (running-app
-     (fn [resp]
+     (fn [resp request]
+       (enqueue ch [:request request])
        (let [latch (atom true)]
-        (fn [evt val]
-          (enqueue ch [evt val])
-          (when (= :pause evt)
-            (swap! latch (fn [_] false))
-            (throw (Exception. "fail")))
-          (when (= :request evt)
-            (resp :respond [200 {"transfer-encoding" "chunked"} :chunked])
+         (resp :respond [200 {"transfer-encoding" "chunked"} :chunked])
+         (send-off
+          (agent nil)
+          (fn [_]
             (loop []
               (resp :body "28\r\nLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLO\r\n")
-              (if @latch (recur)))))))
+              (if @latch (recur)))))
+         (fn [evt val]
+           (enqueue ch [evt val])
+           (when (= :pause evt)
+             (swap! latch (fn [_] false))
+             (throw (Exception. "fail"))))))
 
      (http-write "GET / HTTP/1.1\r\n"
                  "Connection: close\r\n\r\n")
@@ -300,19 +287,22 @@
   (with-channels
     [ch _]
     (running-app
-     (fn [resp]
+     (fn [resp request]
+       (enqueue ch [:request request])
        (let [latch (atom true)]
+         (resp :respond [200 {"transfer-encoding" "chunked"} :chunked])
+         (send-off
+          (agent nil)
+          (fn [_]
+            (loop []
+              (resp :body "28\r\nLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLO\r\n")
+              (if @latch (recur)))))
          (fn [evt val]
            (enqueue ch [evt val])
            (when (= :pause evt)
              (swap! latch (fn [_] false)))
            (when (= :resume evt)
-             (throw (Exception. "fail")))
-           (when (= :request evt)
-             (resp :respond [200 {"transfer-encoding" "chunked"} :chunked])
-             (loop []
-               (resp :body "28\r\nLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLO\r\n")
-               (if @latch (recur)))))))
+             (throw (Exception. "fail"))))))
 
      (http-write "GET / HTTP/1.1\r\n"
                  "Connection: close\r\n\r\n")
@@ -332,15 +322,14 @@
   (with-channels
     [ch ch2]
     (running-app
-     (fn [resp]
+     (fn [resp request]
        (receive-all
         ch2
         (fn [_] (resp :resume nil)))
-       (enqueue ch [:binding nil])
+       (enqueue ch [:request request])
+       (resp :pause nil)
        (fn [evt val]
          (enqueue ch [evt val])
-         (when (= :request evt)
-           (resp :pause nil))
          (when (= :done evt)
            (resp :respond [200 {"content-type" "text/plain"
                                 "content-length" "5"} "Hello"]))))
@@ -352,7 +341,6 @@
                  "5\r\nHello\r\n5\r\nWorld\r\n0\r\n\r\n")
 
      (is (next-msgs
-          :binding nil
           :request :dont-care))
      (is (not-receiving-messages))
 

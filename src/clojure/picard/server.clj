@@ -29,7 +29,7 @@
   [args]
   (-> args
       (select-keys [:app :opts])
-      (assoc :last-args args)))
+      (assoc :last-args args :keepalive? true)))
 
 (defn- finalize-ch
   [ch {:keys [keepalive? streaming? chunked? last-write]}]
@@ -181,30 +181,22 @@
 
 (defn- incoming-request
   [state ch ^HttpMessage msg {app :app :as args}]
-  (let [keepalive? (HttpHeaders/isKeepAlive msg)
-        upstream   (app (downstream-fn state ch))
-        headers    (netty-req->hdrs msg)]
+  (swap! state (fn [[_ dn-f args]] [handling-request dn-f args]))
+  (try
+    (let [upstream   (app (downstream-fn state ch) (netty-req->req msg))]
+      ;; Add the upstream handler to the state
+      (swap! state (fn [[up-f dn-f {keepalive? :keepalive? :as args}]]
+                     [up-f dn-f
+                      (assoc args
+                        :keepalive? (and keepalive? (HttpHeaders/isKeepAlive msg))
+                        :upstream   upstream)]))
 
-    ;; Add the upstream handler to the state
-    (swap! state (fn [[_ dn-f args]]
-                   [handling-request
-                    dn-f
-                    (assoc args
-                      :keepalive? keepalive?
-                      :upstream   upstream)]))
-
-    ;; Send the HTTP headers upstream
-    (if (.isChunked msg)
-      (do
-        (upstream :request [headers :chunked])
-        (transition-to-streaming-body state))
-      (do
-        (upstream :request
-                  [headers
-                   (if (headers "content-length")
-                     (.getContent msg)
-                     nil)])
-        (transition-from-req-done state ch)))))
+      ;; Send the HTTP headers upstream
+      (if (.isChunked msg)
+        (transition-to-streaming-body state)
+        (transition-from-req-done state ch)))
+    (catch Exception err
+      (handle-err state ch err))))
 
 (defn- handle-ch-interest-change
   [ch [_ _ {upstream :upstream}] writable?]
@@ -236,7 +228,7 @@
 
    responded?: Whether or not the application has responded to the current
                request"
-  (let [state     (atom [incoming-request nil {:app app :opts opts}])
+  (let [state     (atom [incoming-request nil {:app app :opts opts :keepalive? true}])
         writable? (atom true)]
     (netty/upstream-stage
      (fn [ch evt]
@@ -274,6 +266,4 @@
   ([app opts]
      (netty/start-server
       #(create-pipeline app)
-      (merge
-       {:port 4040}
-       opts))))
+      (merge {:port 4040} opts))))
