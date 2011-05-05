@@ -144,7 +144,7 @@
 
 (defn next-msg
   ([] (next-msg ch))
-  ([ch] (wait-for-message ch 200)))
+  ([ch] (wait-for-message ch 1000)))
 
 (defn match-values
   [val val*]

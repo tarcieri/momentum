@@ -14,7 +14,8 @@
     ChannelUpstreamHandler
     Channels
     ExceptionEvent
-    MessageEvent]
+    MessageEvent
+    WriteCompletionEvent]
    [org.jboss.netty.channel.group
     ChannelGroup
     ChannelGroupFuture
@@ -103,6 +104,10 @@
   [evt]
   (when (instance? ExceptionEvent evt)
     (.getCause ^ExceptionEvent evt)))
+
+(defn write-completion-event
+  [evt]
+  (instance? WriteCompletionEvent evt))
 
 (defn upstream-stage
   "Creates a pipeline state for upstream events."

@@ -78,6 +78,7 @@
    :else
    (throw (Exception. "Unknown event: " evt))))
 
+;; TODO: Handle HTTP 1.0 responses
 (defn- is-keepalive?
   [req-keepalive? hdrs]
   (and req-keepalive?

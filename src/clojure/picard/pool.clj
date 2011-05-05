@@ -2,14 +2,16 @@
   (:require
    [picard.netty :as netty])
   (:import
+   [picard
+    ChannelPool]
    [org.jboss.netty.channel
     Channel
     ChannelPipeline]
    [org.jboss.netty.handler.codec.http
     HttpRequestEncoder
-    HttpResponseDecoder]))
-
-(def QUEUE clojure.lang.PersistentQueue/EMPTY)
+    HttpResponseDecoder]
+   [java.net
+    InetSocketAddress]))
 
 (defn- create-pipeline
   []
@@ -29,31 +31,18 @@
 (defn checkout-conn
   "Calls success fn with the channel"
   ([pool addr handler success] (checkout-conn pool addr handler success nil))
-  ([pool addr handler success error]
-     (if-let [conn (dosync
-                    (let [{[conn :as conns] addr :as m} @pool]
-                      (when conn
-                        (ref-set
-                         pool
-                         (if (empty? conns)
-                           (dissoc m addr)
-                           (assoc m addr (pop conns))))
-                        conn)))]
+  ([pool [host port :as  addr] handler success error]
+     (if-let [conn (.checkout pool (InetSocketAddress. host port))]
        (return-conn conn handler success)
        (mk-conn addr #(return-conn % handler success) error))))
 
 (defn checkin-conn
   "Returns a connection to the pool"
-  [pool addr ^Channel conn]
+  [^ChannelPool pool ^Channel conn]
   (when (.isOpen conn)
     (.. conn getPipeline removeLast)
-    (dosync
-     (alter
-      pool
-      (fn [{conns addr :as m}]
-        (assoc m
-          addr (conj (or conns QUEUE) conn)))))))
+    (.checkin pool conn)))
 
 (defn mk-pool
  []
- (ref {}))
+ (ChannelPool. 10))
