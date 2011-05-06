@@ -50,6 +50,11 @@
                       (callback future))))
     future))
 
+(extend-type nil
+  NETTY-FUTURE
+  (on-complete [_ callback]
+    (callback nil)))
+
 (def close-channel-future-listener ChannelFutureListener/CLOSE)
 
 (defmacro create-pipeline
