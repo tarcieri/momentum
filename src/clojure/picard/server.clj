@@ -91,19 +91,17 @@
   (when-not (= :response evt)
     (throw (Exception. "Um... responses start with the head?")))
   (let [write (.write ch (resp->netty-resp val))]
-    (if (not= :chunked body)
-      (finalize-resp state ch))
     (swap! state
            (fn [[up-f dn-f {keepalive? :keepalive? :as args}]]
              [up-f
-              (if (= :chunked body)
-                stream-or-finalize-resp
-                finalize-resp)
+              (if (= :chunked body) stream-or-finalize-resp nil)
               (assoc args
                 :streaming? (= :chunked body)
                 :chunked?   (= (hdrs "transfer-encoding") "chunked")
                 :keepalive? (is-keepalive? keepalive? hdrs)
-                :last-write write)]))))
+                :last-write write)]))
+    (if (not= :chunked body)
+      (finalize-resp state ch))))
 
 (defn- downstream-fn
   [state ^Channel ch]
@@ -122,7 +120,8 @@
 
      :else
      (let [[_ dn-f _] @state]
-       (dn-f state ch evt val)))
+       (when dn-f
+         (dn-f state ch evt val))))
     true))
 
 (defn- waiting-for-response
@@ -135,6 +134,7 @@
 
 (defn- handle-err
   [state ch err]
+  (.printStackTrace err)
   (let [[_ _ {upstream :upstream}] @state]
     (when upstream
       (try

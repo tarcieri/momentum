@@ -28,6 +28,11 @@
          ~retval))
     `(do ~@stmts ~val)))
 
+(defmacro with
+  [val _ name & stmts]
+  `(let [~name ~val]
+     ~@stmts))
+
 (defmacro cond-let
   ([] nil)
   ([binding clause & rest]
@@ -42,6 +47,10 @@
   `(let [res# (swap! ~atom ~swap-fn)]
      (~then-fn res#)
      res#))
+
+(defn set*!
+  [atom val]
+  (swap! atom (constantly val)))
 
 (defn string->byte-buffer
   ([s] (string->byte-buffer s "UTF-8"))
