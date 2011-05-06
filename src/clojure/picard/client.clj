@@ -18,13 +18,20 @@
     HttpResponseDecoder
     HttpVersion]))
 
-;; TODO: A big issue that still needs to be handed is that
-;;       all events that happen after a write has occured
-;;       must not happen immedietly, but after the write
-;;       future has completed.
+;; TODO: What happens if a request is made with no
+;;       content-length or transfer-encoding: chunked?
 
 (defrecord State
-    [pool ch keepalive? chunked? next-up-fn next-dn-fn upstream downstream])
+    [pool
+     ch
+     keepalive?
+     chunked?
+     chunk-trailer?
+     next-up-fn
+     next-dn-fn
+     upstream
+     downstream
+     last-write])
 
 (defn- chunked?
   [[_ _ body]]
@@ -45,10 +52,13 @@
 
 (defn- finalize-request
   [current-state]
-  (if (= request-complete (.next-up-fn current-state))
-    (if (.keepalive? current-state)
-      (pool/checkin-conn (.pool current-state) (.ch current-state))
-      (.close (.ch current-state)))))
+  (when (= request-complete (.next-up-fn current-state))
+    (netty/on-complete
+     (.last-write current-state)
+     (fn [_]
+       (if (.keepalive? current-state)
+         (pool/checkin-conn (.pool current-state) (.ch current-state))
+         (.close (.ch current-state)))))))
 
 (defn- connection-pending
   [_ evt _ _]
@@ -74,18 +84,28 @@
   [state evt val current-state]
   (let [ch (.ch current-state)]
     (if (= :done evt)
-      (do (.write ch HttpChunk/LAST_CHUNK)
-          (swap-then!
-           state
-           (fn [current-state]
-             (cond
-              (nil? (.next-dn-fn current-state))
-              (assoc current-state :next-up-fn request-complete)
+      (let [last-write
+            (when (.chunk-trailer? current-state)
+              (.write ch HttpChunk/LAST_CHUNK))]
+        (swap-then!
+         state
+         (fn [current-state]
+           (cond
+            (nil? (.next-dn-fn current-state))
+            (assoc current-state
+              :next-up-fn request-complete
+              :last-write (or last-write (.last-write current-state)))
 
-              :else
-              (assoc current-state :next-up-fn response-pending)))
-           finalize-request))
-      (.write ch (mk-netty-chunk val)))))
+            :else
+            (assoc current-state
+              :next-up-fn response-pending
+              :last-write (or last-write (.last-write current-state)))))
+         finalize-request))
+      (let [last-write (.write ch (mk-netty-chunk val))]
+        (swap!
+         state
+         (fn [current-state]
+           (assoc current-state :last-write last-write)))))))
 
 (defn- stream-or-finalize-response
   [state ^HttpChunk msg args]
@@ -171,25 +191,45 @@
   (when (.chunked? current-state)
     ((.downstream current-state) (.upstream current-state) :connected nil)))
 
+(defn- handle-ch-interest-change
+  [state current-state writable?]
+  (let [downstream-fn (.downstream current-state)
+        upstream-fn   (.upstream current-state)
+        ch            (.ch current-state)]
+    (when (and downstream-fn (not= (.isWritable ch) @writable?))
+      (swap-then!
+       writable? not
+       #(try (downstream-fn upstream-fn (if % :resume :pause) nil)
+             (catch Exception err
+               (throw (Exception. "Not implemented yet"))))))))
+
 (defn- netty-bridge
   [state]
-  (netty/upstream-stage
-   (fn [ch evt]
-     (let [current-state @state]
-       (cond-let
-        [msg (netty/message-event evt)]
-        ((.next-dn-fn current-state) state msg current-state)
+  (let [writable? (atom true)]
+    (netty/upstream-stage
+     (fn [_ evt]
+       (let [current-state @state]
+         (cond-let
+          [msg (netty/message-event evt)]
+          ((.next-dn-fn current-state) state msg current-state)
 
-        [_ (netty/write-completion-event evt)]
-        (when (and (= write-pending (.next-up-fn current-state))
-                   (.. evt getFuture isSuccess))
-          (initial-write-succeeded state current-state))
+          ;; The channel interest has changed to writable
+          ;; or not writable
+          [[ch-state val] (netty/channel-state-event evt)]
+          (cond
+           (= ch-state ChannelState/INTEREST_OPS)
+           (handle-ch-interest-change state current-state writable?))
 
-        [err (netty/exception-event evt)]
-        (do (.printStackTrace err)))))))
+          [_ (netty/write-completion-event evt)]
+          (when (and (= write-pending (.next-up-fn current-state))
+                     (.. evt getFuture isSuccess))
+            (initial-write-succeeded state current-state))
+
+          [err (netty/exception-event evt)]
+          (do (.printStackTrace err))))))))
 
 (defn- mk-initial-state
-  [pool [_ body :as  req] downstream-fn]
+  [pool [hdrs body :as  req] downstream-fn]
   (let [state       (atom nil)
         upstream-fn (mk-upstream-fn state)]
     (swap!
@@ -198,10 +238,13 @@
                     nil                ;; Netty channel
                     (keepalive? req)   ;; Is the exchange keepalive?
                     (= :chunked body)  ;; Is the request chunked?
+                    (= (hdrs "transfer-encoding")
+                       "chunked")
                     connection-pending ;; Next upstream event handler
                     initial-response   ;; Next downstream event handler
                     upstream-fn        ;; Upstream handler (external interface)
-                    downstream-fn)))   ;; Downstream handler (passed in)
+                    downstream-fn      ;; Downstream handler (passed in)
+                    nil)))             ;; Last write
     [state upstream-fn]))
 
 ;; A global pool
@@ -229,12 +272,16 @@
            (fn [current-state]
              (assoc current-state :ch ch :next-up-fn write-pending)))
 
-          ;; Write the request to the connection
-          (netty/on-complete
-           (.write ch (req->netty-req request))
-           ;; When the request has successfully been
-           ;; written, move the state of the exchange forward
-           (fn [future] 1))))
+          (let [write-future (.write ch (req->netty-req request))]
+            ;; Save off the write future
+            (swap! state (fn [current-state]
+                           (assoc current-state :last-write write-future)))
+            ;; Write the request to the connection
+            (netty/on-complete
+             write-future
+             ;; When the request has successfully been
+             ;; written, move the state of the exchange forward
+             (fn [future] 1)))))
        upstream-fn)))
 
 (defn mk-proxy

@@ -134,8 +134,7 @@
 
 (defn- handle-err
   [state ch err]
-  (.printStackTrace err)
-  (let [[_ _ {upstream :upstream}] @state]
+  (let [[_ _ {upstream :upstream last-write :last-write}] @state]
     (when upstream
       (try
         (upstream :abort err)
@@ -144,7 +143,9 @@
        state
        (fn [[_ _ args]]
          [nil aborted-req (dissoc args :upstream)])))
-    (.close ch)))
+    (if last-write
+      (.addListener last-write netty/close-channel-future-listener)
+      (.close ch))))
 
 (defn- handling-request
   "The initial HTTP request is being handled and we're not expected
@@ -199,9 +200,15 @@
       (handle-err state ch err))))
 
 (defn- handle-ch-interest-change
-  [ch [_ _ {upstream :upstream}] writable?]
+  [state ch [_ _ {upstream :upstream}] writable?]
   (when (and upstream (not= (.isWritable ch) @writable?))
-    (swap-then! writable? not #(upstream (if % :resume :pause) nil))))
+    (swap-then!
+     writable?
+     not
+     #(try
+        (upstream (if % :resume :pause) nil)
+        (catch Exception err
+          (handle-err state ch err))))))
 
 (defn- handle-ch-disconnected
   [state]
@@ -243,7 +250,7 @@
         [[ch-state val] (netty/channel-state-event evt)]
         (cond
          (= ch-state ChannelState/INTEREST_OPS)
-         (handle-ch-interest-change ch @state writable?)
+         (handle-ch-interest-change state ch @state writable?)
 
          (and (= ch-state ChannelState/CONNECTED)
               (nil? val))

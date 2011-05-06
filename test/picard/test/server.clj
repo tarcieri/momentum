@@ -73,7 +73,7 @@
         "content-length: 5\r\n\r\n"
         "Hello"))))
 
-(deftest ^{:focus true} returning-connection-close-terminates-connection
+(deftest returning-connection-close-terminates-connection
   (println "returning-connection-close-terminates-connection")
   (running-app
    (fn [resp request]
@@ -133,7 +133,7 @@
         "transfer-encoding: chunked\r\n\r\n"
         "5\r\nHello\r\n0\r\n\r\n"))))
 
-(deftest ^{:focus true} chunked-requests-keep-alive
+(deftest chunked-requests-keep-alive
   (println "chunked-requests-keep-alive")
   (running-call-home-app
    (http-write "POST / HTTP/1.1\r\n"

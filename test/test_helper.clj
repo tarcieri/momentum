@@ -29,6 +29,10 @@
       (enqueue ch [evt val]))))
 
 ;; ### HELPER FUNCTIONS
+(defmacro background
+  [& stmts]
+  `(send-off (agent nil) (fn [_#] ~@stmts)))
+
 (defn connect
   ([f] (connect f 4040))
   ([f port]
@@ -55,8 +59,8 @@
    pipeline "handler" "track-msgs"
    (netty/upstream-stage
     (fn [_ evt]
-      ;; (if-let [err (netty/exception-event evt)]
-      ;;   (.printStackTrace err))
+      (if-let [err (netty/exception-event evt)]
+        (.printStackTrace err))
       (swap! evts (fn [cur-evts] (conj cur-evts evt))))))
   pipeline)
 
@@ -146,7 +150,7 @@
 
 (defn next-msg
   ([] (next-msg ch))
-  ([ch] (wait-for-message ch 1000)))
+  ([ch] (wait-for-message ch 10000)))
 
 (defn match-values
   [val val*]
