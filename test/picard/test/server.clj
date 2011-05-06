@@ -77,7 +77,7 @@
   (println "returning-connection-close-terminates-connection")
   (running-app
    (fn [resp request]
-     (resp :respond [200 {"connection" "close"} "Hello"])
+     (resp :response [200 {"connection" "close"} "Hello"])
      (fn [evt val] true))
 
    (http-write "GET / HTTP/1.1\r\n\r\n")
@@ -91,7 +91,7 @@
   (println "returning-connection-close-and-chunks")
   (running-app
    (fn [resp request]
-     (resp :respond [200 {"connection" "close"} :chunked])
+     (resp :response [200 {"connection" "close"} :chunked])
      (resp :body "Hello ")
      (resp :body "world")
      (resp :done nil)
@@ -120,7 +120,7 @@
   (println "single-chunked-response")
   (running-app
    (fn [resp request]
-     (resp :respond [200 {"transfer-encoding" "chunked"} :chunked])
+     (resp :response [200 {"transfer-encoding" "chunked"} :chunked])
      (resp :body "Hello")
      (resp :done nil)
      (fn [evt val] true))
@@ -224,7 +224,7 @@
     (running-app
      (fn [resp request]
        (enqueue ch [:request request])
-       (resp :respond [200 {"transfer-encoding" "chunked"} :chunked])
+       (resp :response [200 {"transfer-encoding" "chunked"} :chunked])
        ;; The latch will let us pause
        (let [latch (atom true)]
          (send-off
@@ -257,7 +257,7 @@
      (fn [resp request]
        (enqueue ch [:request request])
        (let [latch (atom true)]
-         (resp :respond [200 {"transfer-encoding" "chunked"} :chunked])
+         (resp :response [200 {"transfer-encoding" "chunked"} :chunked])
          (send-off
           (agent nil)
           (fn [_]
@@ -290,7 +290,7 @@
      (fn [resp request]
        (enqueue ch [:request request])
        (let [latch (atom true)]
-         (resp :respond [200 {"transfer-encoding" "chunked"} :chunked])
+         (resp :response [200 {"transfer-encoding" "chunked"} :chunked])
          (send-off
           (agent nil)
           (fn [_]
@@ -331,7 +331,7 @@
        (fn [evt val]
          (enqueue ch [evt val])
          (when (= :done evt)
-           (resp :respond [200 {"content-type" "text/plain"
+           (resp :response [200 {"content-type" "text/plain"
                                 "content-length" "5"} "Hello"]))))
 
      ;; Now some tests

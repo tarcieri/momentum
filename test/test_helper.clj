@@ -21,10 +21,10 @@
   [ch]
   (fn [resp req]
     (enqueue ch [:request req])
-    (resp :respond [200
-                    {"content-type" "text/plain"
-                     "content-length" "5"}
-                    "Hello"])
+    (resp :response [200
+                     {"content-type" "text/plain"
+                      "content-length" "5"}
+                     "Hello"])
     (fn [evt val]
       (enqueue ch [evt val]))))
 
@@ -94,7 +94,7 @@
   [& stmts]
   `(running-app*
     (fn [resp# req#]
-      (resp# :respond [200 {"content-length" "5"} "Hello"])
+      (resp# :response [200 {"content-length" "5"} "Hello"])
       (fn [evt# val#] true))
     (fn [] ~@stmts)))
 

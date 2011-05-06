@@ -88,7 +88,7 @@
 
 (defn- initialize-resp
   [state ch evt [_ hdrs body :as val]]
-  (when-not (= :respond evt)
+  (when-not (= :response evt)
     (throw (Exception. "Um... responses start with the head?")))
   (let [write (.write ch (resp->netty-resp val))]
     (if (not= :chunked body)

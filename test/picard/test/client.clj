@@ -14,10 +14,10 @@
       (running-app
        (fn [resp request]
          (enqueue ch [:request request])
-         (resp :respond [200
-                         {"content-length" "5"
-                          "connection" "close"}
-                         "Hello"])
+         (resp :response [200
+                          {"content-length" "5"
+                           "connection" "close"}
+                          "Hello"])
          (fn [evt val] (enqueue ch [evt val])))
 
        (client/request
@@ -34,10 +34,10 @@
                        :request-method method} nil]))
        (is (next-msgs-for
             ch2
-            :respond   [200
-                        {"connection" "close"
-                         "content-length" "5"}
-                        "Hello"]))))))
+            :response   [200
+                         {"connection" "close"
+                          "content-length" "5"}
+                         "Hello"]))))))
 
 (deftest receiving-a-chunked-body
   (println "receiving-a-chunked-body")
@@ -46,7 +46,7 @@
     (running-app
      (fn [resp request]
        (enqueue ch [:request request])
-       (resp :respond [200
+       (resp :response [200
                        {"transfer-encoding" "chunked"}
                        :chunked])
        (resp :body "Hello")
@@ -64,7 +64,7 @@
 
      (is (next-msgs-for
           ch2
-          :respond   [200 {"transfer-encoding" "chunked"} :chunked]
+          :response   [200 {"transfer-encoding" "chunked"} :chunked]
           :body      "Hello"
           :body      "World"
           :done      nil)))))
@@ -79,7 +79,7 @@
        (fn [evt val]
          (enqueue ch [evt val])
          (when (= :done evt)
-           (resp :respond [200
+           (resp :response [200
                            {"connection" "close"
                             "content-length" "5"}
                            "Hello"]))))
@@ -106,7 +106,7 @@
      (is (next-msgs-for
           ch2
           :connected nil
-          :respond   [200 {"connection" "close" "content-length" "5"} "Hello"])))))
+          :response   [200 {"connection" "close" "content-length" "5"} "Hello"])))))
 
 (deftest simple-keep-alive-requests
   (println "simple-keep-alive-requests")
@@ -121,7 +121,7 @@
 
        (is (next-msgs-for
             ch2
-            :respond   [200 {"content-length" "5"} "Hello"]))
+            :response   [200 {"content-length" "5"} "Hello"]))
 
        (client/request
         pool ["localhost" 4040]
@@ -131,7 +131,7 @@
        (is (next-msgs-for
             ch2
             ;; :connected nil
-            :respond   [200 {"content-length" "5"} "Hello"]))
+            :response   [200 {"content-length" "5"} "Hello"]))
 
        (client/request
         pool ["localhost" 4040]
@@ -150,7 +150,7 @@
        (is (next-msgs-for
             ch2
             :connected nil
-            :respond   [200 {"content-length" "5"} "Hello"]))
+            :response   [200 {"content-length" "5"} "Hello"]))
 
        ;; 2 is to account for the connection test-helper makes
        (is (= 2 (count (netty-connect-evts))))))))

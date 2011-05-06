@@ -130,7 +130,7 @@
             :keepalive? keepalive?
             :next-dn-fn nil))))
      finalize-request)
-    (downstream-fn upstream-fn :respond (netty-resp->resp msg))))
+    (downstream-fn upstream-fn :response (netty-resp->resp msg))))
 
 (defn- initial-write-succeeded
   [state current-state]
@@ -327,7 +327,7 @@
             :keepalive? keepalive?
             :next-dn-fn nil))))
      finalize-request)
-    (downstream-fn upstream-fn :respond (netty-resp->resp msg))))
+    (downstream-fn upstream-fn :response (netty-resp->resp msg))))
 
 (defn- initial-write-succeeded
   [state current-state]
