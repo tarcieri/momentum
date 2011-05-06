@@ -18,8 +18,12 @@
     HttpResponseDecoder
     HttpVersion]))
 
-;; TODO: What happens if a request is made with no
-;;       content-length or transfer-encoding: chunked?
+;; TODOS:
+;; * Requests made with no content-length or transfer-encoding
+;; * First write fails (presumably w/ a kept alive connection
+;; * Unable to obtain a connection?
+;; * Expiring the connection pool
+;; * Handling a maximum number of open connections in the pool
 
 (defrecord State
     [pool
@@ -31,7 +35,8 @@
      next-dn-fn
      upstream
      downstream
-     last-write])
+     last-write
+     aborted?])
 
 (defn- chunked?
   [[_ _ body]]
@@ -46,9 +51,8 @@
   [host 80])
 
 (defn- request-complete
-  [_ evt _ _]
-  (when-not (= :abort evt)
-   (throw (Exception. "The request is complete"))))
+  [_ _ _ _]
+  (throw (Exception. "The request is complete")))
 
 (defn- finalize-request
   [current-state]
@@ -56,29 +60,22 @@
     (netty/on-complete
      (.last-write current-state)
      (fn [_]
-       (if (.keepalive? current-state)
+       (if (and (.keepalive? current-state)
+                (not (.aborted? current-state)))
          (pool/checkin-conn (.pool current-state) (.ch current-state))
          (.close (.ch current-state)))))))
 
 (defn- connection-pending
-  [_ evt _ _]
-  (when-not (= :abort evt)
-    (throw (Exception. "The connection has not yet been established"))))
+  [_ _ _ _]
+  (throw (Exception. "The connection has not yet been established")))
 
 (defn- write-pending
-  [_ evt _ _]
-  (when-not (= :abort evt)
-    (throw (Exception. "The first write has not yet succeded"))))
+  [_ _ _ _]
+  (throw (Exception. "The first write has not yet succeded")))
 
 (defn- response-pending
   [_ _ _ _]
   (throw (Exception. "Not implemented yet")))
-
-(defn- mk-upstream-fn
-  [state]
-  (fn [evt val]
-    (let [current-state @state]
-      ((.next-up-fn current-state) state evt val current-state))))
 
 (defn- stream-or-finalize-request
   [state evt val current-state]
@@ -203,30 +200,61 @@
              (catch Exception err
                (throw (Exception. "Not implemented yet"))))))))
 
+(defn- handle-abort
+  [state _]
+  (swap-then!
+   state
+   (fn [current-state]
+     (assoc current-state
+       :next-up-fn request-complete
+       :aborted?   true))
+   finalize-request))
+
 (defn- netty-bridge
   [state]
   (let [writable? (atom true)]
     (netty/upstream-stage
      (fn [_ evt]
        (let [current-state @state]
-         (cond-let
-          [msg (netty/message-event evt)]
-          ((.next-dn-fn current-state) state msg current-state)
+         (when-not (.aborted? current-state)
+           (cond-let
+            [msg (netty/message-event evt)]
+            ((.next-dn-fn current-state) state msg current-state)
 
-          ;; The channel interest has changed to writable
-          ;; or not writable
-          [[ch-state val] (netty/channel-state-event evt)]
-          (cond
-           (= ch-state ChannelState/INTEREST_OPS)
-           (handle-ch-interest-change state current-state writable?))
+            ;; The channel interest has changed to writable
+            ;; or not writable
+            [[ch-state val] (netty/channel-state-event evt)]
+            (cond
+             (= ch-state ChannelState/INTEREST_OPS)
+             (handle-ch-interest-change state current-state writable?))
 
-          [_ (netty/write-completion-event evt)]
-          (when (and (= write-pending (.next-up-fn current-state))
-                     (.. evt getFuture isSuccess))
-            (initial-write-succeeded state current-state))
+            [_ (netty/write-completion-event evt)]
+            (when (and (= write-pending (.next-up-fn current-state))
+                       (.. evt getFuture isSuccess))
+              (initial-write-succeeded state current-state))
 
-          [err (netty/exception-event evt)]
-          (do (.printStackTrace err))))))))
+            [err (netty/exception-event evt)]
+            (do (.printStackTrace err)))))))))
+
+(defn- mk-upstream-fn
+  [state]
+  (fn [evt val]
+    (let [current-state @state]
+      (when (.aborted? current-state)
+        (throw (Exception. "The request has been aborted")))
+
+      (cond
+       (= evt :abort)
+       (handle-abort state current-state)
+
+       (= evt :pause)
+       (.setReadable (.ch current-state) false)
+
+       (= evt :resume)
+       (.setReadable (.ch current-state) true)
+
+       :else
+       ((.next-up-fn current-state) state evt val current-state)))))
 
 (defn- mk-initial-state
   [pool [hdrs body :as  req] downstream-fn]
@@ -244,7 +272,8 @@
                     initial-response   ;; Next downstream event handler
                     upstream-fn        ;; Upstream handler (external interface)
                     downstream-fn      ;; Downstream handler (passed in)
-                    nil)))             ;; Last write
+                    nil                ;; Last write
+                    nil)))             ;; Aborted?
     [state upstream-fn]))
 
 ;; A global pool
@@ -267,21 +296,21 @@
         ;; When a connection to the remote host has been established.
         (fn [ch]
           ;; Stash the channel in the state structure
-          (swap!
+          (swap-then!
            state
            (fn [current-state]
-             (assoc current-state :ch ch :next-up-fn write-pending)))
-
-          (let [write-future (.write ch (req->netty-req request))]
-            ;; Save off the write future
-            (swap! state (fn [current-state]
-                           (assoc current-state :last-write write-future)))
-            ;; Write the request to the connection
-            (netty/on-complete
-             write-future
-             ;; When the request has successfully been
-             ;; written, move the state of the exchange forward
-             (fn [future] 1)))))
+             (assoc current-state :ch ch :next-up-fn write-pending))
+           (fn [current-state]
+             (when-not (.aborted? current-state)
+               (let [write-future (.write ch (req->netty-req request))]
+                 ;; Save off the write future
+                 (swap! state (fn [current-state]
+                                (assoc current-state :last-write write-future)))
+                 ;; Write the request to the connection
+                 (netty/on-complete
+                  write-future
+                  ;; TODO: Handle unsuccessfull connections here
+                  (fn [future] 1))))))))
        upstream-fn)))
 
 (defn mk-proxy

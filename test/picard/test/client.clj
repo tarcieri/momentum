@@ -195,3 +195,23 @@
        (is (next-msgs-for
             ch2
             :resume nil))))))
+
+(deftest issuing-immediate-abort
+  (println "issuing-immediate-abort")
+  (with-channels
+    [_ ch2]
+   (running-hello-world-app
+    (try (let [upstream
+           (client/request
+            ["localhost" 4040]
+            [{:path-info      "/"
+              :request-method "POST"} nil]
+            (fn [_ evt val]
+              (enqueue ch2 [evt val])))]
+           (upstream :abort nil))
+         (catch Exception err (.printStackTrace err)))
+
+    (is (not-receiving-messages)))))
+
+;; MISSING TESTS
+;; * Issuing :pause :resume to the client

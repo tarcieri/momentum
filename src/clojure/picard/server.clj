@@ -235,7 +235,8 @@
 
    responded?: Whether or not the application has responded to the current
                request"
-  (let [state     (atom [incoming-request nil {:app app :opts opts :keepalive? true}])
+  (let [state     (atom [incoming-request nil
+                         {:app app :opts opts :keepalive? true}])
         writable? (atom true)]
     (netty/upstream-stage
      (fn [ch evt]
