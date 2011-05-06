@@ -47,7 +47,7 @@
   (throw (Exception. "This response is finished")))
 
 (defn- aborted-req
-  [_ _]
+  [_ _ _ _]
   (throw (Exception. "This request has been aborted")))
 
 (defn- finalize-resp
