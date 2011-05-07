@@ -63,7 +63,8 @@
        (if (and (.keepalive? current-state)
                 (not (.aborted? current-state)))
          (pool/checkin-conn (.pool current-state) (.ch current-state))
-         (.close (.ch current-state)))))))
+         (when-let [ch (.ch current-state)]
+           (.close ch)))))))
 
 (defn- connection-pending
   [_ _ _ _]
@@ -299,9 +300,17 @@
           (swap-then!
            state
            (fn [current-state]
-             (assoc current-state :ch ch :next-up-fn write-pending))
+             (if (.aborted? current-state)
+               current-state
+               (assoc current-state
+                 :ch         ch
+                 :next-up-fn write-pending)))
            (fn [current-state]
-             (when-not (.aborted? current-state)
+             (if (.aborted? current-state)
+               ;; Return to the connection pool
+               (pool/checkin-conn pool ch)
+
+               ;; Otherwise, do stuff with it
                (let [write-future (.write ch (req->netty-req request))]
                  ;; Save off the write future
                  (swap! state (fn [current-state]

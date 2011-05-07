@@ -201,17 +201,24 @@
   (with-channels
     [_ ch2]
    (running-hello-world-app
-    (try (let [upstream
-           (client/request
-            ["localhost" 4040]
-            [{:path-info      "/"
-              :request-method "POST"} nil]
-            (fn [_ evt val]
-              (enqueue ch2 [evt val])))]
-           (upstream :abort nil))
-         (catch Exception err (.printStackTrace err)))
+    (let [upstream
+          (client/request
+           ["localhost" 4040]
+           [{:path-info      "/"
+             :request-method "POST"} nil]
+           (fn [_ evt val]
+             (enqueue ch2 [evt val])))]
+      (upstream :abort nil))
 
-    (is (not-receiving-messages)))))
+    (is (not-receiving-messages))
+
+    ;; Need to issue a real request to get the connection closed
+    (client/request
+     ["localhost" 4040]
+     [{:path-info      "/"
+       :request-method "GET"
+       "connection"    "close"}]
+     (fn [_ _ _] true)))))
 
 ;; MISSING TESTS
 ;; * Issuing :pause :resume to the client

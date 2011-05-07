@@ -52,8 +52,8 @@
 
 (extend-type nil
   NETTY-FUTURE
-  (on-complete [_ callback]
-    (callback nil)))
+  (on-complete [future callback]
+    (callback future)))
 
 (def close-channel-future-listener ChannelFutureListener/CLOSE)
 
