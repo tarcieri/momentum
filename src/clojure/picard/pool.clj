@@ -43,6 +43,12 @@
     (.. conn getPipeline removeLast)
     (.checkin pool conn)))
 
+(defn close-conn
+  [^ChannelPool pool ^Channel conn]
+  (.close conn))
+
 (defn mk-pool
- []
- (ChannelPool. 10))
+  ([]
+     (mk-pool 60))
+  ([expire-after]
+     (ChannelPool. expire-after)))

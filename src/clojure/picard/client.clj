@@ -64,7 +64,7 @@
                 (not (.aborted? current-state)))
          (pool/checkin-conn (.pool current-state) (.ch current-state))
          (when-let [ch (.ch current-state)]
-           (.close ch)))))))
+           (pool/close-conn (.pool current-state) ch)))))))
 
 (defn- connection-pending
   [_ _ _ _]

@@ -222,3 +222,4 @@
 
 ;; MISSING TESTS
 ;; * Issuing :pause :resume to the client
+;; * First write failing

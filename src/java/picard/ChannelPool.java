@@ -1,13 +1,18 @@
 package picard;
 
 import org.jboss.netty.channel.Channel;
+import org.jboss.netty.util.HashedWheelTimer;
+import org.jboss.netty.util.Timeout;
+import org.jboss.netty.util.TimerTask;
 import java.net.InetSocketAddress;
 import java.util.HashMap;
+import java.util.concurrent.TimeUnit;
 
 public class ChannelPool {
 
     private class Node {
         public Channel channel;
+        public Timeout timeout;
         public Node nextGlobal;
         public Node prevGlobal;
         public Node nextLocal;
@@ -18,13 +23,20 @@ public class ChannelPool {
         }
     }
 
-    int  capacity;
+    final int expiration;
     Node head;
     Node tail;
+    HashedWheelTimer timer;
     HashMap<InetSocketAddress,Node> localHeadByAddr;
 
-    public ChannelPool(int capacity) {
-        this.capacity = capacity;
+    public ChannelPool(int expireAfter) {
+        if (expireAfter < 1) {
+            throw new IllegalArgumentException("Need a positive expiration");
+        }
+
+        this.expiration = ((expireAfter * 1000) / 512) * 512;
+        this.timer = new HashedWheelTimer((expireAfter * 1000) / 512,
+                                          TimeUnit.MILLISECONDS);
         this.localHeadByAddr = new HashMap<InetSocketAddress,Node>();
     }
 
@@ -47,8 +59,18 @@ public class ChannelPool {
     }
 
     public void checkin(Channel channel) {
-        Node node = new Node(channel);
-        InetSocketAddress addr = (InetSocketAddress) channel.getRemoteAddress();
+        final Node node = new Node(channel);
+        InetSocketAddress addr = addrFrom(channel);
+
+        // This might technically be a race condition, but I hope that the
+        // following synchronized code takes less than a second to run.
+        node.timeout = timer.newTimeout(new TimerTask() {
+            public void run(Timeout timeout) {
+                synchronized (ChannelPool.this) {
+                    ChannelPool.this.expireNode(node);
+                }
+            }
+        }, expiration, TimeUnit.MILLISECONDS);
 
         synchronized (this) {
             if (head != null) {
@@ -73,13 +95,47 @@ public class ChannelPool {
         }
     }
 
+    public boolean purge() {
+        synchronized (this) {
+            if (tail == null) {
+                return false;
+            }
+
+            tail.timeout.cancel();
+            tail.channel.close();
+            removeNode(tail);
+
+            return true;
+        }
+    }
+
     private Channel popChannelByAddr(InetSocketAddress addr) {
+        Channel retval;
         Node node = localHeadByAddr.get(addr);
 
         if (node == null) {
             return null;
         }
 
+        removeNode(node);
+
+        retval = node.channel;
+        node.channel = null;
+        node.timeout.cancel();
+
+        return retval;
+    }
+
+    private void expireNode(Node node) {
+        if (node.channel == null) {
+            return;
+        }
+
+        node.channel.close();
+        removeNode(node);
+    }
+
+    private void removeNode(Node node) {
         if (head == node) {
             head = node.nextGlobal;
         }
@@ -98,12 +154,18 @@ public class ChannelPool {
 
         if (node.nextLocal != null) {
             node.nextLocal.prevGlobal = null;
-            localHeadByAddr.put(addr, node.nextLocal);
+            localHeadByAddr.put(addrFrom(node), node.nextLocal);
         } else {
             // Remove the key
-            localHeadByAddr.remove(addr);
+            localHeadByAddr.remove(addrFrom(node));
         }
+    }
 
-        return node.channel;
+    private InetSocketAddress addrFrom(Channel channel) {
+        return (InetSocketAddress) channel.getRemoteAddress();
+    }
+
+    private InetSocketAddress addrFrom(Node node) {
+        return addrFrom(node.channel);
     }
 }

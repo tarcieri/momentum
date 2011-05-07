@@ -76,10 +76,6 @@
            (f))))
       (finally (stop-fn)))))
 
-(defmacro running-app
-  [app & stmts]
-  `(running-app* ~app (fn [] ~@stmts)))
-
 (defn with-channels*
   [f]
   (binding [ch (channel) ch2 (channel)]
@@ -89,10 +85,24 @@
   [args & stmts]
   `(with-channels* (fn ~args ~@stmts)))
 
+(defmacro running-app
+  [& stmts]
+  (if (vector? (first stmts))
+    (let [[args app & stmts] stmts]
+      `(with-channels*
+         (fn ~args (running-app* ~app (fn [] ~@stmts)))))
+    (let [[app & atmts] stmts]
+      `(running-app* ~app (fn [] ~@stmts)))))
+
 (defmacro running-call-home-app
   [& stmts]
-  `(binding [ch (channel)]
-     (running-app* (call-home-app ch) (fn [] ~@stmts))))
+  (if (vector? (first stmts))
+    `(with-channels*
+       (fn ~(first stmts)
+         (running-app* (call-home-app ch (fn [] ~@(rest stmts))))))
+    `(with-channels*
+       (fn [_# _#]
+         (running-app* (call-home-app ch) (fn [] ~@stmts))))))
 
 (defmacro running-hello-world-app
   [& stmts]
