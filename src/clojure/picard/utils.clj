@@ -48,6 +48,7 @@
      (~then-fn res#)
      res#))
 
+;; TODO: Rename this o_O
 (defn set*!
   [atom val]
   (swap! atom (constantly val)))

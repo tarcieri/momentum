@@ -1,6 +1,7 @@
 (ns picard.netty
   (:import
    [org.jboss.netty.bootstrap
+    ClientBootstrap
     ServerBootstrap]
    [org.jboss.netty.channel
     Channel
@@ -66,6 +67,12 @@
          (partition 2 stages))
       ~pipeline-var)))
 
+(defn mk-socket-addr
+  [[host port]]
+  (if host
+    (InetSocketAddress. host port)
+    (InetSocketAddress. port)))
+
 (defn mk-thread-pool
   []
   (Executors/newCachedThreadPool))
@@ -75,6 +82,11 @@
   (ServerBootstrap.
    (NioServerSocketChannelFactory.
     (mk-thread-pool) (mk-thread-pool))))
+
+(defn- mk-client-bootstrap
+  [thread-pool]
+  (ClientBootstrap.
+   (NioClientSocketChannelFactory. thread-pool thread-pool)))
 
 (defn- client-channel-factory
   [thread-pool]
@@ -122,14 +134,6 @@
       (handler (.getChannel evt) evt)
       (.sendUpstream ctx evt))))
 
-;; (defn message-stage
-;;   "Creates a final upstream stage that only captures MessageEvents."
-;;   [handler]
-;;   (upstream-stage
-;;    (fn [evt]
-;;      (when-let [msg (message-event evt)]
-;;        (handler (.getChannel ^MessageEvent evt) msg)))))
-
 (defn- mk-pipeline-factory
   [^ChannelGroup channel-group pipeline-fn]
   (reify ChannelPipelineFactory
@@ -144,11 +148,73 @@
                 (.add channel-group ch))))))
         pipeline))))
 
+(def default-server-opts
+  {"reuseAddress"               true
+   "child.reuseAddres"          true,
+   "child.connectTimeoutMillis" 100})
+
+(defn- merge-netty-server-opts
+  [opts]
+  (merge
+   default-server-opts
+   (reduce
+    (fn [opts [k v]]
+      (cond
+       (= :keep-alive k)
+       (assoc opts "child.keepAlive" v)
+       (= :tcp-no-delay k)
+       (assoc opts "tcpNoDelay" v "child.tcpNoDelay" v)
+       (= :send-buffer-size k)
+       (assoc opts "child.sendBufferSize" v)
+       (= :receive-buffer-size k)
+       (assoc opts "child.receiveBufferSize" v)
+       (= :reuse-address k)
+       (assoc opts "reuseAddress" v "child.reuseAddress" v)
+       (= :connect-timeout k)
+       (assoc opts "child.connectTimeoutMillis" v)
+       :else
+       opts))
+    {}
+    opts)
+   (opts :netty)))
+
+(def default-client-opts
+  {"reuseAddress"         true
+   "connectTimeoutMillis" 3000})
+
+(defn- merge-netty-client-opts
+  [opts]
+  (merge
+   default-client-opts
+   (reduce
+    (fn [opts [k v]]
+      (cond
+       (= :keep-alive k)
+       (assoc opts "keepAlive" v)
+       (= :tcp-no-delay k)
+       (assoc opts "tcpNoDelay" v)
+       (= :send-buffer-size k)
+       (assoc opts "sendBufferSize" v)
+       (= :receive-buffer-size v)
+       (assoc opts "receiveBufferSize" v)
+       (= :reuse-address k)
+       (assoc opts "reuseAddress" v)
+       (= :connect-timeout k)
+       (assoc opts "connectTimeoutMillis" v)
+       :else
+       opts))
+    {}
+    opts)
+   (opts :netty)))
+
 (defn start-server
   "Starts a server. Returns a function that stops the server"
-  [pipeline-fn {port :port :as options}]
+  [pipeline-fn {host :host port :port :as options}]
   (let [server        (mk-server-bootstrap)
         channel-group (DefaultChannelGroup.)]
+    ;; Set all the options on the server
+    (doseq [[k v] (merge-netty-server-opts options)]
+      (.setOption server k v))
     ;; Create the pipeline factory based on the passed
     ;; function
     (.setPipelineFactory
@@ -163,19 +229,20 @@
         #(user-pipeline-fn (pipeline-fn))
         pipeline-fn)))
 
-    (.add channel-group (.bind server (InetSocketAddress. port)))
+    (.add channel-group (.bind server (mk-socket-addr [host port])))
 
     ;; Return a server shutdown function
-    (fn [] (on-complete (.close channel-group)
-                       (fn [_] (.releaseExternalResources server))))))
+    (fn []
+      (on-complete (.close channel-group)
+                   (fn [_] (.releaseExternalResources server))))))
 
 (defn connect-client
-  ([pipeline host port on-connected]
-     (connect-client pipeline host port on-connected (mk-thread-pool)))
-  ([pipeline host port on-connected thread-pool]
+  ([pipeline addr callback]
+     (connect-client pipeline addr callback (mk-thread-pool)))
+  ([pipeline addr callback thread-pool]
      (let [channel-factory (client-channel-factory thread-pool)
            channel (.newChannel channel-factory pipeline)]
        (on-complete
-        (.connect channel (InetSocketAddress. host port))
-        (fn [_] (on-connected channel)))
+        (.connect channel (mk-socket-addr addr))
+        (fn [_] (callback channel)))
        channel)))

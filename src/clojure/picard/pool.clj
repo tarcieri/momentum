@@ -20,8 +20,8 @@
    :encoder (HttpRequestEncoder.)))
 
 (defn- mk-conn
-  [[host port] success error]
-  (netty/connect-client (create-pipeline) host port success))
+  [addr success error]
+  (netty/connect-client (create-pipeline) addr success))
 
 (defn- return-conn
   [conn handler success]
