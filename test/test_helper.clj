@@ -68,13 +68,13 @@
   [app f]
   (let [netty-evts    (atom [])
         pipeline-fn   #(add-tracking-to-pipeline netty-evts %)
-        stop-fn       (server/start app {:pipeline-fn pipeline-fn})]
+        server        (server/start app {:pipeline-fn pipeline-fn})]
     (try
       (connect
        (fn [sock in out]
          (binding [sock sock in in out out netty-evts netty-evts]
            (f))))
-      (finally (stop-fn)))))
+      (finally (server/stop server)))))
 
 (defn with-channels*
   [f]

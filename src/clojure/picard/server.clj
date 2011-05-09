@@ -267,6 +267,8 @@
    :encoder (HttpResponseEncoder.)
    :handler (netty-bridge app {})))
 
+(def stop netty/shutdown)
+
 (defn start
   "Starts an HTTP server on the specified port."
   ([app]

@@ -1,4 +1,6 @@
 (ns picard.netty
+  (:use
+   [picard.utils])
   (:import
    [org.jboss.netty.bootstrap
     ClientBootstrap
@@ -30,11 +32,11 @@
    [java.util.concurrent
     Executors]))
 
-(defprotocol NETTY-FUTURE
+(defprotocol INettyFuture
   (on-complete [future callback]))
 
 (extend-type ChannelGroupFuture
-  NETTY-FUTURE
+  INettyFuture
   (on-complete [future callback]
     (.addListener future
                   (reify ChannelGroupFutureListener
@@ -43,7 +45,7 @@
     future))
 
 (extend-type ChannelFuture
-  NETTY-FUTURE
+  INettyFuture
   (on-complete [future callback]
     (.addListener future
                   (reify ChannelFutureListener
@@ -52,7 +54,7 @@
     future))
 
 (extend-type nil
-  NETTY-FUTURE
+  INettyFuture
   (on-complete [future callback]
     (callback future)))
 
@@ -78,10 +80,10 @@
   (Executors/newCachedThreadPool))
 
 (defn- mk-server-bootstrap
-  []
+  [thread-pool]
   (ServerBootstrap.
    (NioServerSocketChannelFactory.
-    (mk-thread-pool) (mk-thread-pool))))
+    thread-pool thread-pool)))
 
 (defn- mk-client-bootstrap
   [thread-pool]
@@ -207,42 +209,56 @@
     opts)
    (opts :netty)))
 
+(defn- configure-bootstrap
+  [bootstrap opt-merge-fn pipeline-fn options]
+  (returning
+   [channel-group (DefaultChannelGroup.)]
+   ;; First set the options for the bootstrapper based
+   ;; on the supplied options and the option merger function
+   (doseq [[k v] (opt-merge-fn options)]
+     (.setOption bootstrap k v))
+   ;; Creates a pipeline factory based on the passed function
+   ;; and that will also add all channels to the channel group
+   (.setPipelineFactory
+    bootstrap
+    (mk-pipeline-factory
+     channel-group
+     ;; If the user passed in a pipeline function, wrap the
+     ;; base pipeline function with the user's function. Supplied
+     ;; functions must take in a pipeline and return a new pipeline.
+     (if-let [user-pipeline-fn (options :pipeline-fn)]
+       #(user-pipeline-fn (pipeline-fn))
+       pipeline-fn)))))
+
+(defn shutdown
+  [[bootstrap channel-group]]
+  (on-complete
+   (.close channel-group)
+   (fn [_] (.releaseExternalResources bootstrap))))
+
 (defn start-server
   "Starts a server. Returns a function that stops the server"
   [pipeline-fn {host :host port :port :as options}]
-  (let [server        (mk-server-bootstrap)
-        channel-group (DefaultChannelGroup.)]
-    ;; Set all the options on the server
-    (doseq [[k v] (merge-netty-server-opts options)]
-      (.setOption server k v))
-    ;; Create the pipeline factory based on the passed
-    ;; function
-    (.setPipelineFactory
-     server
-     (mk-pipeline-factory
-      channel-group
-      ;; If the user passed in a pipeline function, wrap the
-      ;; base pipeline function with the user's function. Supplied
-      ;; pipeline functions must take in a pipeline and return
-      ;; the new pipeline.
-      (if-let [user-pipeline-fn (options :pipeline-fn)]
-        #(user-pipeline-fn (pipeline-fn))
-        pipeline-fn)))
+  (let [bootstrap (mk-server-bootstrap (mk-thread-pool))
+        ch-group  (configure-bootstrap
+                   bootstrap merge-netty-server-opts pipeline-fn options)]
+    (.add ch-group (.bind bootstrap (mk-socket-addr [host port])))
+    [bootstrap ch-group]))
 
-    (.add channel-group (.bind server (mk-socket-addr [host port])))
-
-    ;; Return a server shutdown function
-    (fn []
-      (on-complete (.close channel-group)
-                   (fn [_] (.releaseExternalResources server))))))
+(defn mk-client-factory
+  [pipeline-fn options]
+  (let [bootstrap (mk-client-bootstrap (mk-thread-pool))
+        ch-group  (configure-bootstrap
+                   bootstrap merge-netty-client-opts pipeline-fn options)]
+    [bootstrap ch-group]))
 
 (defn connect-client
-  ([pipeline addr callback]
-     (connect-client pipeline addr callback (mk-thread-pool)))
-  ([pipeline addr callback thread-pool]
-     (let [channel-factory (client-channel-factory thread-pool)
-           channel (.newChannel channel-factory pipeline)]
-       (on-complete
-        (.connect channel (mk-socket-addr addr))
-        (fn [_] (callback channel)))
-       channel)))
+  ([factory addr callback]
+     (connect-client factory addr nil callback))
+  ([[bootstrap] addr local-addr callback]
+     (on-complete
+      (if local-addr
+        (.connect bootstrap (mk-socket-addr addr) (mk-socket-addr local-addr))
+        (.connect bootstrap (mk-socket-addr addr)))
+      (fn [future]
+        (callback (.getChannel future))))))

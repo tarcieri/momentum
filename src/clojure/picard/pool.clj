@@ -19,36 +19,39 @@
    :decoder (HttpResponseDecoder.)
    :encoder (HttpRequestEncoder.)))
 
-(defn- mk-conn
-  [addr success error]
-  (netty/connect-client (create-pipeline) addr success))
-
 (defn- return-conn
-  [conn handler success]
+  [conn handler callback]
   (.. conn getPipeline (addLast "handler" handler))
-  (success conn))
+  (callback conn))
 
 (defn checkout-conn
   "Calls success fn with the channel"
-  ([pool addr handler success] (checkout-conn pool addr handler success nil))
-  ([pool [host port :as  addr] handler success error]
-     (if-let [conn (.checkout pool (InetSocketAddress. host port))]
-       (return-conn conn handler success)
-       (mk-conn addr #(return-conn % handler success) error))))
+  [[pool client-factory] addr handler callback]
+  (if-let [conn (.checkout pool (netty/mk-socket-addr addr))]
+    (return-conn conn handler callback)
+    (netty/connect-client
+     client-factory addr
+     #(return-conn % handler callback))))
 
 (defn checkin-conn
   "Returns a connection to the pool"
-  [^ChannelPool pool ^Channel conn]
+  [[^ChannelPool pool] ^Channel conn]
   (when (.isOpen conn)
     (.. conn getPipeline removeLast)
     (.checkin pool conn)))
 
 (defn close-conn
-  [^ChannelPool pool ^Channel conn]
+  [_ ^Channel conn]
   (.close conn))
+
+(def default-options
+  {:expire-after 60})
 
 (defn mk-pool
   ([]
-     (mk-pool 60))
-  ([expire-after]
-     (ChannelPool. expire-after)))
+     (mk-pool {}))
+  ([options]
+     (let [options (merge default-options options)]
+       [(ChannelPool. (options :expire-after))
+        (netty/mk-client-factory
+         create-pipeline options)])))
