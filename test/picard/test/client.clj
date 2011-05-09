@@ -220,6 +220,20 @@
        "connection"    "close"}]
      (fn [_ _ _] true)))))
 
+(deftest connecting-to-an-invalid-server
+  (println "connecting-to-an-invalid-server")
+  (with-channels
+    [_ ch2]
+    (client/request
+     ["localhost" 4040]
+     [{:path-info      "/"
+       :request-method "GET"}]
+     (fn [_ evt val] (enqueue ch2 [evt val])))
+
+    (is (next-msgs-for
+         ch2
+         :abort (cmp-with #(instance? Exception %))))))
+
 ;; MISSING TESTS
 ;; * Issuing :pause :resume to the client
 ;; * First write failing

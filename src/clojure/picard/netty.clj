@@ -261,4 +261,6 @@
         (.connect bootstrap (mk-socket-addr addr) (mk-socket-addr local-addr))
         (.connect bootstrap (mk-socket-addr addr)))
       (fn [future]
-        (callback (.getChannel future))))))
+        (if (.isSuccess future)
+          (callback (.getChannel future))
+          (callback (.getCause future)))))))

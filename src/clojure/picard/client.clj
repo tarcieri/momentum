@@ -277,6 +277,49 @@
                     nil)))             ;; Aborted?
     [state upstream-fn]))
 
+(defn- initialize-request
+  [state addr request]
+  (let [current-state @state
+        pool          (.pool current-state)
+        upstream-fn   (.upstream current-state)
+        downstream-fn (.downstream current-state)]
+    (pool/checkout-conn
+     pool addr (netty-bridge state)
+     ;; When a connection to the remote host has been established.
+     (fn [ch-or-err fresh?]
+       (if (instance? Exception ch-or-err)
+         ;; Handle exceptions
+         (do (handle-abort state ch-or-err)
+             (downstream-fn upstream-fn :abort ch-or-err))
+         ;; Start the request
+         (swap-then!
+          state
+          (fn [current-state]
+            (if (.aborted? current-state)
+              current-state
+              (assoc current-state
+                :ch         ch-or-err
+                :next-up-fn write-pending)))
+          (fn [current-state]
+            (if (.aborted? current-state)
+              ;; Return to the connection pool
+              (pool/checkin-conn pool ch-or-err)
+
+              ;; Otherwise, do stuff with it
+              (let [write-future (.write ch-or-err (req->netty-req request))]
+                ;; Save off the write future
+                (swap! state (fn [current-state]
+                               (assoc current-state :last-write write-future)))
+                ;; Write the request to the connection
+                (netty/on-complete
+                 write-future
+                 ;; TODO: Handle unsuccessfull connections here
+                 (fn [future]
+                   (when-not (.isSuccess future)
+                     (if fresh?
+                       (handle-abort state (.getCause future))
+                       (initialize-request state addr request))))))))))))))
+
 ;; A global pool
 (def GLOBAL-POOL (pool/mk-pool))
 
@@ -287,39 +330,12 @@
 (defn request
   ([addr req downstream-fn]
      (request GLOBAL-POOL addr req downstream-fn))
-  ([pool addr [_ body :as request] downstream-fn]
+  ([pool addr request downstream-fn]
      ;; Create an atom that contains the state of the request
      (let [[state upstream-fn] (mk-initial-state pool request downstream-fn)]
        ;; TODO: Handle cases where the channel returned is open but
        ;;       writes to it will fail.
-       (pool/checkout-conn
-        pool addr (netty-bridge state)
-        ;; When a connection to the remote host has been established.
-        (fn [ch]
-          ;; Stash the channel in the state structure
-          (swap-then!
-           state
-           (fn [current-state]
-             (if (.aborted? current-state)
-               current-state
-               (assoc current-state
-                 :ch         ch
-                 :next-up-fn write-pending)))
-           (fn [current-state]
-             (if (.aborted? current-state)
-               ;; Return to the connection pool
-               (pool/checkin-conn pool ch)
-
-               ;; Otherwise, do stuff with it
-               (let [write-future (.write ch (req->netty-req request))]
-                 ;; Save off the write future
-                 (swap! state (fn [current-state]
-                                (assoc current-state :last-write write-future)))
-                 ;; Write the request to the connection
-                 (netty/on-complete
-                  write-future
-                  ;; TODO: Handle unsuccessfull connections here
-                  (fn [future] 1))))))))
+       (initialize-request state addr request)
        upstream-fn)))
 
 (defn mk-proxy

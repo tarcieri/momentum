@@ -20,18 +20,19 @@
    :encoder (HttpRequestEncoder.)))
 
 (defn- return-conn
-  [conn handler callback]
-  (.. conn getPipeline (addLast "handler" handler))
-  (callback conn))
+  [conn handler callback fresh?]
+  (when (instance? Channel conn)
+    (.. conn getPipeline (addLast "handler" handler)))
+  (callback conn fresh?))
 
 (defn checkout-conn
   "Calls success fn with the channel"
   [[pool client-factory] addr handler callback]
   (if-let [conn (.checkout pool (netty/mk-socket-addr addr))]
-    (return-conn conn handler callback)
+    (return-conn conn handler callback false)
     (netty/connect-client
      client-factory addr
-     #(return-conn % handler callback))))
+     #(return-conn % handler callback true))))
 
 (defn checkin-conn
   "Returns a connection to the pool"

@@ -187,6 +187,10 @@
     (is (= http
            (.get resp 100 TimeUnit/MILLISECONDS)))))
 
+(defn cmp-with
+  [f]
+  #{f})
+
 (defn includes-hdrs
   [hdrs]
   #{(fn [actual]
