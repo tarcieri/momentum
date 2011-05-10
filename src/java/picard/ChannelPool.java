@@ -1,6 +1,12 @@
 package picard;
 
 import org.jboss.netty.channel.Channel;
+import org.jboss.netty.channel.ChannelEvent;
+import org.jboss.netty.channel.ChannelHandlerContext;
+import org.jboss.netty.channel.ChannelPipeline;
+import org.jboss.netty.channel.ChannelState;
+import org.jboss.netty.channel.ChannelStateEvent;
+import org.jboss.netty.channel.ChannelUpstreamHandler;
 import org.jboss.netty.util.HashedWheelTimer;
 import org.jboss.netty.util.Timeout;
 import org.jboss.netty.util.TimerTask;
@@ -52,6 +58,7 @@ public class ChannelPool {
                 }
 
                 if (channel.isOpen()) {
+                    channel.getPipeline().remove("poolPurger");
                     return channel;
                 }
             }
@@ -71,6 +78,23 @@ public class ChannelPool {
                 }
             }
         }, expiration, TimeUnit.MILLISECONDS);
+
+        channel.getPipeline().addFirst("poolPurger", new ChannelUpstreamHandler() {
+            public void handleUpstream(ChannelHandlerContext ctx,
+                                       ChannelEvent e) throws Exception {
+                if (e instanceof ChannelStateEvent) {
+                    ChannelStateEvent evt = (ChannelStateEvent) e;
+                    if (evt.getState() == ChannelState.CONNECTED &&
+                        evt.getValue() == null) {
+                        synchronized (ChannelPool.this) {
+                            ChannelPool.this.expireNode(node);
+                        }
+                        return;
+                    }
+                }
+                ctx.sendUpstream(e);
+            }
+        });
 
         synchronized (this) {
             if (head != null) {
@@ -131,7 +155,10 @@ public class ChannelPool {
             return;
         }
 
-        node.channel.close();
+        if (node.channel.isOpen()) {
+            node.channel.close();
+        }
+
         removeNode(node);
     }
 
