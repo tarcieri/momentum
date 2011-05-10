@@ -20,8 +20,6 @@
 
 ;; TODOS:
 ;; * Requests made with no content-length or transfer-encoding
-;; * First write fails (presumably w/ a kept alive connection
-;; * Unable to obtain a connection?
 ;; * Expiring the connection pool
 ;; * Handling a maximum number of open connections in the pool
 
