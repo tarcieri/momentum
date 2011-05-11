@@ -3,7 +3,8 @@
    [picard.netty :as netty])
   (:import
    [picard
-    ChannelPool]
+    ChannelPool
+    ChannelPoolCallback]
    [org.jboss.netty.channel
     Channel
     ChannelPipeline]
@@ -27,7 +28,7 @@
 
 (defn checkout-conn
   "Calls success fn with the channel"
-  [[pool client-factory] addr handler callback]
+  [[_ pool client-factory] addr handler callback]
   (if-let [conn (.checkout pool (netty/mk-socket-addr addr))]
     (return-conn conn handler callback false)
     (netty/connect-client
@@ -36,7 +37,7 @@
 
 (defn checkin-conn
   "Returns a connection to the pool"
-  [[^ChannelPool pool] ^Channel conn]
+  [[_ ^ChannelPool pool] ^Channel conn]
   (when (.isOpen conn)
     (.. conn getPipeline removeLast)
     (.checkin pool conn)))
@@ -46,13 +47,21 @@
   (.close conn))
 
 (def default-options
-  {:expire-after 60})
+  {:expire-after                60
+   :max-connections             1000
+   :max-connections-per-address 200    ;; Not implemented yet
+   :max-queued-connections      5000}) ;; Not implemented yet
 
 (defn mk-pool
   ([]
      (mk-pool {}))
   ([options]
-     (let [options (merge default-options options)]
-       [(ChannelPool. (options :expire-after))
+     (let [options (merge default-options options)
+           state   (atom [0 {}])]
+       [state
+        (ChannelPool.
+         (options :expire-after)
+         (reify ChannelPoolCallback
+           (channelClosed [_ addr] 1)))
         (netty/mk-client-factory
          create-pipeline options)])))

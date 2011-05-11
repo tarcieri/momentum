@@ -30,16 +30,18 @@ public class ChannelPool {
     }
 
     final int expiration;
+    final ChannelPoolCallback callback;
     Node head;
     Node tail;
     HashedWheelTimer timer;
     HashMap<InetSocketAddress,Node> localHeadByAddr;
 
-    public ChannelPool(int expireAfter) {
+    public ChannelPool(int expireAfter, ChannelPoolCallback callback) {
         if (expireAfter < 1) {
             throw new IllegalArgumentException("Need a positive expiration");
         }
 
+        this.callback = callback;
         this.expiration = ((expireAfter * 1000) / 512) * 512;
         this.timer = new HashedWheelTimer((expireAfter * 1000) / 512,
                                           TimeUnit.MILLISECONDS);
@@ -119,17 +121,19 @@ public class ChannelPool {
         }
     }
 
-    public boolean purge() {
+    public InetSocketAddress purge() {
         synchronized (this) {
             if (tail == null) {
-                return false;
+                return null;
             }
 
+            Channel channel = tail.channel;
+
             tail.timeout.cancel();
-            tail.channel.close();
             removeNode(tail);
 
-            return true;
+            channel.close();
+            return addrFrom(channel);
         }
     }
 
