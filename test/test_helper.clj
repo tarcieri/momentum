@@ -14,7 +14,7 @@
     TimeoutException
     TimeUnit]))
 
-(declare ch ch2 netty-evts sock in out drain)
+(declare ch1 ch2 ch3 netty-evts sock in out drain)
 
 ;; ### TEST APPLICATIONS
 (defn call-home-app
@@ -78,12 +78,29 @@
 
 (defn with-channels*
   [f]
-  (binding [ch (channel) ch2 (channel)]
-    (f ch ch2)))
+  (binding [ch1 (channel) ch2 (channel)]
+    (f ch1 ch2)))
 
 (defmacro with-channels
   [args & stmts]
   `(with-channels* (fn ~args ~@stmts)))
+
+(defmacro defcoretest
+  "Defines a picard core test"
+  [name bindings app & body]
+  (if-not (vector? bindings)
+    `(defcoretest ~name [] ~bindings ~app ~@body)
+    `(deftest ~name
+       (println ~(str name))
+       (binding [ch1 (channel) ch2 (channel) ch3 (channel)]
+         (let [~bindings [ch1 ch2 ch3]]
+           (running-app*
+            ~(cond
+              (= app :call-home)
+              `(call-home-app ch1)
+              :else
+              app)
+            (fn [] ~@body)))))))
 
 (defmacro running-app
   [& stmts]
@@ -99,10 +116,10 @@
   (if (vector? (first stmts))
     `(with-channels*
        (fn ~(first stmts)
-         (running-app* (call-home-app ch (fn [] ~@(rest stmts))))))
+         (running-app* (call-home-app ch1 (fn [] ~@(rest stmts))))))
     `(with-channels*
        (fn [_# _#]
-         (running-app* (call-home-app ch) (fn [] ~@stmts))))))
+         (running-app* (call-home-app ch1) (fn [] ~@stmts))))))
 
 (defmacro running-hello-world-app
   [& stmts]
@@ -159,7 +176,7 @@
   (if (instance? ChannelBuffer val) (.toString val "UTF-8") val))
 
 (defn next-msg
-  ([] (next-msg ch))
+  ([] (next-msg ch1))
   ([ch] (wait-for-message ch 10000)))
 
 (defn match-values
@@ -220,7 +237,7 @@
 
 (defmethod assert-expr 'next-msgs [msg form]
   (let [[_ & stmts] form]
-    (next-msgs-for `ch msg stmts)))
+    (next-msgs-for `ch1 msg stmts)))
 
 (defmethod assert-expr 'next-msgs-for [msg form]
   (let [[_ ch & stmts] form]
@@ -229,7 +246,7 @@
 (defmethod assert-expr 'not-receiving-messages [msg form]
   `(do
      (Thread/sleep 50)
-     (if (= (count ch))
+     (if (= (count ch1))
        (do-report {:type :pass :message ~msg
                    :expected nil :actual nil})
        (do-report {:type :fail :message ~msg
