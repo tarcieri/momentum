@@ -34,9 +34,18 @@
   (fn [_ _] true))
 
 ;; ### HELPER FUNCTIONS
-(defmacro background
-  [& stmts]
-  `(send-off (agent nil) (fn [_#] ~@stmts)))
+(defmacro bg-while
+  [test & stmts]
+  `(send-off
+    (agent nil)
+    (fn [val#]
+      (loop []
+        ~@stmts
+        (if ~test (recur))))))
+
+(defn toggle!
+  [atom]
+  (swap! atom (fn [val] (not val))))
 
 (defn connect
   ([f] (connect f 4040))

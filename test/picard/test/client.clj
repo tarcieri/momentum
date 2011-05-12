@@ -162,12 +162,8 @@
      (fn [upstream-fn evt val]
        (enqueue ch2 [evt val])
        (when (= :connected evt)
-         (background
-          (loop []
-            (upstream-fn :body "28\r\nLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLO\r\n")
-            (if @latch (recur)))))
-       (when (= :pause evt)
-         (swap! latch (fn [_] false)))
+         (bg-while @latch (upstream-fn :body "HAMMER TIME!")))
+       (when (= :pause evt) (toggle! latch))
        (when (= :resume evt)
          (upstream-fn :done nil))))
 

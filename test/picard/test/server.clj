@@ -205,16 +205,10 @@
     (resp :response [200 {"transfer-encoding" "chunked"} :chunked])
     ;; The latch will let us pause
     (let [latch (atom true)]
-      (send-off
-       (agent nil)
-       (fn [_]
-         (loop []
-           (resp :body "28\r\nLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLO\r\n")
-           (if @latch (recur)))))
+      (bg-while @latch (resp :body "HAMMER TIME!"))
       (fn [evt val]
         (enqueue ch [evt val])
-        (when (= :pause evt)
-          (swap! latch (fn [_] false)))
+        (when (= :pause evt) (toggle! latch))
         (when (= :resume evt)
           (resp :done nil)))))
 
@@ -233,12 +227,7 @@
     (enqueue ch [:request request])
     (let [latch (atom true)]
       (resp :response [200 {"transfer-encoding" "chunked"} :chunked])
-      (send-off
-       (agent nil)
-       (fn [_]
-         (loop []
-           (resp :body "28\r\nLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLO\r\n")
-           (if @latch (recur)))))
+      (bg-while @latch (resp :body "HAMMER TIME!"))
       (fn [evt val]
         (enqueue ch [evt val])
         (when (= :pause evt)
@@ -263,16 +252,10 @@
     (enqueue ch [:request request])
     (let [latch (atom true)]
       (resp :response [200 {"transfer-encoding" "chunked"} :chunked])
-      (send-off
-       (agent nil)
-       (fn [_]
-         (loop []
-           (resp :body "28\r\nLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLO\r\n")
-           (if @latch (recur)))))
+      (bg-while @latch (resp :body "HAMMER TIME!"))
       (fn [evt val]
         (enqueue ch [evt val])
-        (when (= :pause evt)
-          (swap! latch (fn [_] false)))
+        (when (= :pause evt) (toggle! latch))
         (when (= :resume evt)
           (throw (Exception. "fail"))))))
 
