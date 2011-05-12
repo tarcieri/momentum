@@ -1,5 +1,5 @@
 (defproject picard "0.0.1-SNAPSHOT"
-  :description "FIXME: write"
+  :description "Async HTTP framework built on top of Netty"
   :dependencies [[org.clojure/clojure "1.2.0"]
                  [org.clojure/clojure-contrib "1.2.0"]
                  [org.jboss.netty/netty "3.2.4.Final"]]
