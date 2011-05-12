@@ -144,6 +144,40 @@
     ;; 2 is to account for the connection test-helper makes
     (is (= 2 (count (netty-connect-evts))))))
 
+(defcoretest issuing-pause-resume
+  [ch1 ch2]
+  (fn [resp req]
+    (resp :response [200 {"transfer-encoding" "chunked"} :chunked])
+    (resp :body "Hello")
+    (resp :body "World")
+    (resp :done nil)
+    (fn [_ _] true))
+
+  (let [upstream
+        (client/request
+         ["Localhost" 4040]
+         [{:path-info      "/"
+           :request-method "GET"
+           "connection"    "close"}]
+         (fn [upstream evt val]
+           (enqueue ch1 [evt val])
+           (when (= evt :response)
+             (upstream :pause nil))))]
+    (receive ch2 (fn [_] (upstream :resume nil))))
+
+  (is (next-msgs-for
+       ch1
+       :response :dont-care))
+
+  (Thread/sleep 30)
+  (enqueue ch2 true)
+
+  (is (next-msgs-for
+       ch1
+       :body "Hello"
+       :body "World"
+       :done nil)))
+
 (defcoretest telling-the-application-to-chill-out
   [ch ch2]
   (fn [resp req]
@@ -200,40 +234,6 @@
      :request-method "GET"
      "connection"    "close"}]
    (fn [_ _ _] true)))
-
-(defcoretest issuing-pause-resume
-  [ch1 ch2]
-  (fn [resp req]
-    (resp :response [200 {"transfer-encoding" "chunked"} :chunked])
-    (resp :body "Hello")
-    (resp :body "World")
-    (resp :done nil)
-    (fn [_ _] true))
-
-  (let [upstream
-        (client/request
-         ["Localhost" 4040]
-         [{:path-info      "/"
-           :request-method "GET"
-           "connection"    "close"}]
-         (fn [upstream evt val]
-           (enqueue ch1 [evt val])
-           (when (= evt :response)
-             (upstream :pause nil))))]
-    (receive ch2 (fn [_] (upstream :resume nil))))
-
-  (is (next-msgs-for
-       ch1
-       :response :dont-care))
-
-  (Thread/sleep 30)
-  (enqueue ch2 true)
-
-  (is (next-msgs-for
-       ch1
-       :body "Hello"
-       :body "World"
-       :done nil)))
 
 (defcoretest connecting-to-an-invalid-server
   [_ ch2]
