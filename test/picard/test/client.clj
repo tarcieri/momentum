@@ -102,47 +102,46 @@
 (defcoretest simple-keep-alive-requests
   [_ ch2]
   :hello-world
-  (let [pool (client/mk-pool)]
-    (client/request
-     pool ["localhost" 4040]
-     [{:path-info "/" :request-method "GET"}]
-     (fn [_ evt val] (enqueue ch2 [evt val])))
+  (client/request
+   ["localhost" 4040]
+   [{:path-info "/" :request-method "GET"}]
+   (fn [_ evt val] (enqueue ch2 [evt val])))
 
-    (is (next-msgs-for
-         ch2
-         :response   [200 {"content-length" "5"} "Hello"]))
+  (is (next-msgs-for
+       ch2
+       :response   [200 {"content-length" "5"} "Hello"]))
 
-    (client/request
-     pool ["localhost" 4040]
-     [{:path-info "/" :request-method "GET"}]
-     (fn [_ evt val] (enqueue ch2 [evt val])))
+  (client/request
+   ["localhost" 4040]
+   [{:path-info "/" :request-method "GET"}]
+   (fn [_ evt val] (enqueue ch2 [evt val])))
 
-    (is (next-msgs-for
-         ch2
-         ;; :connected nil
-         :response   [200 {"content-length" "5"} "Hello"]))
+  (is (next-msgs-for
+       ch2
+       ;; :connected nil
+       :response   [200 {"content-length" "5"} "Hello"]))
 
-    (client/request
-     pool ["localhost" 4040]
-     [{:path-info          "/zomg"
-       :request-method     "POST"
-       "transfer-encoding" "chunked"
-       "connection"        "close"}
-      :chunked]
-     (fn [upstream-fn evt val]
-       (enqueue ch2 [evt val])
-       (when (= :connected evt)
-         (upstream-fn :body "HELLO")
-         (upstream-fn :body "WORLD")
-         (upstream-fn :done nil))))
+  (client/request
+   ["localhost" 4040]
+   [{:path-info          "/zomg"
+     :request-method     "POST"
+     "transfer-encoding" "chunked"
+     "connection"        "close"}
+    :chunked]
+   (fn [upstream-fn evt val]
+     (enqueue ch2 [evt val])
+     (when (= :connected evt)
+       (upstream-fn :body "HELLO")
+       (upstream-fn :body "WORLD")
+       (upstream-fn :done nil))))
 
-    (is (next-msgs-for
-         ch2
-         :connected nil
-         :response   [200 {"content-length" "5"} "Hello"]))
+  (is (next-msgs-for
+       ch2
+       :connected nil
+       :response   [200 {"content-length" "5"} "Hello"]))
 
-    ;; 2 is to account for the connection test-helper makes
-    (is (= 2 (count (netty-connect-evts))))))
+  ;; 2 is to account for the connection test-helper makes
+  (is (= 2 (count (netty-connect-evts)))))
 
 (defcoretest issuing-pause-resume
   [ch1 ch2]
@@ -247,7 +246,3 @@
   (is (next-msgs-for
        ch2
        :abort (cmp-with #(instance? Exception %)))))
-
-;; MISSING TESTS
-;; * Issuing :pause :resume to the client
-;; * First write failing
