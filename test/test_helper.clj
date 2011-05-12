@@ -28,6 +28,11 @@
     (fn [evt val]
       (enqueue ch [evt val]))))
 
+(defn hello-world-app
+  [resp req]
+  (resp :response [200 {"content-length" "5"} "Hello"])
+  (fn [_ _] true))
+
 ;; ### HELPER FUNCTIONS
 (defmacro background
   [& stmts]
@@ -98,6 +103,8 @@
             ~(cond
               (= app :call-home)
               `(call-home-app ch1)
+              (= app :hello-world)
+              `hello-world-app
               :else
               app)
             (fn [] ~@body)))))))
@@ -120,14 +127,6 @@
     `(with-channels*
        (fn [_# _#]
          (running-app* (call-home-app ch1) (fn [] ~@stmts))))))
-
-(defmacro running-hello-world-app
-  [& stmts]
-  `(running-app*
-    (fn [resp# req#]
-      (resp# :response [200 {"content-length" "5"} "Hello"])
-      (fn [evt# val#] true))
-    (fn [] ~@stmts)))
 
 (defmacro timeout-after
   [ms & body]
