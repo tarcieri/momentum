@@ -246,3 +246,63 @@
   (is (next-msgs-for
        ch2
        :abort (cmp-with #(instance? Exception %)))))
+
+(defcoretest observing-max-connections
+  [ch1]
+  :slow-hello-world
+
+  (let [pool (client/mk-pool {:max-connections 1})]
+    (dotimes [_ 2]
+      (client/request
+       pool ["localhost" 4040]
+       [{:path-info      "/"
+         :request-method "GET"}]
+       (fn [_ evt val]
+         (enqueue ch1 [evt val]))))
+
+    (is (next-msgs-for
+         ch1
+         :abort    (cmp-with (fn [v] (instance? Exception v)))
+         :response :dont-care))
+
+    ;; Close off the pool
+    (client/request
+     pool ["localhost" 4040]
+     [{:path-info      "/"
+       :request-method "GET"
+       "connection"    "close"}]
+     (fn [_ _ _]))))
+
+(defcoretest observing-max-per-address-connections
+  [ch1]
+  :slow-hello-world
+
+  (let [pool (client/mk-pool {:max-connections-per-address 1})]
+    (dotimes [_ 2]
+      (client/request
+       pool ["localhost" 4040]
+       [{:path-info      "/"
+         :request-method "GET"}]
+       (fn [_ evt val]
+         (enqueue ch1 [evt val]))))
+
+    (client/request
+     pool ["127.0.0.1" 4040]
+     [{:path-info "/"
+       :request-method "GET"
+       "connection" "close"}]
+     (fn [_ evt val]
+       (enqueue ch1 [evt val])))
+
+    (is (next-msgs-for
+         ch1
+         :abort    (cmp-with (fn [v] (instance? Exception v)))
+         :response :dont-care
+         :response :dont-care))
+
+    (client/request
+     pool ["localhost" 4040]
+     [{:path-info      "/"
+       :request-method "GET"
+       "connection"    "close"}]
+     (fn [_ _ _]))))

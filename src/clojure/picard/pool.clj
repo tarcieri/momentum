@@ -21,29 +21,31 @@
    :encoder (HttpRequestEncoder.)))
 
 (defn- increment-count-for
-  [state addr]
-  (swap!
-   state
-   (fn [[total by-addrs]]
-     [(inc total)
-      (update-in by-addrs [addr] #(if % (inc %) 1))])))
+  [[state _ _ options] addr]
+  (dosync
+   (let [[total by-addrs] @state]
+     (when (and (< total (options :max-connections))
+                (< (by-addrs addr 0) (options :max-connections-per-address)))
+       (ref-set
+        state
+        [(inc total) (assoc by-addrs addr (inc (by-addrs addr 0)))])))))
 
 (defn- decrement-count-for
   [state addr]
-  (swap!
-   state
-   (fn [[total by-addrs]]
-     [(dec total)
-      (if (> (by-addrs addr 0) 1)
-        (assoc by-addrs addr (inc (by-addrs addr)))
-        (dissoc by-addrs addr))])))
+  (dosync
+   (alter
+    state
+    (fn [[total by-addrs]]
+      [(dec total)
+       (if (> (by-addrs addr 0) 1)
+         (assoc by-addrs addr (dec (by-addrs addr)))
+         (dissoc by-addrs addr))]))))
 
 (defn- return-conn
-  [[state] conn handler callback fresh?]
+  [pool conn handler callback fresh?]
   (when (instance? Channel conn)
     (.. conn getPipeline (addLast "handler" handler))
-    (when fresh?
-      (increment-count-for state (.getRemoteAddress conn))))
+    (increment-count-for pool (.getRemoteAddress conn)))
   (callback conn fresh?))
 
 (defn- checkout-conn*
@@ -59,7 +61,11 @@
   [pool addr handler callback]
   (if-let [conn (checkout-conn* pool addr)]
     (return-conn pool conn handler callback false)
-    (connect-client pool addr #(return-conn pool % handler callback true))))
+    ;; TODO: handle decrementing the count when the connection
+    ;; fails.
+    (if (increment-count-for pool addr)
+      (connect-client pool addr #(return-conn pool % handler callback true))
+      (callback (Exception. "LOL") true))))
 
 (defn checkin-conn
   "Returns a connection to the pool"
@@ -87,7 +93,7 @@
      (mk-pool {}))
   ([options]
      (let [options (merge default-options options)
-           state   (atom [0 {}])]
+           state   (ref [0 {}])]
        [state
         ;; The channel pool with a callback that tracks open
         ;; connections

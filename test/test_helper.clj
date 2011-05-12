@@ -33,6 +33,15 @@
   (resp :response [200 {"content-length" "5"} "Hello"])
   (fn [_ _] true))
 
+(def slow-hello-world
+  (fn [resp req]
+    (send-off
+     (agent nil)
+     (fn [_]
+       (Thread/sleep 1000)
+       (resp :response [200 {"content-length" "5"} "Hello"])))
+    (fn [_ _])))
+
 ;; ### HELPER FUNCTIONS
 (defmacro bg-while
   [test & stmts]
@@ -42,6 +51,14 @@
       (loop []
         ~@stmts
         (if ~test (recur))))))
+
+(defmacro after
+  [ms & stmts]
+  `(send-off
+    (agent nil)
+    (fn [val#]
+      (Thread/sleep ~ms)
+      ~@stmts)))
 
 (defn toggle!
   [atom]
@@ -105,6 +122,8 @@
               `(call-home-app ch1)
               (= app :hello-world)
               `hello-world-app
+              (= app :slow-hello-world)
+              `slow-hello-world
               :else
               app)
             (fn [] ~@body)))))))
