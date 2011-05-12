@@ -144,46 +144,44 @@
     ;; 2 is to account for the connection test-helper makes
     (is (= 2 (count (netty-connect-evts))))))
 
-(deftest telling-the-application-to-chill-out
-  (println "telling-the-application-to-chill-out")
-  (with-channels
-    [ch ch2]
-    (running-app
-     (fn [resp req]
-       (resp :response [200 {"content-length" "5"} "Hello"])
-       (resp :pause nil)
-       (receive-all ch (fn [_] (resp :resume nil)))
-       (fn [evt val] true))
-     (let [latch (atom true)]
-       (client/request
-        ["localhost" 4040]
-        [{:path-info          "/"
-          :request-method     "POST"
-          "transfer-encoding" "chunked"
-          "connection"        "close"} :chunked]
-        (fn [upstream-fn evt val]
-          (enqueue ch2 [evt val])
-          (when (= :connected evt)
-            (background
-             (loop []
-               (upstream-fn :body "28\r\nLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLO\r\n")
-               (if @latch (recur)))))
-          (when (= :pause evt)
-            (swap! latch (fn [_] false)))
-          (when (= :resume evt)
-            (upstream-fn :done nil))))
+(defcoretest telling-the-application-to-chill-out
+  [ch ch2]
+  (fn [resp req]
+    (resp :response [200 {"content-length" "5"} "Hello"])
+    (resp :pause nil)
+    (receive-all ch (fn [_] (resp :resume nil)))
+    (fn [evt val] true))
 
-       (is (next-msgs-for
-            ch2
-            :connected nil
-            :response  [200 {"content-length" "5"} "Hello"]
-            :pause     nil))
+  (let [latch (atom true)]
+    (client/request
+     ["localhost" 4040]
+     [{:path-info          "/"
+       :request-method     "POST"
+       "transfer-encoding" "chunked"
+       "connection"        "close"} :chunked]
+     (fn [upstream-fn evt val]
+       (enqueue ch2 [evt val])
+       (when (= :connected evt)
+         (background
+          (loop []
+            (upstream-fn :body "28\r\nLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLOLO\r\n")
+            (if @latch (recur)))))
+       (when (= :pause evt)
+         (swap! latch (fn [_] false)))
+       (when (= :resume evt)
+         (upstream-fn :done nil))))
 
-       (enqueue ch true)
+    (is (next-msgs-for
+         ch2
+         :connected nil
+         :response  [200 {"content-length" "5"} "Hello"]
+         :pause     nil))
 
-       (is (next-msgs-for
-            ch2
-            :resume nil))))))
+    (enqueue ch true)
+
+    (is (next-msgs-for
+         ch2
+         :resume nil))))
 
 (defcoretest issuing-immediate-abort
   [_ ch2]

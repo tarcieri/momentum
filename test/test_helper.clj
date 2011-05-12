@@ -81,15 +81,6 @@
            (f))))
       (finally (server/stop server)))))
 
-(defn with-channels*
-  [f]
-  (binding [ch1 (channel) ch2 (channel)]
-    (f ch1 ch2)))
-
-(defmacro with-channels
-  [args & stmts]
-  `(with-channels* (fn ~args ~@stmts)))
-
 (defmacro defcoretest
   "Defines a picard core test"
   [name bindings app & body]
@@ -108,25 +99,6 @@
               :else
               app)
             (fn [] ~@body)))))))
-
-(defmacro running-app
-  [& stmts]
-  (if (vector? (first stmts))
-    (let [[args app & stmts] stmts]
-      `(with-channels*
-         (fn ~args (running-app* ~app (fn [] ~@stmts)))))
-    (let [[app & atmts] stmts]
-      `(running-app* ~app (fn [] ~@stmts)))))
-
-(defmacro running-call-home-app
-  [& stmts]
-  (if (vector? (first stmts))
-    `(with-channels*
-       (fn ~(first stmts)
-         (running-app* (call-home-app ch1 (fn [] ~@(rest stmts))))))
-    `(with-channels*
-       (fn [_# _#]
-         (running-app* (call-home-app ch1) (fn [] ~@stmts))))))
 
 (defmacro timeout-after
   [ms & body]
