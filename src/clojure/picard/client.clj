@@ -18,11 +18,6 @@
     HttpResponseDecoder
     HttpVersion]))
 
-;; TODOS:
-;; * Requests made with no content-length or transfer-encoding
-;; * Expiring the connection pool
-;; * Handling a maximum number of open connections in the pool
-
 (defrecord State
     [pool
      ch
