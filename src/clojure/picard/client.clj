@@ -41,7 +41,10 @@
 
 (defn- addr-from-req
   [[{host "host"}]]
-  [host 80])
+  (let [[host port] (-> host str/trim (str/split #":" 2))]
+    (if (or (nil? port) (= "" port))
+     [host nil]
+     [host (try (Integer. port) (catch NumberFormatException _))])))
 
 (defn- request-complete
   [_ _ _ _]

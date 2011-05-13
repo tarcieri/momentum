@@ -320,3 +320,18 @@
        :request-method "GET"
        "connection"    "close"}]
      (fn [_ _ _]))))
+
+(defcoretest ^{:focus true} proxying-requests-through-the-proxy
+  [ch1]
+  :hello-world
+  (let [prox (client/mk-proxy)]
+    (prox (fn [evt val] (enqueue ch1 [evt val]))
+          [{:path-info      "/"
+            :request-method "GET"
+            "connection"    "close"
+            "host"          "localhost:4040"}])
+
+    (is (next-msgs-for
+         ch1
+         :response [200 {"content-length" "5"} "Hello"]))))
+
