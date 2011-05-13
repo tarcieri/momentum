@@ -253,6 +253,21 @@
        (do-report {:type :fail :message ~msg
                    :expected nil :actual (next-msg)}))))
 
+(defmethod assert-expr 'receiving [msg form]
+  (let [expected (rest form)]
+    `(let [in#       in
+           expected# (str ~@expected)
+           actual#   (.get (future (->> (http-read in#)
+                                        (take (count expected#))
+                                        (map char)
+                                        (apply str)))
+                           100 TimeUnit/MILLISECONDS)]
+       (if (= expected# actual#)
+         (do-report {:type :pass :message ~msg
+                     :expected expected# :actual actual#})
+         (do-report {:type :fail :message ~msg
+                     :expected expected# :actual actual#})))))
+
 (defmethod assert-expr 'received-response [msg form]
   (let [expected (rest form)]
     `(let [in#       in
