@@ -53,8 +53,8 @@
   (.checkout pool (netty/mk-socket-addr addr)))
 
 (defn- connect-client
-  [[_ _ factory] addr callback]
-  (netty/connect-client factory addr callback))
+  [[_ _ factory opts] addr callback]
+  (netty/connect-client factory addr (opts :local-addr) callback))
 
 (defn checkout-conn
   "Calls success fn with the channel"

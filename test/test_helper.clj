@@ -97,15 +97,17 @@
 
 (defn running-app*
   [app f]
-  (let [netty-evts    (atom [])
-        pipeline-fn   #(add-tracking-to-pipeline netty-evts %)
-        server        (server/start app {:pipeline-fn pipeline-fn})]
-    (try
-      (connect
-       (fn [sock in out]
-         (binding [sock sock in in out out netty-evts netty-evts]
-           (f))))
-      (finally (server/stop server)))))
+  (if app
+    (let [netty-evts    (atom [])
+          pipeline-fn   #(add-tracking-to-pipeline netty-evts %)
+          server        (server/start app {:pipeline-fn pipeline-fn})]
+      (try
+        (connect
+         (fn [sock in out]
+           (binding [sock sock in in out out netty-evts netty-evts]
+             (f))))
+        (finally (server/stop server))))
+    (f)))
 
 (defmacro defcoretest
   "Defines a picard core test"

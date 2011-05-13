@@ -247,6 +247,20 @@
        ch2
        :abort (cmp-with #(instance? Exception %)))))
 
+(defcoretest observes-local-addr-when-connecting
+  [_ ch2]
+  nil
+  (client/request
+   (client/mk-pool {:local-addr ["127.0.0.1" 12345]})
+   ["www.google.com" 80]
+   [{:path-info      "/"
+     :request-method "GET"}]
+   (fn [_ evt val] (enqueue ch2 [evt val])))
+
+  (is (next-msgs-for
+       ch2
+       :abort #{#(instance? Exception %)})))
+
 (defcoretest observing-max-connections
   [ch1]
   :slow-hello-world
