@@ -359,13 +359,13 @@
                 (let [current-state @state]
                   (when (= :pending current-state)
                     (downstream :resume nil))
-                  (set*! state :connected)))
+                  (hard-set! state :connected)))
               (downstream evt val))))
          :as upstream
          (when (chunked? req)
            (locking req
              (let [current-state @state]
                (when (not= :connected current-state)
-                 (set*! state :pending)
+                 (hard-set! state :pending)
                  (downstream :pause nil)))))
          (fn [evt val] (upstream evt val)))))))

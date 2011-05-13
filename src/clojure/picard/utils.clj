@@ -49,7 +49,8 @@
      res#))
 
 ;; TODO: Rename this o_O
-(defn set*!
+(defn hard-set!
+  "Hard because set! is already in use"
   [atom val]
   (swap! atom (constantly val)))
 
