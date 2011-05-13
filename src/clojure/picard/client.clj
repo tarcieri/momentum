@@ -16,7 +16,9 @@
     HttpRequestEncoder
     HttpResponse
     HttpResponseDecoder
-    HttpVersion]))
+    HttpVersion]
+   [java.net
+    ConnectException]))
 
 (defrecord State
     [pool
@@ -343,6 +345,15 @@
          (request
           pool (addr-from-req req) req
           (fn [upstream evt val]
+            ;; Not able to connect to the end server
+            (when (and (= :abort evt)
+                       (instance? ConnectException val)
+                       (not= :connected @state))
+              (downstream :response
+                          [502 {"content-length" "20"}
+                           "<h2>Bad Gateway</h2>"]))
+
+            ;; Otherwise, handle stuff
             (if (= :connected evt)
               (locking req
                 (let [current-state @state]
