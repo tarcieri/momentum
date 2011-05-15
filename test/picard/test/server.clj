@@ -135,6 +135,7 @@
        :body    "Hello"
        :body    " World"
        :done    nil))
+
   (http-write "POST / HTTP/1.1\r\n"
               "Transfer-Encoding: chunked\r\n\r\n"
               "6\r\nZomG!!\r\n9\r\nINCEPTION\r\n0\r\n\r\n")
@@ -143,6 +144,7 @@
        :body    "ZomG!!"
        :body    "INCEPTION"
        :done    nil))
+
   (http-write "GET / HTTP/1.1\r\n"
               "Connection: close\r\n\r\n")
   (is (next-msgs
@@ -176,6 +178,17 @@
   (http-write "GET / HTTP/1.1\r\n\r\n")
 
   (is (not-receiving-messages))
+  (is (= 0 (count (netty-exception-events)))))
+
+(defcoretest upstream-raising-error-during-chunked-request
+  [ch]
+  (fn [upstream request]
+    (throw (Exception. "TROLL APP IS TROLLIN'")))
+
+  (http-write "POST / HTTP/1.1\r\n"
+              "Transfer-Encoding: chunked\r\n\r\n"
+              "5\r\nHello\r\n5\r\nWorld\r\n0\r\n\r\n")
+
   (is (= 0 (count (netty-exception-events)))))
 
 (defcoretest sending-gibberish

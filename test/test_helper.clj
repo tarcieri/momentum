@@ -220,6 +220,7 @@
 
 (defn netty-exception-events
   []
+  (Thread/sleep 30)
   (filter netty/exception-event @netty-evts))
 
 (defn- next-msgs-for

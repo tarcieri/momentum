@@ -265,7 +265,10 @@
          (cond-let
           ;; An actual HTTP message has been received
           [msg (netty/message-event evt)]
-          ((.next-up-fn current-state) state msg current-state)
+          (try
+            ((.next-up-fn current-state) state msg current-state)
+            (catch Exception err
+              (handle-err state err current-state)))
 
           ;; The channel interest has changed to writable
           ;; or not writable
