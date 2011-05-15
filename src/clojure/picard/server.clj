@@ -81,8 +81,7 @@
    state
    (fn [current-state]
      (if (= waiting-for-response (.next-up-fn current-state))
-       (assoc current-state
-         :next-up-fn incoming-request)
+       (assoc current-state :next-up-fn incoming-request)
        (assoc current-state
          :next-dn-fn nil
          :responded? true)))
@@ -110,6 +109,7 @@
   [state evt [_ hdrs body :as val] current-state]
   (when-not (= :response evt)
     (throw (Exception. "Um... responses start with the head?")))
+
   (let [write (.write (.ch current-state) (resp->netty-resp val))]
     (swap!
      state
@@ -166,9 +166,7 @@
     (swap!
      state
      (fn [current-state]
-       (assoc current-state
-         :next-up-fn nil
-         :upstream   nil))))
+       (assoc current-state :next-up-fn nil :upstream nil))))
   (if (.last-write current-state)
     (.addListener (.last-write current-state)
                   netty/close-channel-future-listener)
