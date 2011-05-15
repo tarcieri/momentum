@@ -22,106 +22,131 @@
     HttpResponseStatus
     HttpVersion]))
 
+(defrecord State
+    [app
+     ch
+     keepalive?
+     chunked?
+     streaming?
+     responded?
+     next-up-fn
+     next-dn-fn
+     upstream
+     last-write
+     options])
+
 ;; Declare some functions in advance -- letfn might be better
 (declare incoming-request stream-request-body waiting-for-response)
 
-(defn- fresh-args
-  [args]
-  (-> args
-      (select-keys [:app :opts])
-      (assoc :last-args args :keepalive? true)))
+(defn- mk-initial-state
+  ([app options] (mk-initial-state app options nil))
+  ([app options ch]
+     (State. app               ;; Application for the server
+             ch                ;; Netty channel
+             true              ;; Is the exchange keepalive?
+             nil               ;; Is the request chunked?
+             nil               ;; Is the response streaming?
+             nil               ;; Has the response been sent?
+             incoming-request  ;; Next upstream event handler
+             nil               ;; Next downstream event handler
+             nil               ;; Upstream handler (external interface)
+             nil               ;; Last write to the channel
+             options)))         ;; Server options
 
-(defn- finalize-ch
-  [ch {:keys [keepalive? streaming? chunked? last-write]}]
-  (let [last-write (if (and streaming? chunked?)
-                     (.write ch HttpChunk/LAST_CHUNK)
-                     last-write)]
-    (when-not last-write
-      (throw (Exception. "Somehow the last-write is nil")))
+(defn- fresh-state
+  [state]
+  (mk-initial-state (.app state) (.options state) (.ch state)))
 
-    (when-not keepalive?
-      (.addListener last-write netty/close-channel-future-listener))))
+(defn- finalize-exchange
+  [state current-state]
+  (when (= incoming-request (.next-up-fn current-state))
+    (swap! state fresh-state)
+    (let [last-write (if (and (.streaming? current-state)
+                              (.chunked? current-state))
+                       (.write (.ch current-state) HttpChunk/LAST_CHUNK)
+                       (.last-write current-state))]
+      (when-not last-write
+        (throw (Exception. "Somehow the last-write is nil")))
 
-(defn- finalized-resp
-  [_ _]
-  (throw (Exception. "This response is finished")))
+      (when-not (.keepalive? current-state)
+        (.addListener last-write netty/close-channel-future-listener)))))
 
 (defn- aborted-req
   [_ _ _ _]
   (throw (Exception. "This request has been aborted")))
 
 (defn- finalize-resp
-  [state ch]
+  [state _]
   (swap-then!
    state
-   (fn [[up-f _ args]]
-     (if (= up-f waiting-for-response)
-       [incoming-request nil (fresh-args args)]
-       [up-f finalize-resp (assoc args :responded? true)]))
-   (fn [[next-fn _ {args :last-args}]]
-     (when (= next-fn incoming-request)
-       (finalize-ch ch args)))))
+   (fn [current-state]
+     (if (= waiting-for-response (.next-up-fn current-state))
+       (assoc current-state
+         :next-up-fn incoming-request)
+       (assoc current-state
+         :next-dn-fn nil
+         :responded? true)))
+   #(finalize-exchange state %)))
 
 (defn- stream-or-finalize-resp
-  [state ch evt val]
+  [state evt val current-state]
   (cond
    (= :body evt)
-   (let [write (.write ch (mk-netty-chunk val))]
+   (let [write (.write (.ch current-state) (mk-netty-chunk val))]
      (swap!
       state
-      (fn [[up-f _ args]]
-        [up-f stream-or-finalize-resp (assoc args :last-write write)])))
+      (fn [current-state]
+        (assoc current-state
+          :next-dn-fn stream-or-finalize-resp
+          :last-write write))))
 
    (= :done evt)
-   (finalize-resp state ch)
+   (finalize-resp state current-state)
 
    :else
    (throw (Exception. "Unknown event: " evt))))
 
-;; TODO: Handle HTTP 1.0 responses
-(defn- is-keepalive?
-  [req-keepalive? hdrs]
-  (and req-keepalive?
-       (not= "close" (hdrs "connection"))
-       (or (hdrs "content-length")
-           (= (hdrs "transfer-encoding") "chunked"))))
-
 (defn- initialize-resp
-  [state ch evt [_ hdrs body :as val]]
+  [state evt [_ hdrs body :as val] current-state]
   (when-not (= :response evt)
     (throw (Exception. "Um... responses start with the head?")))
-  (let [write (.write ch (resp->netty-resp val))]
-    (swap! state
-           (fn [[up-f dn-f {keepalive? :keepalive? :as args}]]
-             [up-f
-              (if (= :chunked body) stream-or-finalize-resp nil)
-              (assoc args
-                :streaming? (= :chunked body)
-                :chunked?   (= (hdrs "transfer-encoding") "chunked")
-                :keepalive? (is-keepalive? keepalive? hdrs)
-                :last-write write)]))
+  (let [write (.write (.ch current-state) (resp->netty-resp val))]
+    (swap!
+     state
+     (fn [current-state]
+       (assoc current-state
+         :next-dn-fn (if (= :chunked body) stream-or-finalize-resp)
+         :streaming? (= :chunked body)
+         :chunked?   (= (hdrs "transfer-encoding") "chunked")
+         :last-write write
+         ;; TODO: Handle HTTP 1.0 responses
+         :keepalive? (and (.keepalive? current-state)
+                          (not= "close" (hdrs "connection"))
+                          (or (hdrs "content-length")
+                              (= (hdrs "transfer-encoding") "chunked"))))))
     (if (not= :chunked body)
-      (finalize-resp state ch))))
+      (finalize-resp state current-state))))
 
 (defn- downstream-fn
-  [state ^Channel ch]
+  [state]
   ;; The state of the response needs to be tracked
   (swap!
    state
-   (fn [[up-f _ args]] [up-f initialize-resp args]))
+   (fn [current-state]
+     (assoc current-state :next-dn-fn initialize-resp)))
 
   (fn [evt val]
-    (cond
-     (= evt :pause)
-     (.setReadable ch false)
+    (let [current-state @state]
+      (cond
+       (= evt :pause)
+       (.setReadable (.ch current-state) false)
 
-     (= evt :resume)
-     (.setReadable ch true)
+       (= evt :resume)
+       (.setReadable (.ch current-state) true)
 
-     :else
-     (let [[_ dn-f _] @state]
-       (when dn-f
-         (dn-f state ch evt val))))
+       :else
+       (when-let [next-dn-fn (.next-dn-fn current-state)]
+         (next-dn-fn state evt val current-state))))
     true))
 
 (defn- waiting-for-response
@@ -129,136 +154,137 @@
    In this state, any further downstream messages are unexpected
    since pipelining is not (yet?) supported. Also, if the connection
    does not support keep alives, the connection will get into this state."
-  [_ _ _ _]
+  [_ _ _]
   (throw (Exception. "Not expecting a message right now")))
 
 (defn- handle-err
-  [state ch err]
-  (let [[_ _ {upstream :upstream last-write :last-write}] @state]
-    (when upstream
-      (try
-        (upstream :abort err)
-        (catch Exception e nil))
-      (swap!
-       state
-       (fn [[_ _ args]]
-         [nil aborted-req (dissoc args :upstream)])))
-    (if last-write
-      (.addListener last-write netty/close-channel-future-listener)
-      (.close ch))))
+  [state err current-state]
+  (when (.upstream current-state)
+    (try
+      ((.upstream current-state) :abort err)
+      (catch Exception e nil))
+    (swap!
+     state
+     (fn [current-state]
+       (assoc current-state
+         :next-up-fn nil
+         :upstream   nil))))
+  (if (.last-write current-state)
+    (.addListener (.last-write current-state)
+                  netty/close-channel-future-listener)
+    (.close (.ch current-state))))
 
 (defn- handling-request
   "The initial HTTP request is being handled and we're not expected
    further messages"
-  [_ _ _ _]
+  [_ _ _]
   (throw (Exception. "Not expecting a message right now")))
 
 (defn- transition-from-req-done
   "State transition from an HTTP request has finished being processed.
    If the response has already been sent, then the next state is to
    listen for new requests."
-  [state ch]
+  [state current-state]
   (swap-then!
    state
-   (fn [[_ dn-f args]]
-     (if (args :responded?)
-       [incoming-request dn-f (fresh-args args)]
-       [waiting-for-response dn-f args]))
-   (fn [[next-fn _ {args :last-args :as lol}]]
-     (when (= next-fn incoming-request)
-       (finalize-ch ch args)))))
+   (fn [current-state]
+     (if (.responded? current-state)
+       (assoc current-state :next-up-fn incoming-request)
+       (assoc current-state :next-up-fn waiting-for-response)))
+   #(finalize-exchange state %)))
 
 (defn- transition-to-streaming-body
   [state]
-  (swap! state (fn [[_ dn-f args]] [stream-request-body dn-f args])))
+  (swap!
+   state
+   (fn [current-state]
+     (assoc current-state :next-up-fn stream-request-body))))
 
 (defn- stream-request-body
-  [state ch ^HttpChunk chunk {upstream :upstream}]
-  (if (.isLast chunk)
-    (do
-      (upstream :done nil)
-      (transition-from-req-done state ch))
-    (upstream :body (.getContent chunk))))
+  [state chunk current-state]
+  (let [upstream (.upstream current-state)]
+    (if (.isLast chunk)
+      (do
+        (upstream :done nil)
+        (transition-from-req-done state current-state))
+      (upstream :body (.getContent chunk)))))
 
 (defn- incoming-request
-  [state ch ^HttpMessage msg {app :app :as args}]
-  (swap! state (fn [[_ dn-f args]] [handling-request dn-f args]))
+  [state msg {app :app :as current-state}]
+  ;; First track that a request is currently being handled
+  (swap!
+   state
+   (fn [current-state]
+     (assoc current-state :next-up-fn handling-request)))
+  ;; Now, handle the request
   (try
-    (let [upstream   (app (downstream-fn state ch) (netty-req->req msg))]
+    (let [upstream (app (downstream-fn state) (netty-req->req msg))]
       ;; Add the upstream handler to the state
-      (swap! state (fn [[up-f dn-f {keepalive? :keepalive? :as args}]]
-                     [up-f dn-f
-                      (assoc args
-                        :keepalive? (and keepalive? (HttpHeaders/isKeepAlive msg))
-                        :upstream   upstream)]))
-
+      (swap!
+       state
+       (fn [current-state]
+         ;; TODO: refactor this?
+         (assoc current-state
+           :keepalive? (and (.keepalive? current-state)
+                            (HttpHeaders/isKeepAlive msg))
+           :upstream upstream)))
       ;; Send the HTTP headers upstream
       (if (.isChunked msg)
         (transition-to-streaming-body state)
-        (transition-from-req-done state ch)))
+        (transition-from-req-done state current-state)))
     (catch Exception err
-      (handle-err state ch err))))
+      (handle-err state err current-state))))
 
 (defn- handle-ch-interest-change
-  [state ch [_ _ {upstream :upstream}] writable?]
-  (when (and upstream (not= (.isWritable ch) @writable?))
-    (swap-then!
-     writable?
-     not
-     #(try
-        (upstream (if % :resume :pause) nil)
-        (catch Exception err
-          (handle-err state ch err))))))
+  [state writable? current-state]
+  (when-let [upstream (.upstream current-state)]
+    (when-not (= (.isWritable (.ch current-state)) @writable?)
+      (swap-then!
+       writable? not
+       #(try
+          (upstream (if % :resume :pause) nil)
+          (catch Exception err
+            (handle-err state err current-state)))))))
 
 (defn- handle-ch-disconnected
-  [state]
-  (let [[_ _ {upstream :upstream}] @state]
-    (when upstream
-      (upstream :abort nil)
-      (swap!
-       state
-       (fn [[up-f _ args]]
-         [up-f aborted-req args])))))
+  [state current-state]
+  (when-let [upstream (.upstream current-state)]
+    (upstream :abort nil)
+    (swap!
+     state
+     (fn [current-state]
+       (assoc current-state :next-dn-fn aborted-req)))))
 
 (defn- netty-bridge
   [app opts]
   "Bridges the netty pipeline API to the picard API. This is done with
-   a simple state machine that is tracked with an atom. The atom is
-   always a 3-tuple: [ next-fn args responded? ].
-
-   next-fn:    The function to call when the next message is received. These
-               functions must return a function that transitions the current
-               state to the next state using swap!
-
-   args:       The first argument (usually a vector) that gets passed to
-               next-fn when it is invoked.
-
-   responded?: Whether or not the application has responded to the current
-               request"
-  (let [state     (atom [incoming-request nil
-                         {:app app :opts opts :keepalive? true}])
+   a simple state machine that is tracked with an atom."
+  (let [state     (atom (mk-initial-state app opts))
         writable? (atom true)]
     (netty/upstream-stage
      (fn [ch evt]
-       (cond-let
-        ;; An actual HTTP message has been received
-        [msg (netty/message-event evt)]
-        (let [[next-fn _ args] @state]
-          (next-fn state ch msg args))
+       (let [current-state @state]
+         (cond-let
+          ;; An actual HTTP message has been received
+          [msg (netty/message-event evt)]
+          ((.next-up-fn current-state) state msg current-state)
 
-        ;; The channel interest has changed to writable
-        ;; or not writable
-        [[ch-state val] (netty/channel-state-event evt)]
-        (cond
-         (= ch-state ChannelState/INTEREST_OPS)
-         (handle-ch-interest-change state ch @state writable?)
+          ;; The channel interest has changed to writable
+          ;; or not writable
+          [[ch-state val] (netty/channel-state-event evt)]
+          (cond
+           (= ch-state ChannelState/INTEREST_OPS)
+           (handle-ch-interest-change state writable? current-state)
 
-         (and (= ch-state ChannelState/CONNECTED)
-              (nil? val))
-         (handle-ch-disconnected state))
+           ;; Connecting the channel - stash it.
+           (and (= ch-state ChannelState/CONNECTED) val)
+           (swap! state (fn [current-state] (assoc current-state :ch ch)))
 
-        [err (netty/exception-event evt)]
-        (handle-err state ch err))))))
+           (= ch-state ChannelState/CONNECTED)
+           (handle-ch-disconnected state current-state))
+
+          [err (netty/exception-event evt)]
+          (handle-err state err current-state)))))))
 
 (defn- create-pipeline
   [app]
