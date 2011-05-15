@@ -315,3 +315,35 @@
        :body "Hello"
        :body "World"
        :done nil)))
+
+(defcoretest handling-100-continue-requests
+  [ch]
+  (fn [upstream request]
+    (enqueue ch [:request request])
+    (upstream :response [100])
+    (fn [evt val]
+      (enqueue ch [evt val])
+      (when (= :done evt)
+        (upstream :response [200 {"content-length" "5"} "Hello"]))))
+
+  (http-write "POST / HTTP/1.1\r\n"
+              "Content-Length: 5\r\n"
+              "Connection: close\r\n"
+              "Expect: 100-continue\r\n\r\n")
+
+  (is (next-msgs
+       :request [(includes-hdrs {"expect" "100-continue"}) :chunked]))
+
+  (is (receiving
+       "HTTP/1.1 100 Continue\r\n"))
+
+  (http-write "Hello")
+
+  (is (next-msgs
+       :body "Hello"
+       :done nil)))
+
+;; TODO: Missing tests
+;; * A 100-continue test that gives the final status directly
+;; * Sending multiple 100 responses in a row
+;; * Handling various 100 Continue edge cases

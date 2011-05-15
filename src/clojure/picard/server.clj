@@ -26,6 +26,7 @@
     [app
      ch
      keepalive?
+     expects-100?
      chunked?
      streaming?
      responded?
@@ -44,6 +45,7 @@
      (State. app               ;; Application for the server
              ch                ;; Netty channel
              true              ;; Is the exchange keepalive?
+             false             ;; Expects 100
              nil               ;; Is the request chunked?
              nil               ;; Is the response streaming?
              nil               ;; Has the response been sent?
@@ -106,26 +108,32 @@
    (throw (Exception. "Unknown event: " evt))))
 
 (defn- initialize-resp
-  [state evt [_ hdrs body :as val] current-state]
+  [state evt [status hdrs body :as val] current-state]
   (when-not (= :response evt)
     (throw (Exception. "Um... responses start with the head?")))
 
+  (when (and (= 100 status) (not (.expects-100? current-state)))
+    (throw (Exception. "Not expecting a 100 Continue response.")))
+
   (let [write (.write (.ch current-state) (resp->netty-resp val))]
-    (swap!
-     state
-     (fn [current-state]
-       (assoc current-state
-         :next-dn-fn (if (= :chunked body) stream-or-finalize-resp)
-         :streaming? (= :chunked body)
-         :chunked?   (= (hdrs "transfer-encoding") "chunked")
-         :last-write write
-         ;; TODO: Handle HTTP 1.0 responses
-         :keepalive? (and (.keepalive? current-state)
-                          (not= "close" (hdrs "connection"))
-                          (or (hdrs "content-length")
-                              (= (hdrs "transfer-encoding") "chunked"))))))
-    (if (not= :chunked body)
-      (finalize-resp state current-state))))
+    (if (= 100 status)
+      (swap! state #(assoc % :expects-100? false))
+      (swap-then!
+       state
+       (fn [current-state]
+         (assoc current-state
+           :next-dn-fn (when (= :chunked body) stream-or-finalize-resp)
+           :streaming? (= :chunked body)
+           :chunked?   (= (hdrs "transfer-encoding") "chunked")
+           :last-write write
+           ;; TODO: Handle HTTP 1.0 responses
+           :keepalive? (and (.keepalive? current-state)
+                            (not= "close" (hdrs "connection"))
+                            (or (hdrs "content-length")
+                                (= (hdrs "transfer-encoding") "chunked")))))
+       (fn [current-state]
+         (when-not (.next-dn-fn current-state)
+           (finalize-resp state current-state)))))))
 
 (defn- downstream-fn
   [state]
@@ -212,20 +220,16 @@
   ;; First track that a request is currently being handled
   (swap!
    state
-   (fn [current-state]
-     (assoc current-state :next-up-fn handling-request)))
+   #(assoc %
+      :next-up-fn   handling-request
+      :expects-100? (HttpHeaders/is100ContinueExpected msg)
+      :keepalive?   (and (.keepalive? current-state)
+                         (HttpHeaders/isKeepAlive msg))))
   ;; Now, handle the request
   (try
     (let [upstream (app (downstream-fn state) (netty-req->req msg))]
       ;; Add the upstream handler to the state
-      (swap!
-       state
-       (fn [current-state]
-         ;; TODO: refactor this?
-         (assoc current-state
-           :keepalive? (and (.keepalive? current-state)
-                            (HttpHeaders/isKeepAlive msg))
-           :upstream upstream)))
+      (swap! state #(assoc % :upstream upstream))
       ;; Send the HTTP headers upstream
       (if (.isChunked msg)
         (transition-to-streaming-body state)
