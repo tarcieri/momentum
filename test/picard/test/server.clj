@@ -427,6 +427,4 @@
   (is (not-receiving-messages)))
 
 ;; TODO: Missing tests
-;; * What happens if the client sends a 100-continue but no content-length
-;;   or transfer-encoding headers
 ;; * Handling various 100 Continue edge cases
