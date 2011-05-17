@@ -45,7 +45,7 @@
                   :script-name    ""
                   :path-info      "/"
                   :request-method "GET"
-                  :http-version   [1 0]}])))
+                  :http-version   [1 0]} nil])))
 
 (defcoretest simple-request-with-body
   ;; Simple request with a body
@@ -208,6 +208,7 @@
                   :script-name     ""
                   :path-info       "/"
                   :request-method  "POST"
+                  :http-version    [1 1]
                   "connection"     "close"
                   "content-length" "10000"} :chunked]))
   (is (not-receiving-messages))
