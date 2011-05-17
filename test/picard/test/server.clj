@@ -370,7 +370,7 @@
     (upstream :response [100])
     (try (upstream :response [100])
          (catch Exception err (enqueue ch [:error err])))
-    (fn [evt body]
+    (fn [evt val]
       (when (= :done evt)
         (upstream :response [204 {"connection" "close"}]))))
 
@@ -390,9 +390,52 @@
        "HTTP/1.1 204 No Content\r\n"
        "connection: close\r\n\r\n")))
 
+(defcoretest client-sends-body-and-expects-100
+  [ch]
+  (fn [upstream request]
+    (enqueue ch [:request request])
+    (fn [evt val]
+      (enqueue ch [evt val])
+      (when (= :done evt)
+        (upstream :response [204 {"connection" "close"}]))))
+
+  (http-write "POST / HTTP/1.1\r\n"
+              "Content-Length: 5\r\n"
+              "Expect: 100-continue\r\n\r\n"
+              "Hello")
+
+  (is (next-msgs
+       :request [(includes-hdrs {"expect" "100-continue"}) :chunked]
+       :body    "Hello"
+       :done    nil))
+
+  (is (received-response
+       "HTTP/1.1 204 No Content\r\n"
+       "connection: close\r\n\r\n")))
+
+(defcoretest client-sends-body-and-expects-100-2
+  (deftrackedapp [upstream request]
+    (upstream :response [100])
+    (fn [evt val]
+      (when (= :done evt)
+        (upstream :response [204 {"connection" "close"}]))))
+
+  (http-write "POST / HTTP/1.1\r\n"
+              "Content-Length: 5\r\n"
+              "Expect: 100-continue\r\n\r\n"
+              "Hello")
+
+  (is (next-msgs
+       :request [(includes-hdrs {"expect" "100-continue"}) :chunked]
+       :body    "Hello"
+       :done    nil))
+
+  (is (received-response
+       "HTTP/1.1 100 Continue\r\n\r\n"
+       "HTTP/1.1 204 No Content\r\n"
+       "connection: close\r\n\r\n")))
+
 ;; TODO: Missing tests
-;; * What happens if the client sends the body and expects-100
-;; * What happens if the client sends part of the body & expects-100
 ;; * What happens if the client sends a 100-continue but no content-length
 ;;   or transfer-encoding headers
 ;; * Handling various 100 Continue edge cases

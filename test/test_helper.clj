@@ -17,6 +17,20 @@
 (declare ch1 ch2 ch3 netty-evts sock in out drain)
 
 ;; ### TEST APPLICATIONS
+(defn tracking-middleware
+  [app]
+  (let [ch ch1]
+    (fn [upstream request]
+      (enqueue ch [:request request])
+      (let [downstream (app upstream request)]
+        (fn [evt val]
+          (enqueue ch [evt val])
+          (downstream evt val))))))
+
+(defmacro deftrackedapp
+  [args & body]
+  `(tracking-middleware (fn ~args ~@body)))
+
 (defn call-home-app
   [ch]
   (fn [resp req]
