@@ -316,7 +316,7 @@
        :body "World"
        :done nil)))
 
-(defcoretest handling-100-continue-requests
+(defcoretest handling-100-continue-requests-with-100-response
   [ch]
   (fn [upstream request]
     (enqueue ch [:request request])
@@ -343,7 +343,31 @@
        :body "Hello"
        :done nil)))
 
+(defcoretest handling-100-continue-requests-by-responding-directly
+  [ch]
+  (fn [upstream request]
+    (enqueue ch [:request request])
+    (upstream :response [417 {"content-length" "0"}])
+    (fn [evt val] (enqueue ch [evt val])))
+
+  (http-write "POST / HTTP/1.1\r\n"
+              "Content-Length: 5\r\n"
+              "Connection: close\r\n"
+              "Expect: 100-continue\r\n\r\n")
+
+  (is (next-msgs
+       :request [(includes-hdrs {"expect" "100-continue"}) :chunked]))
+
+  (is (received-response
+       "HTTP/1.1 417 Expectation Failed\r\n"
+       "content-length: 0\r\n\r\n"))
+
+  (is (not-receiving-messages)))
+
 ;; TODO: Missing tests
-;; * A 100-continue test that gives the final status directly
 ;; * Sending multiple 100 responses in a row
+;; * What happens if the client sends the body and expects-100
+;; * What happens if the client sends part of the body & expects-100
+;; * What happens if the client sends a 100-continue but no content-length
+;;   or transfer-encoding headers
 ;; * Handling various 100 Continue edge cases
