@@ -33,7 +33,8 @@
       (is (received-response
            "HTTP/1.1 200 OK\r\n"
            "content-type: text/plain\r\n"
-           "content-length: 5\r\n\r\n"
+           "content-length: 5\r\n"
+           "connection: close\r\n\r\n"
            "Hello")))))
 
 (defcoretest simple-http-1-0-request
@@ -58,7 +59,10 @@
   (is (not-receiving-messages)))
 
 (defcoretest keepalive-requests
-  :hello-world
+  (deftrackedapp [upstream request]
+    (upstream :response [200 {"content-length" "5"} "Hello"])
+    (fn [_ _]))
+
   (http-write "GET / HTTP/1.1\r\n\r\n"
               "GET /foo HTTP/1.1\r\n\r\n"
               "POST /bar HTTP/1.1\r\n"
@@ -70,15 +74,12 @@
                                  "connection" "close"}) nil]))
   (is (received-response
        "HTTP/1.1 200 OK\r\n"
-       "content-type: text/plain\r\n"
        "content-length: 5\r\n\r\n"
        "Hello"
        "HTTP/1.1 200 OK\r\n"
-       "content-type: text/plain\r\n"
        "content-length: 5\r\n\r\n"
        "Hello"
        "HTTP/1.1 200 OK\r\n"
-       "content-type: text/plain\r\n"
        "content-length: 5\r\n\r\n"
        "Hello")))
 
@@ -136,7 +137,9 @@
        "5\r\nHello\r\n0\r\n\r\n")))
 
 (defcoretest chunked-requests-keep-alive
-  :hello-world
+  (deftrackedapp [upstream resp]
+    (upstream :response [200 {"content-length" "5"} "Hello"])
+    (fn [_ _]))
   (http-write "POST / HTTP/1.1\r\n"
               "Transfer-Encoding: chunked\r\n\r\n"
               "5\r\nHello\r\n6\r\n World\r\n0\r\n\r\n")

@@ -34,10 +34,11 @@
 (defn hello-world
   [resp req]
   (resp :response [200
-                   {"content-type" "text/plain"
-                    "content-length" "5"}
+                   {"content-type"   "text/plain"
+                    "content-length" "5"
+                    "connection"     "close"}
                    "Hello"])
-  (fn [_ _] true))
+  (fn [_ _]))
 
 (def slow-hello-world
   (fn [resp req]
