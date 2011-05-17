@@ -151,13 +151,7 @@
        :request [(includes-hdrs {"connection" "close"}) nil])))
 
 (defcoretest aborting-a-request
-  [ch]
-  (fn [resp request]
-    (enqueue ch [:request request])
-    (fn [evt val]
-      (enqueue ch [evt val])
-      (when (= :done evt)
-        (resp [200 {"connection" "close"} "Hello"]))))
+  (tracking-middleware hello-world-app)
 
   (http-write "POST / HTTP/1.1\r\n"
               "Content-Length: 10000\r\n\r\n"
@@ -170,9 +164,7 @@
        :abort   nil)))
 
 (defcoretest applications-raising-errors
-  [ch]
-  (fn [resp request]
-    (enqueue ch [:request request])
+  (deftrackedapp [upstream request]
     (throw (Exception. "TROLL APP IS TROLLIN'")))
 
   (http-write "GET / HTTP/1.1\r\n\r\n")
@@ -181,7 +173,6 @@
   (is (= 0 (count (netty-exception-events)))))
 
 (defcoretest upstream-raising-error-during-chunked-request
-  [ch]
   (fn [upstream request]
     (throw (Exception. "TROLL APP IS TROLLIN'")))
 
@@ -212,18 +203,15 @@
   (http-write (apply str (for [x (range 10000)] "a"))))
 
 (defcoretest telling-the-application-to-chill-out
-  [ch]
-  (fn [resp request]
-    (enqueue ch [:request request])
-    (resp :response [200 {"transfer-encoding" "chunked"} :chunked])
+  (deftrackedapp [upstream request]
+    (upstream :response [200 {"transfer-encoding" "chunked"} :chunked])
     ;; The latch will let us pause
     (let [latch (atom true)]
-      (bg-while @latch (resp :body "HAMMER TIME!"))
+      (bg-while @latch (upstream :body "HAMMER TIME!"))
       (fn [evt val]
-        (enqueue ch [evt val])
         (when (= :pause evt) (toggle! latch))
         (when (= :resume evt)
-          (resp :done nil)))))
+          (upstream :done nil)))))
 
   ;; Now the tests
   (http-write "GET / HTTP/1.1\r\n"
@@ -235,14 +223,11 @@
        :resume  nil)))
 
 (defcoretest raising-error-during-pause-event
-  [ch]
-  (fn [resp request]
-    (enqueue ch [:request request])
+  (deftrackedapp [upstream request]
     (let [latch (atom true)]
-      (resp :response [200 {"transfer-encoding" "chunked"} :chunked])
-      (bg-while @latch (resp :body "HAMMER TIME!"))
+      (upstream :response [200 {"transfer-encoding" "chunked"} :chunked])
+      (bg-while @latch (upstream :body "HAMMER TIME!"))
       (fn [evt val]
-        (enqueue ch [evt val])
         (when (= :pause evt)
           (swap! latch (fn [_] false))
           (throw (Exception. "fail"))))))
@@ -260,14 +245,11 @@
   (is (not-receiving-messages)))
 
 (defcoretest raising-error-during-resume-event
-  [ch]
-  (fn [resp request]
-    (enqueue ch [:request request])
+  (deftrackedapp [upstream request]
     (let [latch (atom true)]
-      (resp :response [200 {"transfer-encoding" "chunked"} :chunked])
-      (bg-while @latch (resp :body "HAMMER TIME!"))
+      (upstream :response [200 {"transfer-encoding" "chunked"} :chunked])
+      (bg-while @latch (upstream :body "HAMMER TIME!"))
       (fn [evt val]
-        (enqueue ch [evt val])
         (when (= :pause evt) (toggle! latch))
         (when (= :resume evt)
           (throw (Exception. "fail"))))))
@@ -286,18 +268,16 @@
   (is (not-receiving-messages)))
 
 (defcoretest telling-the-server-to-chill-out
-  [ch ch2]
-  (fn [resp request]
+  [_ ch2]
+  (deftrackedapp [upstream request]
     (receive-all
      ch2
-     (fn [_] (resp :resume nil)))
-    (enqueue ch [:request request])
-    (resp :pause nil)
+     (fn [_] (upstream :resume nil)))
+    (upstream :pause nil)
     (fn [evt val]
-      (enqueue ch [evt val])
       (when (= :done evt)
-        (resp :response [200 {"content-type" "text/plain"
-                              "content-length" "5"} "Hello"]))))
+        (upstream :response [200 {"content-type" "text/plain"
+                                  "content-length" "5"} "Hello"]))))
 
   ;; Now some tests
   (http-write "POST / HTTP/1.1\r\n"
@@ -317,14 +297,11 @@
        :done nil)))
 
 (defcoretest handling-100-continue-requests-with-100-response
-  [ch]
-  (fn [upstream request]
-    (enqueue ch [:request request])
+  (deftrackedapp [upstream request]
     (upstream :response [100])
     (fn [evt val]
-      (enqueue ch [evt val])
       (when (= :done evt)
-        (upstream :response [200 {"content-length" "5"} "Hello"]))))
+        (upstream :response [200 {"content-ength" "5"} "Hello"]))))
 
   (http-write "POST / HTTP/1.1\r\n"
               "Content-Length: 5\r\n"
@@ -344,11 +321,9 @@
        :done nil)))
 
 (defcoretest handling-100-continue-requests-by-responding-directly
-  [ch]
-  (fn [upstream request]
-    (enqueue ch [:request request])
+  (deftrackedapp [upstream request]
     (upstream :response [417 {"content-length" "0"}])
-    (fn [evt val] (enqueue ch [evt val])))
+    (fn [_ _]))
 
   (http-write "POST / HTTP/1.1\r\n"
               "Content-Length: 5\r\n"
@@ -391,11 +366,8 @@
        "connection: close\r\n\r\n")))
 
 (defcoretest client-sends-body-and-expects-100
-  [ch]
-  (fn [upstream request]
-    (enqueue ch [:request request])
+  (deftrackedapp [upstream request]
     (fn [evt val]
-      (enqueue ch [evt val])
       (when (= :done evt)
         (upstream :response [204 {"connection" "close"}]))))
 
