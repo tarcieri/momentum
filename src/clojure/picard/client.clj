@@ -16,9 +16,7 @@
     HttpRequestEncoder
     HttpResponse
     HttpResponseDecoder
-    HttpVersion]
-   [java.net
-    ConnectException]))
+    HttpVersion]))
 
 (defrecord State
     [pool
@@ -33,20 +31,9 @@
      last-write
      aborted?])
 
-(defn- chunked?
-  [[_ _ body]]
-  (= body :chunked))
-
 (defn- keepalive?
   [[hdrs]]
   (not= "close" (hdrs "connection")))
-
-(defn- addr-from-req
-  [[{host "host"}]]
-  (let [[host port] (-> host str/trim (str/split #":" 2))]
-    (if (or (nil? port) (= "" port))
-     [host nil]
-     [host (try (Integer. port) (catch NumberFormatException _))])))
 
 (defn- request-complete
   [_ _ _ _]
@@ -335,37 +322,3 @@
        ;;       writes to it will fail.
        (initialize-request state addr request)
        upstream-fn)))
-
-(defn mk-proxy
-  ([] (mk-proxy GLOBAL-POOL))
-  ([pool]
-     (fn [downstream req]
-       (let [state (atom nil)]
-        (with
-         (request
-          pool (addr-from-req req) req
-          (fn [upstream evt val]
-            ;; Not able to connect to the end server
-            (when (and (= :abort evt)
-                       (instance? ConnectException val)
-                       (not= :connected @state))
-              (downstream :response
-                          [502 {"content-length" "20"}
-                           "<h2>Bad Gateway</h2>"]))
-
-            ;; Otherwise, handle stuff
-            (if (= :connected evt)
-              (locking req
-                (let [current-state @state]
-                  (when (= :pending current-state)
-                    (downstream :resume nil))
-                  (hard-set! state :connected)))
-              (downstream evt val))))
-         :as upstream
-         (when (chunked? req)
-           (locking req
-             (let [current-state @state]
-               (when (not= :connected current-state)
-                 (hard-set! state :pending)
-                 (downstream :pause nil)))))
-         (fn [evt val] (upstream evt val)))))))
