@@ -437,5 +437,41 @@
 
   (is (not-receiving-messages)))
 
-;; TODO: Missing tests
-;; * Handling various 100 Continue edge cases
+(defcoretest sending-100-continue-to-1-0-client
+  [ch]
+  (deftrackedapp [upstream request]
+    (try (upstream :response [100])
+         (catch Exception err
+           (enqueue ch [:error err])))
+    (upstream :response [204 {} nil])
+    (fn [_ _]))
+
+  (http-write "POST / HTTP/1.0\r\n"
+              "Content-Length: 5\r\n"
+              "Expect: 100-continue\r\n\r\n"
+              "Hello")
+
+  (is (next-msgs
+       :request [(includes-hdrs {:http-version [1 0]
+                                 "expect" "100-continue"}) "Hello"]
+       :error #(instance? Exception %)))
+
+  (is (not-receiving-messages)))
+
+(defcoretest sending-100-continue-to-1-0-client-2
+  (deftrackedapp [upstream request]
+    (upstream :response [204 {} nil])
+    (fn [_ _]))
+
+  (http-write "POST / HTTP/1.0\r\n"
+              "Transfer-encoding: chunked\r\n"
+              "Expect: 100-continue\r\n\r\n")
+
+  (is (next-msgs :request [:dont-care :chunked]))
+
+  (http-write "5\r\nHello\r\n0\r\n\r\n")
+
+  (is (next-msgs :body "Hello"
+                 :done nil))
+
+  (is (not-receiving-messages)))
