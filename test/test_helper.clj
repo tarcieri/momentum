@@ -193,7 +193,8 @@
    (every? #(apply match-values %) (map vector val val*))
 
    :else
-   (= val (normalize-body val*))))
+   (or (= val (normalize-body val*))
+       (and (fn? val) (val val*)))))
 
 (defn response-is
   [& strs]

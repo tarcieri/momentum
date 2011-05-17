@@ -364,8 +364,33 @@
 
   (is (not-receiving-messages)))
 
+(defcoretest sending-multiple-100-continue-responses
+  [ch]
+  (fn [upstream request]
+    (upstream :response [100])
+    (try (upstream :response [100])
+         (catch Exception err (enqueue ch [:error err])))
+    (fn [evt body]
+      (when (= :done evt)
+        (upstream :response [204 {"connection" "close"}]))))
+
+  (http-write "POST / HTTP/1.1\r\n"
+              "Content-Length: 5\r\n"
+              "Expect: 100-continue\r\n\r\n")
+
+  (is (next-msgs
+       :error #(instance? Exception %)))
+
+  (is (receiving
+       "HTTP/1.1 100 Continue\r\n\r\n"))
+
+  (http-write "Hello")
+
+  (is (received-response
+       "HTTP/1.1 204 No Content\r\n"
+       "connection: close\r\n\r\n")))
+
 ;; TODO: Missing tests
-;; * Sending multiple 100 responses in a row
 ;; * What happens if the client sends the body and expects-100
 ;; * What happens if the client sends part of the body & expects-100
 ;; * What happens if the client sends a 100-continue but no content-length
