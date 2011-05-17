@@ -15,7 +15,7 @@
     TimeUnit]))
 
 (defcoretest simple-requests
-  :call-home
+  :hello-world
   (doseq [method ["GET" "POST" "PUT" "DELETE" "HEAD"]]
     (with-fresh-conn
       (http-write method " / HTTP/1.1\r\n"
@@ -37,7 +37,7 @@
            "Hello")))))
 
 (defcoretest simple-http-1-0-request
-  :call-home
+  :hello-world
   (http-write "GET / HTTP/1.0\r\n\r\n")
 
   (is (next-msgs
@@ -48,8 +48,7 @@
                   :http-version   [1 0]} nil])))
 
 (defcoretest simple-request-with-body
-  ;; Simple request with a body
-  :call-home
+  :hello-world
   (http-write "POST / HTTP/1.1\r\n"
               "Connection: close\r\n"
               "Content-Length: 5\r\n\r\n"
@@ -59,7 +58,7 @@
   (is (not-receiving-messages)))
 
 (defcoretest keepalive-requests
-  :call-home
+  :hello-world
   (http-write "GET / HTTP/1.1\r\n\r\n"
               "GET /foo HTTP/1.1\r\n\r\n"
               "POST /bar HTTP/1.1\r\n"
@@ -111,7 +110,7 @@
        "Hello world")))
 
 (defcoretest single-chunked-request
-  :call-home
+  :hello-world
   (http-write "POST / HTTP/1.1\r\n"
               "Connection: close\r\n"
               "Transfer-Encoding: chunked\r\n\r\n"
@@ -137,7 +136,7 @@
        "5\r\nHello\r\n0\r\n\r\n")))
 
 (defcoretest chunked-requests-keep-alive
-  :call-home
+  :hello-world
   (http-write "POST / HTTP/1.1\r\n"
               "Transfer-Encoding: chunked\r\n\r\n"
               "5\r\nHello\r\n6\r\n World\r\n0\r\n\r\n")
@@ -162,7 +161,7 @@
        :request [(includes-hdrs {"connection" "close"}) nil])))
 
 (defcoretest aborting-a-request
-  (tracking-middleware hello-world-app)
+  :hello-world
 
   (http-write "POST / HTTP/1.1\r\n"
               "Content-Length: 10000\r\n\r\n"
@@ -199,7 +198,7 @@
   (is (not-receiving-messages)))
 
 (defcoretest request-callback-happens-before-body-is-recieved
-  :call-home
+  :hello-world
   (http-write "POST / HTTP/1.1\r\n"
               "Connection: close\r\n"
               "Content-Length: 10000\r\n\r\n")

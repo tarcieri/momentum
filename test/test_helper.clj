@@ -31,20 +31,12 @@
   [args & body]
   `(tracking-middleware (fn ~args ~@body)))
 
-(defn call-home-app
-  [ch]
-  (fn [resp req]
-    (enqueue ch [:request req])
-    (resp :response [200
-                     {"content-type" "text/plain"
-                      "content-length" "5"}
-                     "Hello"])
-    (fn [evt val]
-      (enqueue ch [evt val]))))
-
-(defn hello-world-app
+(defn hello-world
   [resp req]
-  (resp :response [200 {"content-length" "5"} "Hello"])
+  (resp :response [200
+                   {"content-type" "text/plain"
+                    "content-length" "5"}
+                   "Hello"])
   (fn [_ _] true))
 
 (def slow-hello-world
@@ -53,7 +45,10 @@
      (agent nil)
      (fn [_]
        (Thread/sleep 1000)
-       (resp :response [200 {"content-length" "5"} "Hello"])))
+       (resp :response [200
+                        {"content-type" "text/plain"
+                         "content-length" "5"}
+                        "Hello"])))
     (fn [_ _])))
 
 ;; ### HELPER FUNCTIONS
@@ -134,12 +129,10 @@
          (let [~bindings [ch1 ch2 ch3]]
            (running-app*
             ~(cond
-              (= app :call-home)
-              `(call-home-app ch1)
               (= app :hello-world)
-              `hello-world-app
+              `(tracking-middleware hello-world)
               (= app :slow-hello-world)
-              `slow-hello-world
+              `(tracking-middleware slow-hello-world)
               :else
               app)
             (fn [] ~@body)))))))
