@@ -20,7 +20,9 @@
     HttpResponse
     HttpResponseEncoder
     HttpResponseStatus
-    HttpVersion]))
+    HttpVersion]
+   [java.io
+    IOException]))
 
 (defrecord State
     [app
@@ -214,15 +216,11 @@
        (assoc current-state
          :expects-100? (HttpHeaders/is100ContinueExpected msg)
          :next-up-fn
-         (cond
-          (HttpHeaders/is100ContinueExpected msg)
-          awaiting-100-continue
-
-          (.isChunked msg)
-          stream-request-body
-
-          :else
-          waiting-for-response)
+         (if (.isChunked msg)
+           (if (HttpHeaders/is100ContinueExpected msg)
+             awaiting-100-continue
+             stream-request-body)
+           waiting-for-response)
 
          :keepalive?
          (and (.keepalive? current-state)
@@ -249,6 +247,10 @@
 (defn- handle-ch-disconnected
   [state current-state]
   (when-let [upstream (.upstream current-state)]
+    ;; Sometimes we call this function when we received errors
+    ;; from netty that we don't care to pass to the application.
+    ;; So, here we ensure that the channel actually gets closed.
+    (.close (.ch current-state))
     (upstream :abort nil)
     (swap! state #(assoc % :next-dn-fn aborted-req))))
 
@@ -284,7 +286,9 @@
            (handle-ch-disconnected state current-state))
 
           [err (netty/exception-event evt)]
-          (handle-err state err current-state)))))))
+          (if (instance? IOException err)
+            (handle-ch-disconnected state current-state)
+            (handle-err state err current-state))))))))
 
 (defn- create-pipeline
   [app]

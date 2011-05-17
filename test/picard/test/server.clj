@@ -407,6 +407,25 @@
        "HTTP/1.1 204 No Content\r\n"
        "connection: close\r\n\r\n")))
 
+(defcoretest no-request-body-and-expects-100
+  (deftrackedapp [upstream request]
+    (upstream :response [100])
+    (upstream :response [204 {"connection" "close"}])
+    (fn [evt val]))
+
+  (http-write "POST / HTTP/1.1\r\n"
+              "Expect: 100-continue\r\n\r\n")
+
+  (is (next-msgs
+       :request [(includes-hdrs {"expect" "100-continue"}) nil]))
+
+  (is (received-response
+       "HTTP/1.1 100 Continue\r\n\r\n"
+       "HTTP/1.1 204 No Content\r\n"
+       "connection: close\r\n\r\n"))
+
+  (is (not-receiving-messages)))
+
 ;; TODO: Missing tests
 ;; * What happens if the client sends a 100-continue but no content-length
 ;;   or transfer-encoding headers
