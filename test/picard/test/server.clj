@@ -19,14 +19,14 @@
   (doseq [method ["GET" "POST" "PUT" "DELETE" "HEAD"]]
     (with-fresh-conn
       (http-write method " / HTTP/1.1\r\n"
-                  "Connection: close\r\n"
-                  "\r\n")
+                  "Connection: close\r\n\r\n")
 
       (is (next-msgs
            :request [{:server-name    picard/SERVER-NAME
                       :script-name    ""
                       :path-info      "/"
                       :request-method method
+                      :http-version   [1 1]
                       "connection"    "close"} nil]))
 
       (is (not-receiving-messages))
@@ -35,6 +35,17 @@
            "content-type: text/plain\r\n"
            "content-length: 5\r\n\r\n"
            "Hello")))))
+
+(defcoretest simple-http-1-0-request
+  :call-home
+  (http-write "GET / HTTP/1.0\r\n\r\n")
+
+  (is (next-msgs
+       :request [{:server-name    picard/SERVER-NAME
+                  :script-name    ""
+                  :path-info      "/"
+                  :request-method "GET"
+                  :http-version   [1 0]}])))
 
 (defcoretest simple-request-with-body
   ;; Simple request with a body

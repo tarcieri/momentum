@@ -79,10 +79,13 @@
    (string->channel-buffer thing)))
 
 (defn netty-msg->hdrs
-  [^HttpMessage req]
-  (into {} (map
-            (fn [[k v]] [(str/lower-case k) v])
-            (.getHeaders req))))
+  [^HttpMessage msg]
+  (let [version ^HttpVersion (.getProtocolVersion msg)]
+    (-> {}
+        (into (map (fn [[k v]] [(str/lower-case k) v])
+                   (.getHeaders msg)))
+        (assoc :http-version [(.getMajorVersion version)
+                              (.getMinorVersion version)]))))
 
 (defn netty-req->hdrs
   [^HttpRequest req]
