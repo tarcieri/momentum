@@ -182,7 +182,6 @@
 
   (http-write "GET / HTTP/1.1\r\n\r\n")
 
-  (is (not-receiving-messages))
   (is (= 0 (count (netty-exception-events)))))
 
 (defcoretest upstream-raising-error-during-chunked-request
@@ -286,7 +285,8 @@
   (deftrackedapp [upstream request]
     (receive-all
      ch2
-     (fn [_] (upstream :resume nil)))
+     (fn [_]
+       (upstream :resume nil)))
     (upstream :pause nil)
     (fn [evt val]
       (when (= :done evt)
@@ -297,17 +297,22 @@
   (http-write "POST / HTTP/1.1\r\n"
               "Transfer-Encoding: chunked\r\n"
               "Connection: close\r\n\r\n"
-              "5\r\nHello\r\n5\r\nWorld\r\n0\r\n\r\n")
+              "5\r\nHello\r\n5\r\nWorld\r\n")
 
-  (is (next-msgs
-       :request :dont-care))
+  (is (next-msgs :request :dont-care))
+  (is (not-receiving-messages))
+
+  (http-write "5\r\nHello\r\n5\r\nWorld\r\n"
+              "3\r\nWTF\r\n2\r\nis\r\n5\r\ngoing\r\n2\r\non\r\n"
+              "0\r\n\r\n")
+
   (is (not-receiving-messages))
 
   (enqueue ch2 :resume)
 
   (is (next-msgs
-       :body "Hello"
-       :body "World"
+       :body "Hello" :body "World" :body "Hello" :body "World"
+       :body "WTF" :body "is" :body "going" :body "on"
        :done nil)))
 
 (defcoretest handling-100-continue-requests-with-100-response
@@ -315,7 +320,7 @@
     (upstream :response [100])
     (fn [evt val]
       (when (= :done evt)
-        (upstream :response [200 {"content-ength" "5"} "Hello"]))))
+        (upstream :response [200 {"content-length" "5"} "Hello"]))))
 
   (http-write "POST / HTTP/1.1\r\n"
               "Content-Length: 5\r\n"

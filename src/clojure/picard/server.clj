@@ -295,6 +295,7 @@
   (netty/create-pipeline
    :decoder (HttpRequestDecoder.)
    :encoder (HttpResponseEncoder.)
+   :pauser  (netty/message-pauser)
    :handler (netty-bridge app {})))
 
 (def stop netty/shutdown)

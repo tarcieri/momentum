@@ -180,9 +180,22 @@
   ([path hdrs]
      (http-request "GET" path hdrs)))
 
-(defn normalize-body
+(defn normalize
   [val]
-  (if (instance? ChannelBuffer val) (.toString val "UTF-8") val))
+  (try
+    (cond
+     (vector? val)
+     (map normalize val)
+
+     (map? val)
+     (into {} (map (comp vec normalize vec) val))
+
+     (instance? ChannelBuffer val)
+     (.toString val "UTF-8")
+
+     :else
+     val)
+    (catch Exception e (.printStackTrace e))))
 
 (defn next-msg
   ([] (next-msg ch1))
@@ -201,7 +214,7 @@
    (every? #(apply match-values %) (map vector val val*))
 
    :else
-   (or (= val (normalize-body val*))
+   (or (= val val*)
        (and (fn? val) (val val*)))))
 
 (defn response-is
@@ -236,7 +249,7 @@
   [ch msg stmts]
   `(doseq [expected# (partition 2 [~@stmts])]
      (try
-       (let [actual# (next-msg ~ch)]
+       (let [actual# (normalize (next-msg ~ch))]
          (if (match-values (vec expected#) actual#)
            (do-report {:type :pass :message ~msg
                        :expected expected# :actual actual#})
@@ -246,6 +259,16 @@
          (do-report {:type :fail :message ~msg
                      :expected expected# :actual "<TIMEOUT>"})))))
 
+(defn- no-msgs-for
+  [ch msg]
+  `(do
+     (Thread/sleep 50)
+     (if (= 0 (count ~ch))
+       (do-report {:type :pass :message ~msg
+                   :expected nil :actual nil})
+       (do-report {:type :fail :message ~msg
+                   :expected nil :actual (next-msg ~ch)}))))
+
 (defmethod assert-expr 'next-msgs [msg form]
   (let [[_ & stmts] form]
     (next-msgs-for `ch1 msg stmts)))
@@ -254,14 +277,12 @@
   (let [[_ ch & stmts] form]
     (next-msgs-for ch msg stmts)))
 
+(defmethod assert-expr 'no-msgs-for [msg form]
+  (let [[_ ch] form]
+    (no-msgs-for ch msg)))
+
 (defmethod assert-expr 'not-receiving-messages [msg form]
-  `(do
-     (Thread/sleep 50)
-     (if (= (count ch1))
-       (do-report {:type :pass :message ~msg
-                   :expected nil :actual nil})
-       (do-report {:type :fail :message ~msg
-                   :expected nil :actual (next-msg)}))))
+  (no-msgs-for `ch1 msg))
 
 (defmethod assert-expr 'receiving [msg form]
   (let [expected (rest form)]

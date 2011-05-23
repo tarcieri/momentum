@@ -230,6 +230,50 @@
      "connection"    "close"}]
    (fn [_ _ _] true)))
 
+(defcoretest handling-100-continue-requests-and-responses
+  [ch1 ch2]
+  (deftrackedapp [upstream request]
+    (upstream :response [100])
+    (fn [evt val]
+      (when (= :done evt)
+        (upstream
+         :response
+         [200 {"content-length" "5" "connection" "close"} "Hello"]))))
+
+  (let [upstream
+        (client/request
+         ["Localhost" 4040]
+         [{:path-info       "/"
+           :request-method  "POST"
+           "content-length" "5"
+           "expect"         "100-continue"} :chunked]
+         (fn [upstream evt val]
+           (enqueue ch2 [evt val])))]
+
+    (is (next-msgs-for
+         ch1
+         :request [(includes-hdrs {"expect" "100-continue"}) :chunked]))
+    (is (next-msgs-for
+         ch2
+         :connected nil
+         :response  [100 {:http-version [1 1]} ""]))
+
+    (is (no-msgs-for ch1))
+    (is (no-msgs-for ch2))
+
+    (upstream :body "Hello")
+    (upstream :done nil)
+
+    (is (next-msgs-for
+         ch1
+         :body "Hello"
+         :done nil))
+    (is (next-msgs-for
+         ch2
+         :response [200 {:http-version    [1 1]
+                         "content-length" "5"
+                         "connection"     "close"} "Hello"]))))
+
 (defcoretest connecting-to-an-invalid-server
   [_ ch]
   :hello-world

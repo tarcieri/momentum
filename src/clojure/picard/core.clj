@@ -1,7 +1,8 @@
 (ns picard.core
   (:require
    [picard.server :as srv]
-   [picard.client :as clt])
+   [picard.client :as clt]
+   [picard.proxy  :as prx])
   (:gen-class))
 
 ;; (my-app :headers {})
@@ -33,5 +34,5 @@
 (defn -main [& args]
   (println "Welcome to picard!")
   ;; (srv/start my-app)
-  (srv/start (clt/mk-proxy))
+  (srv/start (prx/mk-proxy))
   (deref (promise)))

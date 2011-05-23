@@ -29,6 +29,8 @@
     NioServerSocketChannelFactory]
    [java.net
     InetSocketAddress]
+   [java.util
+    LinkedList]
    [java.util.concurrent
     Executors]))
 
@@ -135,6 +137,49 @@
     (handleUpstream [_ ctx evt]
       (handler (.getChannel evt) evt)
       (.sendUpstream ctx evt))))
+
+(defn- purge-evt-buffer
+  [list ctx evt ch]
+  (loop []
+    (when (.isReadable ch)
+      (when-let [evt (.poll list)]
+        (.sendUpstream ctx evt)
+        (recur)))))
+
+(defn message-pauser
+  "A handler that will capture the messages when the channel should not
+   be readable. When the channel is not readable, new data is not accepted
+   off of the socket. However, there might be other 'miss behaving' handlers
+   that will send message events upstream even if the channel is not marked
+   as readable. This is most likely the correct thing to do, however, not for
+   me."
+  []
+  (let [list (LinkedList.)]
+    (reify ChannelUpstreamHandler
+      (handleUpstream [_ ctx evt]
+        ;; Events can get fired on multiple threads.
+        ;; Good times for all! There is probably a
+        ;; better way to handle it than locking this
+        ;; handler, but throwing a lock here doesn't
+        ;; bother me much.
+        (locking list
+          (try
+            (let [ch ^Channel (.getChannel evt)]
+              (cond
+               (instance? MessageEvent evt)
+               (do (purge-evt-buffer list ctx evt ch)
+                   (if (.isReadable ch)
+                     (.sendUpstream ctx evt)
+                     (.add list evt)))
+
+               (and (instance? ChannelStateEvent evt)
+                    (= ChannelState/INTEREST_OPS (.getState ^ChannelState evt)))
+               (do (purge-evt-buffer list ctx evt ch)
+                   (.sendUpstream ctx evt))
+               :else
+               (.sendUpstream ctx evt)))
+            (catch Exception err
+              (.printStackTrace err))))))))
 
 (defn- mk-pipeline-factory
   [^ChannelGroup channel-group pipeline-fn]

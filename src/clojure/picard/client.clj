@@ -16,6 +16,7 @@
     HttpRequestEncoder
     HttpResponse
     HttpResponseDecoder
+    HttpResponseStatus
     HttpVersion]))
 
 (defrecord State
@@ -24,6 +25,7 @@
      keepalive?
      chunked?
      chunk-trailer?
+     expects-100?
      next-up-fn
      next-dn-fn
      upstream
@@ -34,6 +36,11 @@
 (defn- keepalive?
   [[hdrs]]
   (not= "close" (hdrs "connection")))
+
+(defn- is-100-continue?
+  [^HttpResponse resp]
+  (= HttpResponseStatus/CONTINUE
+     (.getStatus resp)))
 
 (defn- request-complete
   [_ _ _ _]
@@ -109,15 +116,22 @@
       (downstream-fn upstream-fn :body (.getContent msg)))))
 
 (defn- initial-response
-  [state ^HttpResponse msg args]
-  (let [downstream-fn (.downstream args)
-        upstream-fn   (.upstream args)]
+  [state ^HttpResponse msg current-state]
+  ;; Check to see that the response isn't too crazy
+  (when (and (is-100-continue? msg) (not (.expects-100? current-state)))
+    (throw (Exception. "Not expecting a 100 Continue response.")))
+
+  (let [downstream-fn (.downstream current-state)
+        upstream-fn   (.upstream current-state)]
     (swap-then!
      state
      (fn [current-state]
        (let [keepalive? (and (.keepalive? current-state)
                              (HttpHeaders/isKeepAlive msg))]
          (cond
+          (is-100-continue? msg)
+          (assoc current-state :expects-100? false)
+
           ;; If the response is chunked, then we need to
           ;; stream the body through
           (.isChunked msg)
@@ -254,6 +268,8 @@
                     (= :chunked body)  ;; Is the request chunked?
                     (= (hdrs "transfer-encoding")
                        "chunked")
+                    (= (hdrs "expect") ;; Does the request expect 100 continue?
+                       "100-continue")
                     connection-pending ;; Next upstream event handler
                     initial-response   ;; Next downstream event handler
                     upstream-fn        ;; Upstream handler (external interface)
@@ -293,8 +309,8 @@
               ;; Otherwise, do stuff with it
               (let [write-future (.write ch-or-err (req->netty-req request))]
                 ;; Save off the write future
-                (swap! state (fn [current-state]
-                               (assoc current-state :last-write write-future)))
+                swap! state (fn [current-state]
+                              (assoc current-state :last-write write-future))
                 ;; Write the request to the connection
                 (netty/on-complete
                  write-future
