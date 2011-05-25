@@ -33,6 +33,6 @@
 ;;     (app
 ;;      #(enqueue ch1 [%1 %2])
 ;;      [{:path-info "/" :http-version [1 1] :request-method "GET" :script-info "/"}])
- 
+
 ;;     (is (= (wait-for-message ch1 10)
 ;;            [:response [200 {"content-length" "5"} "Hello"]]))))

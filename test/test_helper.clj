@@ -20,37 +20,37 @@
 (defn tracking-middleware
   [app]
   (let [ch ch1]
-    (fn [upstream request]
-      (enqueue ch [:request request])
-      (let [downstream (app upstream request)]
+    (fn [downstream]
+      (let [upstream (app downstream)]
         (fn [evt val]
           (enqueue ch [evt val])
-          (downstream evt val))))))
+          (upstream evt val))))))
 
 (defmacro deftrackedapp
   [args & body]
   `(tracking-middleware (fn ~args ~@body)))
 
 (defn hello-world
-  [resp req]
-  (resp :response [200
-                   {"content-type"   "text/plain"
-                    "content-length" "5"
-                    "connection"     "close"}
-                   "Hello"])
-  (fn [_ _]))
+  [downstream]
+  (fn [evt val]
+    (when (= :request evt)
+      (downstream
+       :response
+       [200 {"content-type"   "text/plain"
+             "content-length" "5"
+             "connection"     "close"} "Hello"]))))
 
 (def slow-hello-world
-  (fn [resp req]
-    (send-off
-     (agent nil)
-     (fn [_]
-       (Thread/sleep 1000)
-       (resp :response [200
-                        {"content-type" "text/plain"
-                         "content-length" "5"}
-                        "Hello"])))
-    (fn [_ _])))
+  (fn [downstream]
+    (fn [evt val]
+      (when (= :request evt)
+        (send-off
+         (agent nil)
+         (fn [_]
+           (Thread/sleep 1000)
+           (downstream :response
+                       [200 {"content-type"   "text/plain"
+                             "content-length" "5"} "Hello"])))))))
 
 ;; ### HELPER FUNCTIONS
 (defmacro bg-while
@@ -153,7 +153,7 @@
   ([] (http-read in))
   ([in]
      (lazy-seq
-      (let [byte (timeout-after 500 (.read in))]
+      (let [byte (timeout-after 5000 (.read in))]
         (if (<= 0 byte)
           (cons byte (http-read in))
           [])))))
@@ -199,7 +199,7 @@
 
 (defn next-msg
   ([] (next-msg ch1))
-  ([ch] (wait-for-message ch 10000)))
+  ([ch] (wait-for-message ch 20000)))
 
 (defn match-values
   [val val*]

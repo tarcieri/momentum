@@ -59,9 +59,10 @@
   (is (not-receiving-messages)))
 
 (defcoretest keepalive-requests
-  (deftrackedapp [upstream request]
-    (upstream :response [200 {"content-length" "5"} "Hello"])
-    (fn [_ _]))
+  (deftrackedapp [upstream]
+    (fn [evt val]
+      (when (= :request evt)
+        (upstream :response [200 {"content-length" "5"} "Hello"]))))
 
   (http-write "GET / HTTP/1.1\r\n\r\n"
               "GET /foo HTTP/1.1\r\n\r\n"
@@ -84,9 +85,10 @@
        "Hello")))
 
 (defcoretest returning-connection-close-terminates-connection
-  (fn [resp request]
-    (resp :response [200 {"connection" "close"} "Hello"])
-    (fn [evt val] true))
+  (fn [downstream]
+    (fn [evt val]
+      (when (= :request evt)
+        (downstream :response [200 {"connection" "close"} "Hello"]))))
 
   (http-write "GET / HTTP/1.1\r\n\r\n")
 
@@ -96,12 +98,13 @@
        "Hello")))
 
 (defcoretest returning-connection-close-and-chunks
-  (fn [resp request]
-    (resp :response [200 {"connection" "close"} :chunked])
-    (resp :body "Hello ")
-    (resp :body "world")
-    (resp :done nil)
-    (fn [evt val] true))
+  (fn [downstream]
+    (fn [evt val]
+      (when (= :request evt)
+        (downstream :response [200 {"connection" "close"} :chunked])
+        (downstream :body "Hello ")
+        (downstream :body "world")
+        (downstream :done nil))))
 
   (http-write "GET / HTTP/1.1\r\n\r\n")
 
@@ -122,11 +125,12 @@
        :done    nil)))
 
 (defcoretest single-chunked-response
-  (fn [resp request]
-    (resp :response [200 {"transfer-encoding" "chunked"} :chunked])
-    (resp :body "Hello")
-    (resp :done nil)
-    (fn [evt val] true))
+  (fn [downstream]
+    (fn [evt val]
+      (when (= :request evt)
+        (downstream :response [200 {"transfer-encoding" "chunked"} :chunked])
+        (downstream :body "Hello")
+        (downstream :done nil))))
 
   (http-write "GET / HTTP/1.1\r\n"
               "Connection: close\r\n\r\n")
@@ -137,9 +141,11 @@
        "5\r\nHello\r\n0\r\n\r\n")))
 
 (defcoretest chunked-requests-keep-alive
-  (deftrackedapp [upstream resp]
-    (upstream :response [200 {"content-length" "5"} "Hello"])
-    (fn [_ _]))
+  (deftrackedapp [upstream]
+    (fn [evt val]
+      (when (= :request evt)
+        (upstream :response [200 {"content-length" "5"} "Hello"]))))
+
   (http-write "POST / HTTP/1.1\r\n"
               "Transfer-Encoding: chunked\r\n\r\n"
               "5\r\nHello\r\n6\r\n World\r\n0\r\n\r\n")
@@ -177,15 +183,24 @@
        :abort   nil)))
 
 (defcoretest applications-raising-errors
-  (deftrackedapp [upstream request]
+  (deftrackedapp [downstream]
     (throw (Exception. "TROLL APP IS TROLLIN'")))
 
   (http-write "GET / HTTP/1.1\r\n\r\n")
 
   (is (= 0 (count (netty-exception-events)))))
 
+(defcoretest application-raising-errors-on-request
+  (deftrackedapp [downstream]
+    (fn [evt val]
+      (throw (Exception. "TROLL APP IS TROLLIN'"))))
+
+  (http-write "GET / HTTP/1.1\r\n\r\n")
+
+  (is (= 0 (count (netty-exception-events)))))
+
 (defcoretest upstream-raising-error-during-chunked-request
-  (fn [upstream request]
+  (fn [downstream]
     (throw (Exception. "TROLL APP IS TROLLIN'")))
 
   (http-write "POST / HTTP/1.1\r\n"
@@ -193,6 +208,17 @@
               "5\r\nHello\r\n5\r\nWorld\r\n0\r\n\r\n")
 
   (is (= 0 (count (netty-exception-events)))))
+
+(defcoretest upstream-raising-error-during-chunked-request-on-request
+  (fn [downstream]
+    (fn [evt val]
+      (throw (Exception. "TROLL APP IS TROLLIN'"))))
+
+  (http-write "POST / HTTP/1.1\r\n"
+              "Transfer-Encoding: chunked\r\n\r\n"
+              "5\r\nHello\r\n5\r\nWorld\r\n0\r\n\r\n")
+
+  (is (= (count (netty-exception-events)))))
 
 (defcoretest sending-gibberish
   :call-home
@@ -216,34 +242,46 @@
   (http-write (apply str (for [x (range 10000)] "a"))))
 
 (defcoretest telling-the-application-to-chill-out
-  (deftrackedapp [upstream request]
-    (upstream :response [200 {"transfer-encoding" "chunked"} :chunked])
-    ;; The latch will let us pause
+  (deftrackedapp [downstream]
     (let [latch (atom true)]
-      (bg-while @latch (upstream :body "HAMMER TIME!"))
       (fn [evt val]
-        (when (= :pause evt) (toggle! latch))
-        (when (= :resume evt)
-          (upstream :done nil)))))
+        (cond
+         (= :request evt)
+         (do
+           (downstream :response [200 {"transfer-encoding" "chunked"} :chunked])
+           (bg-while @latch (downstream :body "HAMMER TIME!")))
+
+         (= :pause evt)
+         (toggle! latch)
+
+         (= :resume evt)
+         (downstream :done nil)))))
 
   ;; Now the tests
   (http-write "GET / HTTP/1.1\r\n"
               "Connection: close\r\n\r\n")
-  (drain in)
+
   (is (next-msgs
        :request :dont-care
-       :pause   nil
-       :resume  nil)))
+       :pause   nil))
+
+  (drain in)
+
+  (is (next-msgs :resume  nil)))
 
 (defcoretest raising-error-during-pause-event
-  (deftrackedapp [upstream request]
+  (deftrackedapp [downstream]
     (let [latch (atom true)]
-      (upstream :response [200 {"transfer-encoding" "chunked"} :chunked])
-      (bg-while @latch (upstream :body "HAMMER TIME!"))
       (fn [evt val]
-        (when (= :pause evt)
-          (swap! latch (fn [_] false))
-          (throw (Exception. "fail"))))))
+        (cond
+         (= :request evt)
+         (do
+           (downstream :response [200 {"transfer-encoding" "chunked"} :chunked])
+           (bg-while @latch (downstream :body "HAMMER TIME!")))
+
+         (= :pause evt)
+         (do (reset! latch false)
+             (throw (Exception. "fail")))))))
 
   (http-write "GET / HTTP/1.1\r\n"
               "Connection: close\r\n\r\n")
@@ -258,14 +296,20 @@
   (is (not-receiving-messages)))
 
 (defcoretest raising-error-during-resume-event
-  (deftrackedapp [upstream request]
+  (deftrackedapp [downstream]
     (let [latch (atom true)]
-      (upstream :response [200 {"transfer-encoding" "chunked"} :chunked])
-      (bg-while @latch (upstream :body "HAMMER TIME!"))
       (fn [evt val]
-        (when (= :pause evt) (toggle! latch))
-        (when (= :resume evt)
-          (throw (Exception. "fail"))))))
+        (cond
+         (= :request evt)
+         (do
+           (downstream :response [200 {"transfer-encoding" "chunked"} :chunked])
+           (bg-while @latch (downstream :body "HAMMER TIME!")))
+
+         (= :pause evt)
+         (toggle! latch)
+
+         (= :resume evt)
+         (throw (Exception. "fail"))))))
 
   (http-write "GET / HTTP/1.1\r\n"
               "Connection: close\r\n\r\n")
@@ -282,16 +326,19 @@
 
 (defcoretest telling-the-server-to-chill-out
   [_ ch2]
-  (deftrackedapp [upstream request]
+  (deftrackedapp [downstream]
     (receive-all
      ch2
      (fn [_]
-       (upstream :resume nil)))
-    (upstream :pause nil)
+       (downstream :resume nil)))
     (fn [evt val]
-      (when (= :done evt)
-        (upstream :response [200 {"content-type" "text/plain"
-                                  "content-length" "5"} "Hello"]))))
+      (cond
+       (= :request evt)
+       (downstream :pause nil)
+
+       (= :done evt)
+       (downstream :response [200 {"content-type"   "text/plain"
+                                   "content-length" "5"} "Hello"]))))
 
   ;; Now some tests
   (http-write "POST / HTTP/1.1\r\n"
@@ -316,11 +363,14 @@
        :done nil)))
 
 (defcoretest handling-100-continue-requests-with-100-response
-  (deftrackedapp [upstream request]
-    (upstream :response [100])
+  (deftrackedapp [downstream]
     (fn [evt val]
-      (when (= :done evt)
-        (upstream :response [200 {"content-length" "5"} "Hello"]))))
+      (cond
+       (= :request evt)
+       (downstream :response [100])
+
+       (= :done evt)
+       (downstream :response [200 {"content-length" "5"} "Hello"]))))
 
   (http-write "POST / HTTP/1.1\r\n"
               "Content-Length: 5\r\n"
@@ -340,9 +390,10 @@
        :done nil)))
 
 (defcoretest handling-100-continue-requests-by-responding-directly
-  (deftrackedapp [upstream request]
-    (upstream :response [417 {"content-length" "0"}])
-    (fn [_ _]))
+  (deftrackedapp [downstream]
+    (fn [evt val]
+      (when (= :request evt)
+        (downstream :response [417 {"content-length" "0"}]))))
 
   (http-write "POST / HTTP/1.1\r\n"
               "Content-Length: 5\r\n"
@@ -360,13 +411,17 @@
 
 (defcoretest sending-multiple-100-continue-responses
   [ch]
-  (fn [upstream request]
-    (upstream :response [100])
-    (try (upstream :response [100])
-         (catch Exception err (enqueue ch [:error err])))
+  (fn [downstream]
     (fn [evt val]
-      (when (= :done evt)
-        (upstream :response [204 {"connection" "close"}]))))
+      (cond
+       (= :request evt)
+       (do (downstream :response [100])
+           (try (downstream :response [100])
+                (catch Exception err
+                  (enqueue ch [:error err]))))
+
+       (= :done evt)
+       (downstream :response [204 {"connection" "close"}]))))
 
   (http-write "POST / HTTP/1.1\r\n"
               "Content-Length: 5\r\n"
@@ -385,10 +440,10 @@
        "connection: close\r\n\r\n")))
 
 (defcoretest client-sends-body-and-expects-100
-  (deftrackedapp [upstream request]
+  (deftrackedapp [downstream]
     (fn [evt val]
       (when (= :done evt)
-        (upstream :response [204 {"connection" "close"}]))))
+        (downstream :response [204 {"connection" "close"}]))))
 
   (http-write "POST / HTTP/1.1\r\n"
               "Content-Length: 5\r\n"
@@ -405,11 +460,14 @@
        "connection: close\r\n\r\n")))
 
 (defcoretest client-sends-body-and-expects-100-2
-  (deftrackedapp [upstream request]
-    (upstream :response [100])
+  (deftrackedapp [downstream]
     (fn [evt val]
-      (when (= :done evt)
-        (upstream :response [204 {"connection" "close"}]))))
+      (cond
+       (= :request evt)
+       (downstream :response [100])
+
+       (= :done evt)
+       (downstream :response [204 {"connection" "close"}]))))
 
   (http-write "POST / HTTP/1.1\r\n"
               "Content-Length: 5\r\n"
@@ -427,10 +485,11 @@
        "connection: close\r\n\r\n")))
 
 (defcoretest no-request-body-and-expects-100
-  (deftrackedapp [upstream request]
-    (upstream :response [100])
-    (upstream :response [204 {"connection" "close"}])
-    (fn [evt val]))
+  (deftrackedapp [downstream]
+    (fn [evt val]
+      (when (= :request evt)
+        (downstream :response [100])
+        (downstream :response [204 {"connection" "close"}]))))
 
   (http-write "POST / HTTP/1.1\r\n"
               "Expect: 100-continue\r\n\r\n")
@@ -447,12 +506,14 @@
 
 (defcoretest sending-100-continue-to-1-0-client
   [ch]
-  (deftrackedapp [upstream request]
-    (try (upstream :response [100])
-         (catch Exception err
-           (enqueue ch [:error err])))
-    (upstream :response [204 {} nil])
-    (fn [_ _]))
+  (deftrackedapp [downstream]
+    (fn [evt val]
+      (when (= :request evt)
+        (try
+          (downstream :response [100])
+          (catch Exception err
+            (enqueue ch [:error err])))
+        (downstream :response [204 {} nil]))))
 
   (http-write "POST / HTTP/1.0\r\n"
               "Content-Length: 5\r\n"
@@ -467,9 +528,10 @@
   (is (not-receiving-messages)))
 
 (defcoretest sending-100-continue-to-1-0-client-2
-  (deftrackedapp [upstream request]
-    (upstream :response [204 {} nil])
-    (fn [_ _]))
+  (deftrackedapp [downstream]
+    (fn [evt val]
+      (when (= :request evt)
+        (downstream :response [204 {} nil]))))
 
   (http-write "POST / HTTP/1.0\r\n"
               "Transfer-encoding: chunked\r\n"

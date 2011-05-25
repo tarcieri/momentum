@@ -79,28 +79,16 @@
 (defn- finalize-exchange
   [state current-state]
   (when (.responded? current-state)
-    (cond
-     (= waiting-for-response (.next-up-fn current-state))
-     (do
-       (swap! state fresh-state)
-       (when-not (.keepalive? current-state)
-         (finalize-channel current-state)))
-
-     (= awaiting-100-continue (.next-up-fn current-state))
-     (if (.keepalive? current-state)
-       (swap! state #(assoc % :upstream nil))
-       (finalize-channel current-state)))))
+    (when (or (= waiting-for-response (.next-up-fn current-state))
+              (= awaiting-100-continue (.next-up-fn current-state)))
+      (if (.keepalive? current-state)
+        (swap! state fresh-state)
+        (do (swap! state #(assoc % :upstream nil))
+            (finalize-channel current-state))))))
 
 (defn- aborted-req
   [_ _ _ _]
   (throw (Exception. "This request has been aborted")))
-
-(defn- finalize-response
-  [state _]
-  (swap-then!
-   state
-   #(assoc % :responded? true :next-dn-fn nil)
-   #(finalize-exchange state %)))
 
 (defn- stream-or-finalize-response
   [state evt val current-state]
@@ -114,7 +102,10 @@
          :last-write write)))
 
    (= :done evt)
-   (finalize-response state current-state)
+   (swap-then!
+    state
+    #(assoc % :responded? true :next-dn-fn nil)
+    #(finalize-exchange state %))
 
    :else
    (throw (Exception. "Unknown event: " evt))))
@@ -146,7 +137,7 @@
                                 (= (hdrs "transfer-encoding") "chunked")))))
        (fn [current-state]
          (when-not (.next-dn-fn current-state)
-           (finalize-response state current-state)))))))
+           (finalize-exchange state current-state)))))))
 
 (defn- downstream-fn
   [state]
@@ -155,6 +146,9 @@
 
   (fn [evt val]
     (let [current-state @state]
+      (when-not (.upstream current-state)
+        (throw (Exception. "Not callable until request is sent.")))
+
       (cond
        (= evt :pause)
        (.setReadable (.ch current-state) false)
@@ -181,9 +175,8 @@
 (defn- handle-err
   [state err current-state]
   (when (.upstream current-state)
-    (try
-      ((.upstream current-state) :abort err)
-      (catch Exception e nil))
+    (try ((.upstream current-state) :abort err)
+         (catch Exception _ nil))
     (swap! state #(assoc % :next-up-fn nil :upstream nil)))
   (if (.last-write current-state)
     (.addListener (.last-write current-state)
@@ -227,8 +220,12 @@
               (HttpHeaders/isKeepAlive msg))))
      (fn [current-state]
        ;; Initialize the application
-       (let [upstream (app (downstream-fn state) (netty-req->req msg))]
+       (let [upstream (app (downstream-fn state))]
          (swap! state #(assoc % :upstream upstream))
+         ;; Although technically possible, the applications
+         ;; should not pause the exchange until after the
+         ;; request has been sent.
+         (upstream :request (netty-req->req msg))
          #(finalize-exchange state %))))
     (catch Exception err
       (handle-err state err current-state))))
@@ -251,7 +248,8 @@
     ;; from netty that we don't care to pass to the application.
     ;; So, here we ensure that the channel actually gets closed.
     (.close (.ch current-state))
-    (upstream :abort nil)
+    (try (upstream :abort nil)
+         (catch Exception _ nil))
     (swap! state #(assoc % :next-dn-fn aborted-req))))
 
 (defn- netty-bridge
