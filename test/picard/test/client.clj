@@ -35,12 +35,13 @@
 
 (defcoretest receiving-a-chunked-body
   [ch1 ch2]
-  (deftrackedapp [upstream request]
-    (upstream :response [200 {"transfer-encoding" "chunked"} :chunked])
-    (upstream :body "Hello")
-    (upstream :body "World")
-    (upstream :done nil)
-    (fn [_ _]))
+  (deftrackedapp [downstream]
+    (fn [evt val]
+      (when (= :request evt)
+        (downstream :response [200 {"transfer-encoding" "chunked"} :chunked])
+        (downstream :body "Hello")
+        (downstream :body "World")
+        (downstream :done nil))))
 
   (client/request
    ["localhost" 4040]
@@ -91,9 +92,10 @@
 
 (defcoretest simple-keep-alive-requests
   [_ ch2]
-  (deftrackedapp [upstream request]
-    (upstream :response [200 {"content-length" "5"} "Hello"])
-    (fn [_ _]))
+  (deftrackedapp [downstream]
+    (fn [evt val]
+      (when (= :request evt)
+        (downstream :response [200 {"content-length" "5"} "Hello"]))))
 
   (client/request
    ["localhost" 4040]
@@ -141,12 +143,13 @@
 
 (defcoretest issuing-pause-resume
   [_ ch2 ch3]
-  (fn [resp req]
-    (resp :response [200 {"transfer-encoding" "chunked"} :chunked])
-    (resp :body "Hello")
-    (resp :body "World")
-    (resp :done nil)
-    (fn [_ _] true))
+  (fn [downstream]
+    (fn [evt val]
+      (when (= :request evt)
+        (downstream :response [200 {"transfer-encoding" "chunked"} :chunked])
+        (downstream :body "Hello")
+        (downstream :body "World")
+        (downstream :done nil))))
 
   (let [upstream
         (client/request
@@ -175,11 +178,12 @@
 
 (defcoretest telling-the-application-to-chill-out
   [_ ch2 ch3]
-  (fn [resp req]
-    (resp :response [200 {"content-length" "5"} "Hello"])
-    (resp :pause nil)
-    (receive-all ch3 (fn [_] (resp :resume nil)))
-    (fn [evt val] true))
+  (fn [downstream]
+    (fn [evt val]
+      (when (= :request evt)
+        (downstream :response [200 {"content-length" "5"} "Hello"])
+        (downstream :pause nil)
+        (receive-all ch3 (fn [_] (downstream :resume nil))))))
 
   (let [latch (atom true)]
     (client/request
@@ -232,11 +236,12 @@
 
 (defcoretest handling-100-continue-requests-and-responses
   [ch1 ch2]
-  (deftrackedapp [upstream request]
-    (upstream :response [100])
+  (deftrackedapp [downstream]
     (fn [evt val]
+      (when (= :request evt)
+        (downstream :response [100]))
       (when (= :done evt)
-        (upstream
+        (downstream
          :response
          [200 {"content-length" "5" "connection" "close"} "Hello"]))))
 
