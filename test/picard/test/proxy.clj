@@ -10,11 +10,11 @@
   [_ ch2]
   :hello-world
   (let [prox (prox/mk-proxy)]
-    (prox (fn [evt val] (enqueue ch2 [evt val]))
-          [{:path-info      "/"
-            :request-method "GET"
-            "connection"    "close"
-            "host"          "localhost:4040"}])
+    (let [upstream (prox (fn [evt val] (enqueue ch2 [evt val])))]
+      (upstream :request [{:path-info      "/"
+                           :request-method "GET"
+                           "connection"    "close"
+                           "host"          "localhost:4040"}]))
 
     (is (next-msgs-for
          ch2
@@ -27,11 +27,11 @@
   [_ ch2]
   nil
   (let [prox (prox/mk-proxy)]
-    (prox (fn [evt val] (enqueue ch2 [evt val]))
-          [{:path-info      "/"
-            :request-method "GET"
-            "host"          "localhost:4040"}])
+    (let [upstream (prox (fn [evt val] (enqueue ch2 [evt val])))]
+      (upstream :request [{:path-info      "/"
+                           :request-method "GET"
+                           "host"          "localhost:4040"}]))
 
     (is (next-msgs-for
          ch2
-         :response [502 {"content-length" "20"} "<h2>Bad Gateway</h2>"]))))
+         :response [502 {"content-length" "0"} nil]))))
