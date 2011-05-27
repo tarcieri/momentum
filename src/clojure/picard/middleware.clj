@@ -5,8 +5,8 @@
 
 (defrecord State [app upstream attempts sent-body? opts])
 
-(def default-options
-  {:retries [0.2 0.4 0.8 1.6]})
+(def retry-codes #{408 500 502 503 504})
+(def default-options {:retries [0.2 0.4 0.8 1.6]})
 
 (defn- initial-state
   [app opts]
@@ -25,7 +25,7 @@
       (let [current-state @state]
         ;; TODO: Switch this to a custom check
         (if (and (= :response evt)
-                 (= 500 (response-status val)))
+                 (contains? retry-codes (response-status val)))
           (attempt-request state downstream request current-state)
           (downstream evt val)))))
    :as upstream
