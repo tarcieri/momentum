@@ -18,14 +18,14 @@
 
 (deftest retries-when-application-returns-500
   (with-app
-    (-> (fn [downstream]
-          (let [latch (atom true)]
+    (let [latch (atom true)]
+      (-> (fn [downstream]
             (defupstream
               (request [_]
                 (if @latch
-                  (downstream :response [500 {"content-length" "0"}])
-                  (downstream :response [202 {"content-length" "0"}]))
-                (reset! latch false)))))
-        middleware/retry)
+                  (do (reset! latch false)
+                      (downstream :response [500 {"content-length" "0"}]))
+                  (downstream :response [202 {"content-length" "0"}])))))
+          middleware/retry))
     (GET "/")
     (is (= 202 (last-response-status)))))

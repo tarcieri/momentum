@@ -1,5 +1,9 @@
 (ns picard.api)
 
+(defn response-status  [[status]]    status)
+(defn response-headers [[_ headers]] headers)
+(defn response-body    [[_ _ body]]  body)
+
 (defmacro defupstream
   [& handlers]
   (let [evt (gensym) val (gensym)]
