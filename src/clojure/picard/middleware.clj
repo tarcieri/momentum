@@ -2,6 +2,6 @@
 
 (defn retry
   [app & opts]
-  (fn [downstream request]
-    (let [upstream (app downstream request)]
+  (fn [downstream]
+    (let [upstream (app downstream)]
       upstream)))
