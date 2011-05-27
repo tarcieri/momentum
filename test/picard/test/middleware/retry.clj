@@ -49,3 +49,22 @@
             middleware/retry))
       (GET "/")
       (is (= status (last-response-status))))))
+
+(deftest doesnt-retry-when-the-body-is-sent
+  (with-app
+    (let [latch (atom true)]
+      (-> (fn [downstream]
+            (defupstream
+              (request [_]
+                (if @latch
+                  (do (reset! latch false)
+                      (timeout
+                       10 #(downstream :response [500 {"content-length" "0"}])))
+                  (downstream :response [202 {"content-length" "0"}])))))
+          middleware/retry))
+    ;; Send the request and body directly after
+    (let [upstream (GET "/" :chunked)]
+      (upstream :body "hello")
+      (upstream :done nil))
+    ;; Make sure the response is 500
+    (is (= 500 (last-response-status)))))

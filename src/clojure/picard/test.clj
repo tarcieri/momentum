@@ -21,11 +21,12 @@
 (defn- process-request-args
   [args]
   (->> [[] args]
-       (apply extract-verbatim)      ;; method
-       (apply extract-verbatim)      ;; path
-       (apply extract-if map? {})    ;; headers
-       (apply extract-if string? "") ;; body
-       (apply extract-verbatim)      ;; callback
+       (apply extract-verbatim)                  ;; method
+       (apply extract-verbatim)                  ;; path
+       (apply extract-if map? {})                ;; headers
+       (apply extract-if #(or (string? %)        ;; body
+                              (keyword? %)) nil) ;; body
+       (apply extract-verbatim)                  ;; callback
        first))
 
 (defn- mk-request
@@ -53,7 +54,8 @@
                      (enqueue ch [evt val])
                      (when callback (callback evt val @upstream)))))
     ;; Send the request
-    (@upstream :request (mk-request method path hdrs body))))
+    (@upstream :request (mk-request method path hdrs body))
+    @upstream))
 
 (defn HEAD   [& args] (apply request "HEAD"   args))
 (defn GET    [& args] (apply request "GET"    args))

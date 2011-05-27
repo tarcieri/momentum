@@ -23,7 +23,8 @@
       (let [current-state @state]
         ;; TODO: Switch this to a custom check
         (if (and (= :response evt)
-                 (contains? retry-codes (response-status val)))
+                 (contains? retry-codes (response-status val))
+                 (not (.sent-body? current-state)))
           (attempt-request state downstream request current-state)
           (downstream evt val)))))
    :as upstream
@@ -39,4 +40,6 @@
         (let [current-state @state]
           (if (= :request evt)
             (attempt-request state downstream val current-state)
-            ((.upstream current-state) evt val)))))))
+            (do (when (and (= :body evt) (not (.sent-body? current-state)))
+                  (swap! state #(assoc % :sent-body? true)))
+                ((.upstream current-state) evt val))))))))

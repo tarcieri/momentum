@@ -1,4 +1,10 @@
-(ns picard.api)
+(ns picard.api
+  (:import
+   [org.jboss.netty.util
+    HashedWheelTimer
+    TimerTask]
+   [java.util.concurrent
+    TimeUnit]))
 
 (defn response-status  [[status]]    status)
 (defn response-headers [[_ headers]] headers)
@@ -17,3 +23,14 @@
                 ~else)))
          nil (reverse handlers))
        true)))
+
+(defn timer [] (HashedWheelTimer.))
+
+(def global-timer (timer))
+
+(defn timeout
+  ([ms f] (timeout global-timer ms f))
+  ([^HashedWheelTimer timer ms f]
+     (.newTimeout timer
+                  (reify TimerTask (run [_ _] (f)))
+                  ms TimeUnit/MILLISECONDS)))
