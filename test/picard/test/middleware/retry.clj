@@ -68,3 +68,16 @@
       (upstream :done nil))
     ;; Make sure the response is 500
     (is (= 500 (last-response-status)))))
+
+(deftest respect-retry-count
+  (let [count (atom 0)]
+    (with-app
+      (-> (fn [downstream]
+            (defupstream
+              (request [_]
+                (swap! count inc)
+                (downstream :response [500 {"content-length" "0"}]))))
+          (middleware/retry {:retries [5 5 5]}))
+      (GET "/")
+      (is (= 500 (last-response-status)))
+      (is (= 4 @count)))))

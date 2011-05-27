@@ -1,14 +1,17 @@
 (ns picard.middleware.retry
   (:use [picard api utils]))
 
-(defrecord State [app upstream attempts sent-body? opts])
+(defrecord State [app upstream retries sent-body? opts])
 
-(def retry-codes #{408 500 502 503 504})
-(def default-options {:retries [0.2 0.4 0.8 1.6]})
+(def retry-codes     #{408 500 502 503 504})
+(def default-checker #(not (contains? retry-codes (response-status %))))
+(def default-options {:retries [1000 2000 4000 8000 16000 32000]
+                      :validate-response-with default-checker})
 
 (defn- initial-state
   [app opts]
-  (State. app nil 0 false opts))
+  (let [opts (merge default-options opts)]
+    (State. app nil (:retries opts) false opts)))
 
 (defn- mk-downstream
   [downstream state]
@@ -23,9 +26,14 @@
       (let [current-state @state]
         ;; TODO: Switch this to a custom check
         (if (and (= :response evt)
-                 (contains? retry-codes (response-status val))
-                 (not (.sent-body? current-state)))
-          (attempt-request state downstream request current-state)
+                 (not ((-> current-state .opts :validate-response-with) val))
+                 (not (.sent-body? current-state))
+                 (not (empty? (.retries current-state))))
+          (swap-then!
+           state
+           #(assoc % :retries (rest (.retries %)))
+           (fn [current-state]
+             (attempt-request state downstream request current-state)))
           (downstream evt val)))))
    :as upstream
    (swap! state #(assoc % :upstream upstream))
@@ -33,13 +41,14 @@
    upstream))
 
 (defn retry
-  [app & opts]
-  (fn [downstream]
-    (let [state (atom (initial-state app opts))]
-      (fn [evt val]
-        (let [current-state @state]
-          (if (= :request evt)
-            (attempt-request state downstream val current-state)
-            (do (when (and (= :body evt) (not (.sent-body? current-state)))
-                  (swap! state #(assoc % :sent-body? true)))
-                ((.upstream current-state) evt val))))))))
+  ([app] (retry app {}))
+  ([app opts]
+     (fn [downstream]
+       (let [state (atom (initial-state app opts))]
+         (fn [evt val]
+           (let [current-state @state]
+             (if (= :request evt)
+               (attempt-request state downstream val current-state)
+               (do (when (and (= :body evt) (not (.sent-body? current-state)))
+                     (swap! state #(assoc % :sent-body? true)))
+                   ((.upstream current-state) evt val)))))))))
