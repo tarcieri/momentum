@@ -1,4 +1,4 @@
-(ns picard.test.middleware
+(ns picard.test.middleware.retry
   (:use
    [clojure.test]
    [picard.api]
