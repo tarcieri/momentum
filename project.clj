@@ -8,7 +8,6 @@
                      [robert/hooke "1.1.0"]]
   :source-path      "src/clojure"
   :java-source-path "src/java"
-  :javac-options    {:debug "on"}
+  ;; :javac-options    {:debug "on"}
   :test-selectors   {:focus (fn [v] (:focus v))
-                     :all   (fn [_] true)}
-  :main picard.core)
+                     :all   (fn [_] true)})
