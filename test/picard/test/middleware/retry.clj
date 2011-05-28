@@ -116,3 +116,17 @@
 
       (Thread/sleep 400)
       (is (= 4 @count)))))
+
+(deftest respect-custom-response-validators
+  (let [count (atom 0)]
+    (with-app
+      (-> (fn [downstream]
+            (defupstream
+              (request [_]
+                (swap! count inc)
+                (downstream :response [500 {"content-length" "0"}]))))
+          (middleware/retry {:validate-response-with
+                             (fn [_] true)}))
+      (GET "/")
+      (is (= 500 (last-response-status)))
+      (is (= 1 @count)))))
