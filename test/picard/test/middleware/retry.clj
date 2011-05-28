@@ -27,7 +27,7 @@
                     (do (reset! latch false)
                         (downstream :response [status {"content-length" "0"}]))
                     (downstream :response [202 {"content-length" "0"}])))))
-            middleware/retry))
+            (middleware/retry {:retries [5 5]})))
       (GET "/")
       (is (= 202 (last-response-status))))))
 
@@ -46,7 +46,7 @@
                     (do (reset! latch false)
                         (downstream :response [status {"content-length" "0"}]))
                     (downstream :response [202 {"content-length" "0"}])))))
-            middleware/retry))
+            (middleware/retry {:retries [5 5]})))
       (GET "/")
       (is (= status (last-response-status))))))
 
@@ -80,4 +80,39 @@
           (middleware/retry {:retries [5 5 5]}))
       (GET "/")
       (is (= 500 (last-response-status)))
+      (is (= 4 @count)))))
+
+(deftest respect-backoff-times
+  (let [count (atom 0)]
+    (with-app
+      (-> (fn [downstream]
+            (defupstream
+              (request [_]
+                (swap! count inc)
+                (downstream :response [500 {"content-length" "0"}]))))
+          (middleware/retry {:retries [200 600 400]}))
+
+      ;; Something to keep in mind with this test is that the timing
+      ;; is done with a HashedWheelTimer which is not at all exact.
+      ;; The default one uses slots of 100ms.
+
+      (GET "/")
+      (is (= 1 @count))
+
+      (Thread/sleep 100)
+      (is (= 1 @count))
+
+      (Thread/sleep 200)
+      (is (= 2 @count))
+
+      (Thread/sleep 400)
+      (is (= 2 @count))
+
+      (Thread/sleep 300)
+      (is (= 3 @count))
+
+      (Thread/sleep 200)
+      (is (= 3 @count))
+
+      (Thread/sleep 400)
       (is (= 4 @count)))))

@@ -24,7 +24,6 @@
    ((.app current-state)
     (fn [evt val]
       (let [current-state @state]
-        ;; TODO: Switch this to a custom check
         (if (and (= :response evt)
                  (not ((-> current-state .opts :validate-response-with) val))
                  (not (.sent-body? current-state))
@@ -32,8 +31,13 @@
           (swap-then!
            state
            #(assoc % :retries (rest (.retries %)))
-           (fn [current-state]
-             (attempt-request state downstream request current-state)))
+           (fn [current-state*]
+             (let [retry (first (.retries current-state))]
+               (if (< 0 retry)
+                 (timeout
+                  (first (.retries current-state))
+                  #(attempt-request state downstream request current-state*))
+                 (attempt-request state downstream request current-state*)))))
           (downstream evt val)))))
    :as upstream
    (swap! state #(assoc % :upstream upstream))
