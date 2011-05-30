@@ -1,6 +1,12 @@
 (ns picard.test
-  (:use
-   [lamina.core]))
+  (:import
+   [org.jboss.netty.buffer
+    ChannelBuffer]
+   [java.nio.charset
+    Charset]
+   [java.util.concurrent
+    LinkedBlockingQueue
+    TimeUnit]))
 
 (declare *app* *responses*)
 
@@ -45,13 +51,13 @@
 
   (let [[method path hdrs body callback] (process-request-args args)
         upstream (atom nil)
-        ch       (channel)]
+        queue    (LinkedBlockingQueue.)]
 
-    (swap! *responses* #(conj % (lazy-channel-seq ch 1000)))
+    (swap! *responses* #(conj % (atom [[] queue])))
     ;; Track the upstream
     (reset! upstream
             (*app* (fn [evt val]
-                     (enqueue ch [evt val])
+                     (.put queue [evt val])
                      (when callback (callback evt val @upstream)))))
     ;; Send the request
     (@upstream :request (mk-request method path hdrs body))
@@ -63,18 +69,50 @@
 (defn PUT    [& args] (apply request "PUT"    args))
 (defn DELETE [& args] (apply request "DELETE" args))
 
+(defn- normalize-response
+  [[_ [status hdrs body] :as response]]
+  (if (instance? ChannelBuffer body)
+    [:response [status hdrs (.toString body (Charset/defaultCharset))]]
+    response))
+
+(defn- ensure-scoped []
+  (when-not *responses*
+    (throw (Exception. "Need to wrap these tests with `with-app`"))))
+
+(defn last-exchange
+  []
+  (ensure-scoped)
+  (last @*responses*))
+
+(defn exchange-events
+  ([ex] (exchange-events ex 1000))
+  ([ex timeout]
+     (let [[cached queue] @ex
+           f (fn seq []
+               (lazy-seq
+                (when-let [el (.poll queue timeout TimeUnit/MILLISECONDS)]
+                  (swap! ex (fn [[cached queue]]
+                              [(conj cached el) queue]))
+                  (cons el (seq)))))]
+       (lazy-cat cached (f)))))
+
+(defn received-exchange-events [ex] (exchange-events ex 0))
+
 (defn last-response
   []
-  (when-not *responses*
-    (throw (Exception. "Need to wrap these tests with `with-app`")))
-
-  (->> (last @*responses*)
-       (filter (fn [[evt]] (= :response evt)))
-       (map (fn [[_ val]] val))
+  (->> (exchange-events (last-exchange))
+       (filter (fn [[evt :as lol]] (= :response evt)))
+       (map (comp second normalize-response))
        first))
 
 (defn last-response-status  [] (when-let [r (last-response)] (first r)))
 (defn last-response-headers [] (when-let [r (last-response)] (second r)))
+
+(defn last-body-chunks
+  []
+  (->> (last-exchange)
+       (filter (fn [[evt]] (= :body evt)))
+       (map second)))
 
 ;; Helpers
 (defn includes?
