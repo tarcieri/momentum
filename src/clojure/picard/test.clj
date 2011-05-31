@@ -69,6 +69,12 @@
 (defn PUT    [& args] (apply request "PUT"    args))
 (defn DELETE [& args] (apply request "DELETE" args))
 
+(defn- normalize-body
+  [[_ body]]
+  (if (instance? ChannelBuffer body)
+    [:body (.toString body (Charset/defaultCharset))]
+    [:body  body]))
+
 (defn- normalize-response
   [[_ [status hdrs body] :as response]]
   (if (instance? ChannelBuffer body)
@@ -110,9 +116,9 @@
 
 (defn last-body-chunks
   []
-  (->> (last-exchange)
+  (->> (exchange-events (last-exchange))
        (filter (fn [[evt]] (= :body evt)))
-       (map second)))
+       (map (comp second normalize-body))))
 
 ;; Helpers
 (defn includes?
