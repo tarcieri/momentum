@@ -35,29 +35,27 @@
          (defupstream
            ;; Handling the initial request
            (request [req]
-             (with
-              (client/request
-               pool (addr-from-req req) req
-               (fn [upstream evt val]
-                 (cond
-                  (bad-gateway? @state evt val)
-                  (downstream :response [502 {"content-length" "0"} nil])
+             (client/request
+              pool (addr-from-req req) req
+              (fn [upstream evt val]
+                (cond
+                 (bad-gateway? @state evt val)
+                 (downstream :response [502 {"content-length" "0"} nil])
 
-                  (= :connected evt)
-                  (locking req
-                    (let [current-state @state]
-                      (when (= :pending current-state)
-                        (downstream :resume nil))
-                      (reset! state upstream)))
+                 (= :connected evt)
+                 (locking req
+                   (let [current-state @state]
+                     (when (= :pending current-state)
+                       (downstream :resume nil))
+                     (reset! state upstream)))
 
-                  :else
-                  (downstream evt val))))
-              :as upstream
-              (when (chunked? req)
-                (locking req
-                  (when-not @state
-                    (reset! state :pending)
-                    (downstream :pause nil))))))
+                 :else
+                 (downstream evt val))))
+             (when (chunked? req)
+               (locking req
+                 (when-not @state
+                   (reset! state :pending)
+                   (downstream :pause nil)))))
            ;; Handling all other events
            (:else [evt val]
              (if-let [upstream @state]
