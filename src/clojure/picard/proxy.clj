@@ -1,6 +1,6 @@
 (ns picard.proxy
   (:use
-   [picard.api]
+   [picard.helpers]
    [picard.utils])
   (:require
    [clojure.string :as str]

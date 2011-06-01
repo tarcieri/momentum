@@ -1,5 +1,5 @@
 (ns picard.middleware.retry
-  (:use [picard api utils]))
+  (:use [picard helpers utils]))
 
 (defrecord State [app upstream retries sent-body? opts])
 

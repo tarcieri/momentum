@@ -1,4 +1,4 @@
-(ns picard.api
+(ns picard.helpers
   (:import
    [org.jboss.netty.buffer
     ChannelBuffer

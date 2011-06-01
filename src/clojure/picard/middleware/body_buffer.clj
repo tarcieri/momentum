@@ -1,6 +1,6 @@
 (ns picard.middleware.body-buffer
   (:use
-   [picard.api])
+   [picard.helpers])
   (:import
    [org.jboss.netty.buffer
     ChannelBuffer

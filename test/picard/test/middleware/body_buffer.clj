@@ -1,7 +1,7 @@
 (ns picard.test.middleware.body-buffer
   (:use
    [clojure.test]
-   [picard.api]
+   [picard.helpers]
    [picard.test])
   (:require
    [picard.middleware :as middleware]))
