@@ -9,4 +9,5 @@
   :source-path      "src/clojure"
   :java-source-path "src/java"
   :test-selectors   {:focus (fn [v] (:focus v))
-                     :all   (fn [_] true)})
+                     :all   (fn [_] true)}
+  :main picard.core)

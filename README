@@ -8,6 +8,7 @@ FIXME: write
 
 ## Todo
 
+* handle proxy loop
 * Handle disconnects mid request by sending out an :abort event
 
 ## License

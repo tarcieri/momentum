@@ -139,6 +139,17 @@
          (when-not (.next-dn-fn current-state)
            (finalize-exchange state current-state)))))))
 
+(defn- handle-err
+  [state err current-state]
+  (when (.upstream current-state)
+    (try ((.upstream current-state) :abort err)
+         (catch Exception _ nil))
+    (swap! state #(assoc % :next-up-fn nil :upstream nil)))
+  (if (.last-write current-state)
+    (.addListener (.last-write current-state)
+                  netty/close-channel-future-listener)
+    (.close (.ch current-state))))
+
 (defn- downstream-fn
   [state]
   ;; The state of the response needs to be tracked
@@ -157,7 +168,7 @@
        (.setReadable (.ch current-state) true)
 
        (= evt :abort)
-       (throw (Exception. "Not implemented"))
+       (handle-err state val current-state)
 
        :else
        (when-let [next-dn-fn (.next-dn-fn current-state)]
@@ -171,17 +182,6 @@
    does not support keep alives, the connection will get into this state."
   [_ _ _]
   (throw (Exception. "Not expecting a message right now")))
-
-(defn- handle-err
-  [state err current-state]
-  (when (.upstream current-state)
-    (try ((.upstream current-state) :abort err)
-         (catch Exception _ nil))
-    (swap! state #(assoc % :next-up-fn nil :upstream nil)))
-  (if (.last-write current-state)
-    (.addListener (.last-write current-state)
-                  netty/close-channel-future-listener)
-    (.close (.ch current-state))))
 
 (defn- stream-request-body
   [state chunk current-state]

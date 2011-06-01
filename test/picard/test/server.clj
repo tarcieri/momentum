@@ -545,3 +545,14 @@
                  :done nil))
 
   (is (not-receiving-messages)))
+
+(defcoretest ^{:focus true} closes-exchange-when-receiving-abort
+  (deftrackedapp [downstream]
+    (fn [evt val]
+      (when (= :request evt)
+        (send-off (agent nil) (fn [_] (Thread/sleep 10) (downstream :abort (Exception. "fail")))))))
+
+  (http-write "GET / HTTP/1.1\r\n"
+              "Host: localhost\r\n\r\n")
+
+  (is (received-response "")))
