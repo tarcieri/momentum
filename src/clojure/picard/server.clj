@@ -36,7 +36,8 @@
      next-dn-fn
      upstream
      last-write
-     options])
+     options
+     aborting?])
 
 ;; Declare some functions in advance -- letfn might be better
 (declare
@@ -59,7 +60,8 @@
              nil               ;; Next downstream event handler
              nil               ;; Upstream handler (external interface)
              nil               ;; Last write to the channel
-             options)))         ;; Server options
+             options           ;; Server options
+             false)))          ;; Are we aborting the exchange?
 
 (defn- fresh-state
   [state]
@@ -141,6 +143,7 @@
 
 (defn- handle-err
   [state err current-state]
+  (swap! state #(assoc % :aborting? true))
   (when (.upstream current-state)
     (try ((.upstream current-state) :abort err)
          (catch Exception _ nil))
@@ -157,22 +160,24 @@
 
   (fn [evt val]
     (let [current-state @state]
-      (when-not (.upstream current-state)
-        (throw (Exception. "Not callable until request is sent.")))
+      (when-not (.aborting? current-state)
 
-      (cond
-       (= evt :pause)
-       (.setReadable (.ch current-state) false)
+        (when-not (.upstream current-state)
+          (throw (Exception. "Not callable until request is sent.")))
 
-       (= evt :resume)
-       (.setReadable (.ch current-state) true)
+        (cond
+         (= evt :pause)
+         (.setReadable (.ch current-state) false)
 
-       (= evt :abort)
-       (handle-err state val current-state)
+         (= evt :resume)
+         (.setReadable (.ch current-state) true)
 
-       :else
-       (when-let [next-dn-fn (.next-dn-fn current-state)]
-         (next-dn-fn state evt val current-state))))
+         (= evt :abort)
+         (handle-err state val current-state)
+
+         :else
+         (when-let [next-dn-fn (.next-dn-fn current-state)]
+           (next-dn-fn state evt val current-state)))))
     true))
 
 (defn- waiting-for-response

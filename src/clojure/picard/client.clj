@@ -48,15 +48,17 @@
 
 (defn- finalize-request
   [current-state]
-  (when (= request-complete (.next-up-fn current-state))
-    (netty/on-complete
-     (.last-write current-state)
-     (fn [_]
-       (if (and (.keepalive? current-state)
-                (not (.aborted? current-state)))
-         (pool/checkin-conn (.pool current-state) (.ch current-state))
-         (when-let [ch (.ch current-state)]
-           (pool/close-conn (.pool current-state) ch)))))))
+  (if (= request-complete (.next-up-fn current-state))
+    (do
+      (netty/on-complete
+       (.last-write current-state)
+       (fn [_]
+         (if (and (.keepalive? current-state)
+                  (not (.aborted? current-state)))
+           (pool/checkin-conn (.pool current-state) (.ch current-state))
+           (when-let [ch (.ch current-state)]
+             (pool/close-conn (.pool current-state) ch))))))
+    (.close (.ch current-state))))
 
 (defn- connection-pending
   [_ _ _ _]

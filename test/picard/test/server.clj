@@ -546,7 +546,24 @@
 
   (is (not-receiving-messages)))
 
-(defcoretest ^{:focus true} closes-exchange-when-receiving-abort
+(defcoretest avoiding-abort-loops
+  [ch]
+  (deftrackedapp [downstream]
+    (fn [evt val]
+      (downstream :abort nil)))
+
+  (http-write "GET / HTTP/1.1\r\n"
+              "Host: localhost\r\n\r\n")
+
+  (is (next-msgs-for
+       ch
+       :request :dont-care
+       :abort   nil))
+
+  (is (not-receiving-messages))
+  (is (received-response "")))
+
+(defcoretest closes-exchange-when-receiving-abort
   (deftrackedapp [downstream]
     (fn [evt val]
       (when (= :request evt)
