@@ -22,7 +22,7 @@
 (defn response-headers [[_ headers]] headers)
 (defn response-body    [[_ _ body]]  body)
 
-(defmacro defupstream
+(defmacro defstream
   [& handlers]
   (let [evt (gensym) val (gensym)]
     `(fn [~evt ~val]

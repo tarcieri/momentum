@@ -9,7 +9,7 @@
 (deftest simple-requests-get-through
   (with-app
     (-> (fn [downstream]
-          (defupstream
+          (defstream
             (request [_]
               (downstream :response [202 {"content-length" "0"}]))))
         middleware/retry)
@@ -21,7 +21,7 @@
     (with-app
       (let [latch (atom true)]
         (-> (fn [downstream]
-              (defupstream
+              (defstream
                 (request [_]
                   (if @latch
                     (do (reset! latch false)
@@ -40,7 +40,7 @@
     (with-app
       (let [latch (atom true)]
         (-> (fn [downstream]
-              (defupstream
+              (defstream
                 (request [_]
                   (if @latch
                     (do (reset! latch false)
@@ -54,7 +54,7 @@
   (with-app
     (let [latch (atom true)]
       (-> (fn [downstream]
-            (defupstream
+            (defstream
               (request [_]
                 (if @latch
                   (do (reset! latch false)
@@ -73,7 +73,7 @@
   (let [count (atom 0)]
     (with-app
       (-> (fn [downstream]
-            (defupstream
+            (defstream
               (request [_]
                 (swap! count inc)
                 (downstream :response [500 {"content-length" "0"}]))))
@@ -86,7 +86,7 @@
   (let [count (atom 0)]
     (with-app
       (-> (fn [downstream]
-            (defupstream
+            (defstream
               (request [_]
                 (swap! count inc)
                 (downstream :response [500 {"content-length" "0"}]))))
@@ -121,7 +121,7 @@
   (let [count (atom 0)]
     (with-app
       (-> (fn [downstream]
-            (defupstream
+            (defstream
               (request [_]
                 (swap! count inc)
                 (downstream :response [500 {"content-length" "0"}]))))

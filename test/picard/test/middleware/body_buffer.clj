@@ -14,13 +14,13 @@
 
 (def hello-world-app
   (fn [downstream]
-    (defupstream
+    (defstream
       (request [_]
         (downstream :response [200 {"content-length" "5"} "Hello"])))))
 
 (def echo-app
   (fn [downstream]
-    (defupstream
+    (defstream
       (request [[_ body]]
         (downstream :response [200 {} body]))
       (body [chunk] (downstream :body chunk))
@@ -28,7 +28,7 @@
 
 (def chunked-app
   (fn [downstream]
-    (defupstream
+    (defstream
       (request [_]
         (downstream :response [200 {} :chunked])
         (downstream :body (to-channel-buffer "Hello"))

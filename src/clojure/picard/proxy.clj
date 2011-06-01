@@ -32,7 +32,7 @@
   ([pool]
      (fn [downstream]
        (let [state (atom nil)]
-         (defupstream
+         (defstream
            ;; Handling the initial request
            (request [req]
              (client/request

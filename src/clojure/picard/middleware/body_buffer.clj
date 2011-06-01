@@ -15,7 +15,7 @@
   (if-not buffer?
     stream
     (let [msg (atom nil)]
-      (defupstream
+      (defstream
         ;; If the request is chunked, save the request
         ;; and start buffering up the chunks
         (request [[hdrs body :as req]]
