@@ -74,8 +74,8 @@
 (defn mk-socket-addr
   [[host port]]
   (if host
-    (InetSocketAddress. host port)
-    (InetSocketAddress. port)))
+    (InetSocketAddress. host (or port 80))
+    (InetSocketAddress. (or port 80))))
 
 (defn mk-thread-pool
   []

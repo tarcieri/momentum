@@ -279,6 +279,21 @@
                          "content-length" "5"
                          "connection"     "close"} "Hello"]))))
 
+(defcoretest defaults-to-port-80
+  [_ ch]
+  nil
+  (client/request
+   ["google.com"]
+   [{:path-info "/"
+     :request-method "GET"}]
+   (fn [_ evt val]
+     (if (= :response evt)
+       (enqueue ch [evt val]))))
+
+  (is (next-msgs-for
+       ch
+       :response [200 :dont-care :dont-care])))
+
 (defcoretest connecting-to-an-invalid-server
   [_ ch]
   :hello-world
