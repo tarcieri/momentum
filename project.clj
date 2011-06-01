@@ -1,4 +1,4 @@
-(defproject picard "0.0.1-SNAPSHOT"
+(defproject picard "0.1.0-SNAPSHOT"
   :description "Async HTTP framework built on top of Netty"
   :dependencies [[org.clojure/clojure "1.2.0"]
                  [org.clojure/clojure-contrib "1.2.0"]
@@ -8,6 +8,5 @@
                      [robert/hooke "1.1.0"]]
   :source-path      "src/clojure"
   :java-source-path "src/java"
-  ;; :javac-options    {:debug "on"}
   :test-selectors   {:focus (fn [v] (:focus v))
                      :all   (fn [_] true)})
