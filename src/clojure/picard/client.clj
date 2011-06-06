@@ -48,17 +48,15 @@
 
 (defn- finalize-request
   [current-state]
-  (if (= request-complete (.next-up-fn current-state))
-    (do
-      (netty/on-complete
-       (.last-write current-state)
-       (fn [_]
-         (if (and (.keepalive? current-state)
-                  (not (.aborted? current-state)))
-           (pool/checkin-conn (.pool current-state) (.ch current-state))
-           (when-let [ch (.ch current-state)]
-             (pool/close-conn (.pool current-state) ch))))))
-    (.close (.ch current-state))))
+  (when (= request-complete (.next-up-fn current-state))
+    (netty/on-complete
+     (.last-write current-state)
+     (fn [_]
+       (if (and (.keepalive? current-state)
+                (not (.aborted? current-state)))
+         (pool/checkin-conn (.pool current-state) (.ch current-state))
+         (when-let [ch (.ch current-state)]
+           (pool/close-conn (.pool current-state) ch)))))))
 
 (defn- connection-pending
   [_ _ _ _]
@@ -202,6 +200,22 @@
              (catch Exception err
                (throw (Exception. "Not implemented yet"))))))))
 
+(defn- handle-err
+  [state err current-state]
+  (swap-then!
+   state
+   (fn [current-state]
+     (assoc current-state
+       :next-up-fn request-complete
+       :aborted?   true))
+   (fn [current-state]
+     (when (.downstream current-state)
+       (try
+         ((.downstream current-state) (.upstream current-state) :abort err)
+         (catch Exception ex
+           (.printStackTrace ex)))
+       (finalize-request current-state)))))
+
 (defn- handle-abort
   [state _]
   (swap-then!
@@ -227,6 +241,9 @@
             ;; or not writable
             [[ch-state val] (netty/channel-state-event evt)]
             (cond
+             ;; (and (nil? val) (= ch-state ChannelState/CONNECTED))
+             ;; 1
+
              (= ch-state ChannelState/INTEREST_OPS)
              (handle-ch-interest-change state current-state writable?))
 
@@ -242,21 +259,25 @@
   [state]
   (fn [evt val]
     (let [current-state @state]
-      (when (.aborted? current-state)
-        (throw (Exception. "The request has been aborted")))
+      (if (= evt :abort)
+        (when-not (.aborted? current-state)
+          (handle-err state val current-state))
+        (do
+          (when (.aborted? current-state)
+            (throw (Exception. "The request has been aborted")))
 
-      (cond
-       (= evt :abort)
-       (handle-abort state current-state)
+          (cond
+           (= evt :abort)
+           (handle-err state val current-state)
 
-       (= evt :pause)
-       (.setReadable (.ch current-state) false)
+           (= evt :pause)
+           (.setReadable (.ch current-state) false)
 
-       (= evt :resume)
-       (.setReadable (.ch current-state) true)
+           (= evt :resume)
+           (.setReadable (.ch current-state) true)
 
-       :else
-       ((.next-up-fn current-state) state evt val current-state)))))
+           :else
+           ((.next-up-fn current-state) state evt val current-state)))))))
 
 (defn- mk-initial-state
   [pool [hdrs body :as  req] downstream-fn]
@@ -292,8 +313,8 @@
      (fn [ch-or-err fresh?]
        (if (instance? Exception ch-or-err)
          ;; Handle exceptions
-         (do (handle-abort state ch-or-err)
-             (downstream-fn upstream-fn :abort ch-or-err))
+         (handle-err state ch-or-err current-state)
+
          ;; Start the request
          (swap-then!
           state
@@ -311,8 +332,8 @@
               ;; Otherwise, do stuff with it
               (let [write-future (.write ch-or-err (req->netty-req request))]
                 ;; Save off the write future
-                swap! state (fn [current-state]
-                              (assoc current-state :last-write write-future))
+                (swap! state (fn [current-state]
+                               (assoc current-state :last-write write-future)))
                 ;; Write the request to the connection
                 (netty/on-complete
                  write-future
@@ -320,7 +341,7 @@
                  (fn [future]
                    (when-not (.isSuccess future)
                      (if fresh?
-                       (handle-abort state (.getCause future))
+                       (handle-err state (.getCause future) current-state)
                        (initialize-request state addr request))))))))))))))
 
 ;; A global pool

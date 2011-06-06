@@ -4,7 +4,9 @@
    [lamina.core]
    [test-helper])
   (:require
-   [picard.client :as client]))
+   [picard.netty  :as netty]
+   [picard.client :as client]
+   [picard.server :as server]))
 
 (defcoretest simple-requests
   [ch1 ch2]
@@ -380,3 +382,22 @@
        :request-method "GET"
        "connection"    "close"}]
      (fn [_ _ _]))))
+
+(defcoretest handling-abort-loops
+  [_ ch2]
+  :hello-world
+
+  (client/request
+   ["localhost" 4040]
+   [{:path-info "/"
+     :request-method "GET"}]
+   (fn [upstream evt val]
+     (enqueue ch2 [evt val])
+     (upstream :abort nil)))
+
+  (is (next-msgs-for
+       ch2
+       :response :dont-care
+       :abort    :dont-care))
+
+  (is (no-msgs-for ch2)))
