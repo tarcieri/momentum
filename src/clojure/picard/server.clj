@@ -1,4 +1,4 @@
- (ns picard.server
+(ns picard.server
   (:use [picard.utils])
   (:require
    [clojure.string :as str]
@@ -225,12 +225,13 @@
               (HttpHeaders/isKeepAlive msg))))
      (fn [current-state]
        ;; Initialize the application
-       (let [upstream (app (downstream-fn state))]
+       (let [upstream (app (downstream-fn state))
+             ch (.ch current-state)]
          (swap! state #(assoc % :upstream upstream))
          ;; Although technically possible, the applications
          ;; should not pause the exchange until after the
          ;; request has been sent.
-         (upstream :request (netty-req->req msg))
+         (upstream :request (netty-req->req msg ch))
          #(finalize-exchange state %))))
     (catch Exception err
       (handle-err state err current-state))))

@@ -27,6 +27,8 @@
                       :path-info      "/"
                       :request-method method
                       :http-version   [1 1]
+                      :remote-addr    ["localhost" :dont-care]
+                      :local-addr     ["localhost" 4040]
                       "connection"    "close"} nil]))
 
       (is (not-receiving-messages))
@@ -46,6 +48,8 @@
                   :script-name    ""
                   :path-info      "/"
                   :request-method "GET"
+                  :remote-addr    :dont-care
+                  :local-addr     :dont-care
                   :http-version   [1 0]} nil])))
 
 (defcoretest simple-request-with-body
@@ -231,13 +235,9 @@
               "Connection: close\r\n"
               "Content-Length: 10000\r\n\r\n")
   (is (next-msgs
-       :request [{:server-name     picard/SERVER-NAME
-                  :script-name     ""
-                  :path-info       "/"
-                  :request-method  "POST"
-                  :http-version    [1 1]
-                  "connection"     "close"
-                  "content-length" "10000"} :chunked]))
+       :request [(includes-hdrs
+                  {"connection"     "close"
+                   "content-length" "10000"}) :chunked]))
   (is (not-receiving-messages))
   (http-write (apply str (for [x (range 10000)] "a"))))
 

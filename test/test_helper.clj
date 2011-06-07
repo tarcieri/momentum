@@ -210,6 +210,9 @@
    (set? val)
    ((first val) val*)
 
+   (and (map? val) (= (count val) (count val*)))
+   (every? (fn [[k v]] (match-values v (val* k))) val)
+
    (and (vector? val) (= (count val) (count val*)))
    (every? #(apply match-values %) (map vector val val*))
 

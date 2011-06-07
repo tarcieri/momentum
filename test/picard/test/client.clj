@@ -25,6 +25,8 @@
                     :server-name    picard/SERVER-NAME
                     :script-name    ""
                     :path-info      "/"
+                    :remote-addr    :dont-care
+                    :local-addr     :dont-care
                     :request-method method} nil]))
     (is (next-msgs-for
          ch2

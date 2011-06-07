@@ -5,6 +5,8 @@
   (:import
    [java.nio
     ByteBuffer]
+   [org.jboss.netty.channel
+    Channel]
    [org.jboss.netty.buffer
     ChannelBuffer
     ChannelBuffers]
@@ -88,16 +90,24 @@
                               (.getMinorVersion version)]))))
 
 (defn netty-req->hdrs
-  [^HttpRequest req]
-  (assoc (netty-msg->hdrs req)
-    :request-method (.. req getMethod toString)
-    :path-info      (.getUri req)
-    :script-name    ""
-    :server-name    picard/SERVER-NAME))
+  [^HttpRequest req ^Channel ch]
+  (let [remote-addr (.getRemoteAddress ch)
+        remote-ip   (.getHostName remote-addr)
+        remote-port (.getPort remote-addr)
+        local-addr  (.getLocalAddress ch)
+        local-ip    (.getHostName local-addr)
+        local-port  (.getPort local-addr)]
+    (assoc (netty-msg->hdrs req)
+      :request-method (.. req getMethod toString)
+      :path-info      (.getUri req)
+      :script-name    ""
+      :server-name    picard/SERVER-NAME
+      :local-addr     [local-ip local-port]
+      :remote-addr    [remote-ip remote-port])))
 
 (defn netty-req->req
-  [^HttpMessage req]
-  (let [hdrs (netty-req->hdrs req)]
+  [^HttpMessage req ^Channel ch]
+  (let [hdrs (netty-req->hdrs req ch)]
     [hdrs
      (cond
       (.isChunked req)        :chunked
