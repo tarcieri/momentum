@@ -26,10 +26,10 @@
      chunked?
      chunk-trailer?
      expects-100?
-     next-up-fn
      next-dn-fn
-     upstream
+     next-up-fn
      downstream
+     upstream
      last-write
      aborted?])
 
@@ -49,7 +49,7 @@
 
 (defn- finalize-request
   [current-state]
-  (when (= request-complete (.next-up-fn current-state))
+  (when (= request-complete (.next-dn-fn current-state))
     (netty/on-complete
      (.last-write current-state)
      (fn [_]
@@ -82,14 +82,14 @@
          state
          (fn [current-state]
            (cond
-            (nil? (.next-dn-fn current-state))
+            (nil? (.next-up-fn current-state))
             (assoc current-state
-              :next-up-fn request-complete
+              :next-dn-fn request-complete
               :last-write (or last-write (.last-write current-state)))
 
             :else
             (assoc current-state
-              :next-up-fn response-pending
+              :next-dn-fn response-pending
               :last-write (or last-write (.last-write current-state)))))
          finalize-request))
       (let [last-write (.write ch (mk-netty-chunk val))]
@@ -100,21 +100,21 @@
 
 (defn- stream-or-finalize-response
   [state ^HttpChunk msg args]
-  (let [downstream-fn (.downstream args)
-        upstream-fn   (.upstream args)]
+  (let [upstream-fn   (.upstream args)
+        downstream-fn (.downstream args)]
     (if (.isLast msg)
       (do (swap-then!
            state
            (fn [current-state]
              (if (= response-pending (.next-up-fn current-state))
                (assoc current-state
-                 :next-up-fn request-complete
-                 :next-dn-fn nil)
+                 :next-dn-fn request-complete
+                 :next-up-fn nil)
                (assoc current-state
-                 :next-dn-fn nil)))
+                 :next-up-fn nil)))
            finalize-request)
-          (downstream-fn upstream-fn :done nil))
-      (downstream-fn upstream-fn :body (.getContent msg)))))
+          (upstream-fn downstream-fn :done nil))
+      (upstream-fn downstream-fn :body (.getContent msg)))))
 
 (defn- initial-response
   [state ^HttpResponse msg current-state]
@@ -122,8 +122,8 @@
   (when (and (is-100-continue? msg) (not (.expects-100? current-state)))
     (throw (Exception. "Not expecting a 100 Continue response.")))
 
-  (let [downstream-fn (.downstream current-state)
-        upstream-fn   (.upstream current-state)]
+  (let [upstream-fn   (.upstream current-state)
+        downstream-fn (.downstream current-state)]
     (swap-then!
      state
      (fn [current-state]
@@ -138,23 +138,23 @@
           (.isChunked msg)
           (assoc current-state
             :keepalive? keepalive?
-            :next-dn-fn stream-or-finalize-response)
+            :next-up-fn stream-or-finalize-response)
 
           ;; If the exchange is waiting for the response to complete then
           ;; finish everything up
-          (= response-pending (.next-up-fn current-state))
+          (= response-pending (.next-dn-fn current-state))
           (assoc current-state
             :keepalive? keepalive?
-            :next-up-fn request-complete
-            :next-dn-fn nil)
+            :next-dn-fn request-complete
+            :next-up-fn nil)
 
           ;; Otherwise, just mark the request as done
           :else
           (assoc current-state
             :keepalive? keepalive?
-            :next-dn-fn nil))))
+            :next-up-fn nil))))
      finalize-request)
-    (downstream-fn upstream-fn :response (netty-resp->resp msg))))
+    (upstream-fn downstream-fn :response (netty-resp->resp msg))))
 
 (defn- initial-write-succeeded
   [state current-state]
@@ -165,18 +165,18 @@
       ;; If the body is chunked, the next events will
       ;; be the HTTP chunks
       (.chunked? current-state)
-      (assoc current-state :next-up-fn stream-or-finalize-request)
+      (assoc current-state :next-dn-fn stream-or-finalize-request)
 
       ;; If the body is not chunked, then the request is
       ;; finished. If the response has already been completed
       ;; then we must finish up the request
-      (nil? (.next-dn-fn current-state))
-      (assoc current-state :next-up-fn request-complete)
+      (nil? (.next-up-fn current-state))
+      (assoc current-state :next-dn-fn request-complete)
 
       ;; Otherwise, the exchange state is to be awaiting
       ;; the response to complete.
       :else
-      (assoc current-state :next-up-fn response-pending)))
+      (assoc current-state :next-dn-fn response-pending)))
    finalize-request)
   ;; The connected event is only sent downstream when the
   ;; request body is marked as chunked because that's the
@@ -187,17 +187,17 @@
   ;;       all downstream function calls happen on the same
   ;;       thread.
   (when (.chunked? current-state)
-    ((.downstream current-state) (.upstream current-state) :connected nil)))
+    ((.upstream current-state) (.downstream current-state) :connected nil)))
 
 (defn- handle-ch-interest-change
   [state current-state writable?]
-  (let [downstream-fn (.downstream current-state)
-        upstream-fn   (.upstream current-state)
+  (let [upstream-fn   (.upstream current-state)
+        downstream-fn (.downstream current-state)
         ch            (.ch current-state)]
-    (when (and downstream-fn (not= (.isWritable ch) @writable?))
+    (when (and upstream-fn (not= (.isWritable ch) @writable?))
       (swap-then!
        writable? not
-       #(try (downstream-fn upstream-fn (if % :resume :pause) nil)
+       #(try (upstream-fn downstream-fn (if % :resume :pause) nil)
              (catch Exception err
                (throw (Exception. "Not implemented yet"))))))))
 
@@ -207,12 +207,12 @@
    state
    (fn [current-state]
      (assoc current-state
-       :next-up-fn request-complete
+       :next-dn-fn request-complete
        :aborted?   true))
    (fn [current-state]
-     (when (.downstream current-state)
+     (when (.upstream current-state)
        (try
-         ((.downstream current-state) (.upstream current-state) :abort err)
+         ((.upstream current-state) (.downstream current-state) :abort err)
          (catch Exception ex
            (.printStackTrace ex)))
        (finalize-request current-state)))))
@@ -226,28 +226,28 @@
          (when-not (.aborted? current-state)
            (cond-let
             [msg (netty/message-event evt)]
-            ((.next-dn-fn current-state) state msg current-state)
+            ((.next-up-fn current-state) state msg current-state)
 
             ;; The channel interest has changed to writable
             ;; or not writable
             [[ch-state val] (netty/channel-state-event evt)]
             (cond
              (and (nil? val) (= ch-state ChannelState/CONNECTED)
-                  (not= request-complete (.next-up-fn current-state)))
+                  (not= request-complete (.next-dn-fn current-state)))
              (handle-err state (Exception. "Connection reset by peer") current-state)
 
              (= ch-state ChannelState/INTEREST_OPS)
              (handle-ch-interest-change state current-state writable?))
 
             [_ (netty/write-completion-event evt)]
-            (when (and (= write-pending (.next-up-fn current-state))
+            (when (and (= write-pending (.next-dn-fn current-state))
                        (.. evt getFuture isSuccess))
               (initial-write-succeeded state current-state))
 
             [err (netty/exception-event evt)]
             (do (.printStackTrace err)))))))))
 
-(defn- mk-upstream-fn
+(defn- mk-downstream-fn
   [state]
   (fn [evt val]
     (let [current-state @state]
@@ -269,12 +269,12 @@
            (.setReadable (.ch current-state) true)
 
            :else
-           ((.next-up-fn current-state) state evt val current-state)))))))
+           ((.next-dn-fn current-state) state evt val current-state)))))))
 
 (defn- mk-initial-state
-  [pool [hdrs body :as  req] downstream-fn]
+  [pool [hdrs body :as  req] upstream-fn]
   (let [state       (atom nil)
-        upstream-fn (mk-upstream-fn state)]
+        downstream-fn (mk-downstream-fn state)]
     (swap!
      state
      (fn [_] (State. pool               ;; The connection pool
@@ -285,20 +285,18 @@
                        "chunked")
                     (= (hdrs "expect") ;; Does the request expect 100 continue?
                        "100-continue")
-                    connection-pending ;; Next upstream event handler
                     initial-response   ;; Next downstream event handler
-                    upstream-fn        ;; Upstream handler (external interface)
+                    connection-pending ;; Next upstream event handler
                     downstream-fn      ;; Downstream handler (passed in)
+                    upstream-fn        ;; Upstream handler (external interface)
                     nil                ;; Last write
                     nil)))             ;; Aborted?
-    [state upstream-fn]))
+    [state downstream-fn]))
 
 (defn- initialize-request
   [state addr request]
   (let [current-state @state
-        pool          (.pool current-state)
-        upstream-fn   (.upstream current-state)
-        downstream-fn (.downstream current-state)]
+        pool (.pool current-state)]
     (pool/checkout-conn
      pool addr (netty-bridge state)
      ;; When a connection to the remote host has been established.
@@ -315,7 +313,7 @@
               current-state
               (assoc current-state
                 :ch         ch-or-err
-                :next-up-fn write-pending)))
+                :next-dn-fn write-pending)))
           (fn [current-state]
             (if (.aborted? current-state)
               ;; Return to the connection pool
@@ -344,12 +342,12 @@
 (def mk-pool pool/mk-pool)
 
 (defn request
-  ([addr req downstream-fn]
-     (request GLOBAL-POOL addr req downstream-fn))
-  ([pool addr request downstream-fn]
+  ([addr req upstream-fn]
+     (request GLOBAL-POOL addr req upstream-fn))
+  ([pool addr request upstream-fn]
      ;; Create an atom that contains the state of the request
-     (let [[state upstream-fn] (mk-initial-state pool request downstream-fn)]
+     (let [[state downstream-fn] (mk-initial-state pool request upstream-fn)]
        ;; TODO: Handle cases where the channel returned is open but
        ;;       writes to it will fail.
        (initialize-request state addr request)
-       upstream-fn)))
+       downstream-fn)))
