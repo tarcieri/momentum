@@ -64,12 +64,12 @@
   (throw (Exception. "The connection has not yet been established")))
 
 (defn- write-pending
-  [_ _ _ _]
-  (throw (Exception. "The first write has not yet succeded")))
+  [_ evt _ _]
+  (if (or (= :done evt) (= :body evt))
+    (throw (Exception. "The first write has not yet succeded"))))
 
 (defn- response-pending
-  [_ _ _ _]
-  (throw (Exception. "Not implemented yet")))
+  [_ _ _ _])
 
 (defn- stream-or-finalize-request
   [state evt val current-state]

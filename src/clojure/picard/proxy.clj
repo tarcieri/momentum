@@ -4,7 +4,6 @@
    [picard.utils])
   (:require
    [clojure.string :as str]
-   [clojure.contrib.logging :as log]
    [picard.client  :as client])
   (:import
    [java.net
@@ -32,12 +31,10 @@
   ([] (mk-proxy client/GLOBAL-POOL))
   ([pool]
      (fn [downstream]
-       (log/info "BINDING FOR REQUEST")
        (let [state (atom nil)]
          (defstream
            ;; Handling the initial request
            (request [req]
-             (log/info (str "addr-from-req: " (addr-from-req req)))
              (client/request
               pool (addr-from-req req) req
               (fn [upstream evt val]
