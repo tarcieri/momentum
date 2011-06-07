@@ -70,12 +70,12 @@
    [{:path-info          "/"
      :request-method     "GET"
      "transfer-encoding" "chunked"} :chunked]
-   (fn [upstream evt val]
+   (fn [downstream evt val]
      (enqueue ch2 [evt val])
      (when (= :connected evt)
-       (upstream :body "Foo!")
-       (upstream :body "Bar!")
-       (upstream :done nil))))
+       (downstream :body "Foo!")
+       (downstream :body "Bar!")
+       (downstream :done nil))))
 
   (is (next-msgs-for
        ch1
@@ -127,12 +127,12 @@
      "transfer-encoding" "chunked"
      "connection"        "close"}
     :chunked]
-   (fn [upstream-fn evt val]
+   (fn [downstream evt val]
      (enqueue ch2 [evt val])
      (when (= :connected evt)
-       (upstream-fn :body "HELLO")
-       (upstream-fn :body "WORLD")
-       (upstream-fn :done nil))))
+       (downstream :body "HELLO")
+       (downstream :body "WORLD")
+       (downstream :done nil))))
 
   (is (next-msgs-for
        ch2
@@ -153,17 +153,17 @@
         (downstream :body "World")
         (downstream :done nil))))
 
-  (let [upstream
+  (let [downstream
         (client/request
          ["Localhost" 4040]
          [{:path-info      "/"
            :request-method "GET"
            "connection"    "close"}]
-         (fn [upstream evt val]
+         (fn [downstream evt val]
            (enqueue ch2 [evt val])
            (when (= evt :response)
-             (upstream :pause nil))))]
-    (receive ch3 (fn [_] (upstream :resume nil))))
+             (downstream :pause nil))))]
+    (receive ch3 (fn [_] (downstream :resume nil))))
 
   (is (next-msgs-for
        ch2
@@ -194,13 +194,13 @@
        :request-method     "POST"
        "transfer-encoding" "chunked"
        "connection"        "close"} :chunked]
-     (fn [upstream-fn evt val]
+     (fn [downstream evt val]
        (enqueue ch2 [evt val])
        (when (= :connected evt)
-         (bg-while @latch (upstream-fn :body "HAMMER TIME!")))
+         (bg-while @latch (downstream :body "HAMMER TIME!")))
        (when (= :pause evt) (toggle! latch))
        (when (= :resume evt)
-         (upstream-fn :done nil))))
+         (downstream :done nil))))
 
     (is (next-msgs-for
          ch2
@@ -217,13 +217,12 @@
 (defcoretest issuing-immediate-abort
   [_ ch]
   :hello-world
-  (let [upstream
-        (client/request
-         ["localhost" 4040]
-         [{:path-info      "/"
-           :request-method "POST"} nil]
-         (fn [_ evt val]
-           (enqueue ch [evt val])))]
+  (let [upstream (client/request
+                  ["localhost" 4040]
+                  [{:path-info      "/"
+                    :request-method "POST"} nil]
+                  (fn [_ evt val]
+                    (enqueue ch [evt val])))]
     (upstream :abort nil))
 
   (is (not-receiving-messages))
@@ -247,14 +246,14 @@
          :response
          [200 {"content-length" "5" "connection" "close"} "Hello"]))))
 
-  (let [upstream
+  (let [downstream
         (client/request
          ["Localhost" 4040]
          [{:path-info       "/"
            :request-method  "POST"
            "content-length" "5"
            "expect"         "100-continue"} :chunked]
-         (fn [upstream evt val]
+         (fn [downstream evt val]
            (enqueue ch2 [evt val])))]
 
     (is (next-msgs-for
@@ -268,8 +267,8 @@
     (is (no-msgs-for ch1))
     (is (no-msgs-for ch2))
 
-    (upstream :body "Hello")
-    (upstream :done nil)
+    (downstream :body "Hello")
+    (downstream :done nil)
 
     (is (next-msgs-for
          ch1
@@ -391,9 +390,9 @@
    ["localhost" 4040]
    [{:path-info "/"
      :request-method "GET"}]
-   (fn [upstream evt val]
+   (fn [downstream evt val]
      (enqueue ch2 [evt val])
-     (upstream :abort nil)))
+     (downstream :abort nil)))
 
   (is (next-msgs-for
        ch2
