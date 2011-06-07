@@ -37,7 +37,12 @@
 
 (defn- mk-request
   [method path hdrs body]
-  [(merge default-headers hdrs {:request-method method :path-info path}) body])
+  [(merge default-headers
+          hdrs
+          {:request-method method
+           :path-info      path
+           :remote-addr    ["localhost" 12345]})
+   body])
 
 (defmacro with-app
   [app & stmts]
@@ -107,12 +112,13 @@
 (defn last-response
   []
   (->> (exchange-events (last-exchange))
-       (filter (fn [[evt :as lol]] (= :response evt)))
+       (filter (fn [[evt]] (= :response evt)))
        (map (comp second normalize-response))
        first))
 
 (defn last-response-status  [] (when-let [r (last-response)] (first r)))
 (defn last-response-headers [] (when-let [r (last-response)] (second r)))
+(defn last-response-body    [] (when-let [r (last-response)] (nth r 2)))
 
 (defn last-body-chunks
   []

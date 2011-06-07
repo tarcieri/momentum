@@ -27,8 +27,8 @@
                       :path-info      "/"
                       :request-method method
                       :http-version   [1 1]
-                      :remote-addr    ["localhost" :dont-care]
-                      :local-addr     ["localhost" 4040]
+                      :remote-addr    ["127.0.0.1" :dont-care]
+                      :local-addr     ["127.0.0.1" 4040]
                       "connection"    "close"} nil]))
 
       (is (not-receiving-messages))

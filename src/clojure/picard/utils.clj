@@ -19,7 +19,10 @@
     HttpRequest
     HttpResponse
     HttpResponseStatus
-    HttpVersion]))
+    HttpVersion]
+   [java.net
+    InetAddress
+    InetSocketAddress]))
 
 (defmacro returning
   [val & stmts]
@@ -89,21 +92,19 @@
         (assoc :http-version [(.getMajorVersion version)
                               (.getMinorVersion version)]))))
 
+(defn- addr->ip
+  [^InetSocketAddress addr]
+  [(.. addr getAddress getHostAddress) (.getPort addr)])
+
 (defn netty-req->hdrs
   [^HttpRequest req ^Channel ch]
-  (let [remote-addr (.getRemoteAddress ch)
-        remote-ip   (.getHostName remote-addr)
-        remote-port (.getPort remote-addr)
-        local-addr  (.getLocalAddress ch)
-        local-ip    (.getHostName local-addr)
-        local-port  (.getPort local-addr)]
-    (assoc (netty-msg->hdrs req)
-      :request-method (.. req getMethod toString)
-      :path-info      (.getUri req)
-      :script-name    ""
-      :server-name    picard/SERVER-NAME
-      :local-addr     [local-ip local-port]
-      :remote-addr    [remote-ip remote-port])))
+  (assoc (netty-msg->hdrs req)
+    :request-method (.. req getMethod toString)
+    :path-info      (.getUri req)
+    :script-name    ""
+    :server-name    picard/SERVER-NAME
+    :local-addr     (addr->ip (.getLocalAddress ch))
+    :remote-addr    (addr->ip (.getRemoteAddress ch))))
 
 (defn netty-req->req
   [^HttpMessage req ^Channel ch]

@@ -185,7 +185,7 @@
   (try
     (cond
      (vector? val)
-     (map normalize val)
+     (vec (map normalize val))
 
      (map? val)
      (into {} (map (comp vec normalize vec) val))

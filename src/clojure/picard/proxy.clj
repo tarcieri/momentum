@@ -27,6 +27,15 @@
        (or (nil? current-state)
            (= :pending current-state))))
 
+(defn- add-xff-header
+  [[hdrs body]]
+  (let [remote-ip (first (:remote-addr hdrs))]
+    [(assoc hdrs
+       "x-forwarded-for"
+       (if-let [current-xff (hdrs "x-forwarded-for")]
+         (str current-xff ", " remote-ip)
+         remote-ip)) body]))
+
 (defn mk-proxy
   ([] (mk-proxy client/GLOBAL-POOL))
   ([pool]
@@ -36,7 +45,7 @@
            ;; Handling the initial request
            (request [req]
              (client/request
-              pool (addr-from-req req) req
+              pool (addr-from-req req) (add-xff-header req)
               (fn [upstream evt val]
                 (cond
                  (bad-gateway? @state evt val)
