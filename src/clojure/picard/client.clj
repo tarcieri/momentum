@@ -43,8 +43,9 @@
      (.getStatus resp)))
 
 (defn- request-complete
-  [_ _ _ _]
-  (throw (Exception. "The request is complete")))
+  [_ evt _ _]
+  (when-not (= :abort evt)
+    (throw (Exception. "The request is complete"))))
 
 (defn- finalize-request
   [current-state]
@@ -216,16 +217,6 @@
            (.printStackTrace ex)))
        (finalize-request current-state)))))
 
-(defn- handle-abort
-  [state _]
-  (swap-then!
-   state
-   (fn [current-state]
-     (assoc current-state
-       :next-up-fn request-complete
-       :aborted?   true))
-   finalize-request))
-
 (defn- netty-bridge
   [state]
   (let [writable? (atom true)]
@@ -241,8 +232,9 @@
             ;; or not writable
             [[ch-state val] (netty/channel-state-event evt)]
             (cond
-             ;; (and (nil? val) (= ch-state ChannelState/CONNECTED))
-             ;; 1
+             (and (nil? val) (= ch-state ChannelState/CONNECTED)
+                  (not= request-complete (.next-up-fn current-state)))
+             (handle-err state (Exception. "Connection reset by peer") current-state)
 
              (= ch-state ChannelState/INTEREST_OPS)
              (handle-ch-interest-change state current-state writable?))

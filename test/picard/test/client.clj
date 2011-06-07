@@ -401,3 +401,31 @@
        :abort    :dont-care))
 
   (is (no-msgs-for ch2)))
+
+(defcoretest client-acknowledges-disconnect
+  nil
+  (let [event-channel (channel)
+        pipeline-fn (fn [pipeline]
+                      (.addAfter
+                       pipeline "encoder" "hax"
+                       (netty/upstream-stage
+                        (fn [ch evt]
+                          (when-let [msg (netty/message-event evt)]
+                            (.close ch)))))
+                      pipeline)
+        dummy-app (fn [downstream] (fn [_ _]))
+        s (server/start dummy-app {:pipeline-fn pipeline-fn})]
+    (try
+      (client/request
+       ["127.0.0.1" 4040]
+       [{:path-info "/"
+         :request-method "GET"
+         "connection" "close"}]
+       (fn [_ evt val]
+         (enqueue event-channel [evt val])))
+
+      (is (next-msgs-for
+           event-channel
+           :abort    (cmp-with (fn [v] (instance? Exception v)))))
+      (finally
+       (server/stop s)))))
