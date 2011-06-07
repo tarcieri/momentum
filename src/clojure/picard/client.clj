@@ -26,8 +26,8 @@
      chunked?
      chunk-trailer?
      expects-100?
-     next-dn-fn
      next-up-fn
+     next-dn-fn
      downstream
      upstream
      last-write
