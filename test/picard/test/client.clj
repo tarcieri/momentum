@@ -2,11 +2,26 @@
   (:use
    [clojure.test]
    [lamina.core]
-   [test-helper])
+   [test-helper]
+   [picard.helpers])
   (:require
    [picard.netty  :as netty]
    [picard.client :as client]
    [picard.server :as server]))
+
+(defn- mk-tracked-pool
+  [ch]
+  (client/mk-pool
+   {:pipeline-fn
+    (fn [pipeline]
+      (.addAfter
+       pipeline "encoder" "track-msgs"
+       (netty/upstream-stage
+        (fn [_ evt]
+          (if-let [err (netty/exception-event evt)]
+            (do (enqueue ch err)
+                (.printStackTrace err))))))
+      pipeline)}))
 
 (defcoretest simple-requests
   [ch1 ch2]
@@ -430,3 +445,25 @@
            :abort    (cmp-with (fn [v] (instance? Exception v)))))
       (finally
        (server/stop s)))))
+
+(defcoretest ^{:focus true} sending-multiple-aborts-downstream
+  [_ ch]
+  (fn [downstream]
+    (defstream
+      (request [_]
+        (downstream :response [200 {"transfer-encoding" "chunked"} :chunked])
+        (downstream :body "Hello")
+        (downstream :done nil))))
+
+  (client/request
+   (mk-tracked-pool ch)
+   ["localhost" 4040]
+   [{:path-info      "/"
+     :request-method "GET"
+     "connection"    "close"}]
+   (fn [downstream evt val]
+     (when (= :response evt)
+       (downstream :abort nil)
+       (downstream :abort nil))))
+
+  (is (no-msgs-for ch)))

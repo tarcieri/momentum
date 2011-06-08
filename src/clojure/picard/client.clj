@@ -213,8 +213,7 @@
      (when (.upstream current-state)
        (try
          ((.upstream current-state) (.downstream current-state) :abort err)
-         (catch Exception ex
-           (.printStackTrace ex)))
+         (catch Exception _))
        (finalize-request current-state)))))
 
 (defn- netty-bridge
@@ -259,9 +258,6 @@
             (throw (Exception. "The request has been aborted")))
 
           (cond
-           (= evt :abort)
-           (handle-err state val current-state)
-
            (= evt :pause)
            (.setReadable (.ch current-state) false)
 
