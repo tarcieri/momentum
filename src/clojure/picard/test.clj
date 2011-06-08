@@ -41,7 +41,7 @@
           hdrs
           {:request-method method
            :path-info      path
-           :remote-addr    ["localhost" 12345]})
+           :remote-addr    ["127.0.0.1" 12345]})
    body])
 
 (defmacro with-app

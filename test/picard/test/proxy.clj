@@ -5,6 +5,7 @@
    [lamina.core]
    [test-helper])
   (:require
+   [picard.client :as client]
    [picard.proxy :as prox]))
 
 (defcoretest proxying-requests-through-the-proxy
@@ -17,7 +18,7 @@
 
     (is (next-msgs-for
          ch1
-         :request [(includes-hdrs {"x-forwarded-for" "localhost"}) :dont-care]))
+         :request [(includes-hdrs {"x-forwarded-for" "127.0.0.1"}) :dont-care]))
 
     (is (= (last-response-status)
            200))
@@ -51,5 +52,18 @@
     (is (next-msgs-for
          ch1
          :request
-         [(includes-hdrs {"x-forwarded-for" "123.235.55.1, localhost"})
+         [(includes-hdrs {"x-forwarded-for" "123.235.55.1, 127.0.0.1"})
           :dont-care]))))
+
+(defcoretest avoids-proxy-loops
+  [ch1]
+  (tracking-middleware
+   (prox/mk-proxy (client/mk-pool {:expire-after 1})))
+  (with-app (prox/mk-proxy)
+    (GET "/" {"host" "localhost:4040" "connection" "close"})
+
+    (is (next-msgs-for
+         ch1
+         :request [(includes-hdrs {"x-forwarded-for" "127.0.0.1"}) nil]))
+
+    (is (= 502 (last-response-status)))))

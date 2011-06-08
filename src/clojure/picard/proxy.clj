@@ -4,6 +4,7 @@
    [picard.utils])
   (:require
    [clojure.string :as str]
+   [clojure.contrib.string]
    [picard.client  :as client])
   (:import
    [java.net
@@ -36,6 +37,38 @@
          (str current-xff ", " remote-ip)
          remote-ip)) body]))
 
+(defn- proxy-loop?
+  [[{[remote-ip] :remote-addr xff-header "x-forwarded-for"}]]
+  (when xff-header
+    (some #(= % remote-ip)
+          (clojure.contrib.string/split #"\s*,\s*" xff-header))))
+
+(def bad-gateway [502 {"content-length" "0"} nil])
+
+(defn- initiate-request
+  [state pool req downstream]
+  (client/request
+   pool (addr-from-req req) (add-xff-header req)
+   (fn [upstream evt val]
+     (cond
+      (bad-gateway? @state evt val)
+      (downstream :response bad-gateway)
+
+      (= :connected evt)
+      (locking req
+        (let [current-state @state]
+          (when (= :pending current-state)
+            (downstream :resume nil))
+          (reset! state upstream)))
+
+      :else
+      (downstream evt val))))
+  (when (chunked? req)
+    (locking req
+      (when-not @state
+        (reset! state :pending)
+        (downstream :pause nil)))))
+
 (defn mk-proxy
   ([] (mk-proxy client/GLOBAL-POOL))
   ([pool]
@@ -44,27 +77,9 @@
          (defstream
            ;; Handling the initial request
            (request [req]
-             (client/request
-              pool (addr-from-req req) (add-xff-header req)
-              (fn [upstream evt val]
-                (cond
-                 (bad-gateway? @state evt val)
-                 (downstream :response [502 {"content-length" "0"} nil])
-
-                 (= :connected evt)
-                 (locking req
-                   (let [current-state @state]
-                     (when (= :pending current-state)
-                       (downstream :resume nil))
-                     (reset! state upstream)))
-
-                 :else
-                 (downstream evt val))))
-             (when (chunked? req)
-               (locking req
-                 (when-not @state
-                   (reset! state :pending)
-                   (downstream :pause nil)))))
+             (if (proxy-loop? req)
+               (downstream :response bad-gateway)
+               (initiate-request state pool req downstream)))
            ;; Handling all other events
            (:else [evt val]
              (if-let [upstream @state]
