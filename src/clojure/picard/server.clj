@@ -172,7 +172,7 @@
     (let [current-state @state]
       (when-not (.aborting? current-state)
 
-        (when-not (.upstream current-state)
+        (when-not (or (= :abort evt) (.upstream current-state))
           (throw (Exception. "Not callable until request is sent.")))
 
         (cond
