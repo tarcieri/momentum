@@ -67,12 +67,23 @@
   [state]
   (mk-initial-state (.app state) (.options state) (.ch state)))
 
+(defn- exchange-finished?
+  [current-state]
+  (and (.responded? current-state)
+       (or (= waiting-for-response (.next-up-fn current-state))
+           (= awaiting-100-continue (.next-up-fn current-state)))))
+
+(defn- maybe-write-chunk-trailer
+  [current-state]
+  (if (and (.streaming? current-state)
+           (.chunked? current-state))
+    (assoc current-state
+      :last-write (.write (.ch current-state) HttpChunk/LAST_CHUNK))
+    current-state))
+
 (defn- finalize-channel
   [current-state]
-  (let [last-write (if (and (.streaming? current-state)
-                            (.chunked? current-state))
-                     (.write (.ch current-state) HttpChunk/LAST_CHUNK)
-                     (.last-write current-state))]
+  (let [last-write (.last-write current-state)]
     (when-not last-write
       (throw (Exception. "Somehow the last-write is nil")))
 
@@ -80,9 +91,8 @@
 
 (defn- finalize-exchange
   [state current-state]
-  (when (.responded? current-state)
-    (when (or (= waiting-for-response (.next-up-fn current-state))
-              (= awaiting-100-continue (.next-up-fn current-state)))
+  (when (exchange-finished? current-state)
+    (let [current-state (maybe-write-chunk-trailer current-state)]
       (if (.keepalive? current-state)
         (swap! state fresh-state)
         (do (swap! state #(assoc % :upstream nil))

@@ -2,7 +2,8 @@
   (:use
    [clojure.test]
    [lamina.core]
-   [test-helper])
+   [test-helper]
+   [picard.helpers])
   (:require
    [picard]
    [picard.server :as server])
@@ -116,6 +117,29 @@
        "HTTP/1.1 200 OK\r\n"
        "connection: close\r\n\r\n"
        "Hello world")))
+
+(defcoretest transfer-encoding-chunked-and-keep-alive
+  (fn [downstream]
+    (defstream
+      (request [[hdrs]]
+        (if (= "GET" (hdrs :request-method))
+          (do
+            (downstream :response [200 {"transfer-encoding" "chunked"} :chunked])
+            (downstream :body "Hello")
+            (downstream :body "World")
+            (downstream :done nil))
+          (downstream :response [202 {"content-length" "0"}])))))
+
+  (http-write "GET / HTTP/1.1\r\n\r\n")
+  (http-write "POST / HTTP/1.1\r\n"
+              "Connection: close\r\n\r\n")
+
+  (is (received-response
+       "HTTP/1.1 200 OK\r\n"
+       "transfer-encoding: chunked\r\n\r\n"
+       "5\r\nHello\r\n5\r\nWorld\r\n0\r\n\r\n"
+       "HTTP/1.1 202 Accepted\r\n"
+       "content-length: 0\r\n\r\n")))
 
 (defcoretest single-chunked-request
   :hello-world
@@ -567,9 +591,15 @@
   (deftrackedapp [downstream]
     (fn [evt val]
       (when (= :request evt)
-        (send-off (agent nil) (fn [_] (Thread/sleep 10) (downstream :abort (Exception. "fail")))))))
+        (send-off
+         (agent nil)
+         (fn [_]
+           (Thread/sleep 10)
+           (downstream :abort (Exception. "fail")))))))
 
   (http-write "GET / HTTP/1.1\r\n"
               "Host: localhost\r\n\r\n")
 
   (is (received-response "")))
+
+;; TODO: :abort sent downstream after request is finished
