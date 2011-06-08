@@ -45,6 +45,7 @@
                     :request-method method} nil]))
     (is (next-msgs-for
          ch2
+         :connected  nil
          :response   [200
                       {:http-version    [1 1]
                        "content-length" "5"
@@ -72,6 +73,7 @@
 
   (is (next-msgs-for
        ch2
+       :connected  nil
        :response   [200 {:http-version [1 1]
                          "transfer-encoding" "chunked"} :chunked]
        :body      "Hello"
@@ -123,6 +125,7 @@
 
   (is (next-msgs-for
        ch2
+       :connected  nil
        :response   [200 {:http-version    [1 1]
                          "content-length" "5"} "Hello"]))
 
@@ -133,7 +136,7 @@
 
   (is (next-msgs-for
        ch2
-       ;; :connected nil
+       :connected nil
        :response   [200 {:http-version    [1 1]
                          "content-length" "5"} "Hello"]))
 
@@ -184,7 +187,8 @@
 
   (is (next-msgs-for
        ch2
-       :response :dont-care))
+       :connected nil
+       :response  :dont-care))
 
   (Thread/sleep 30)
   (enqueue ch3 true)
@@ -276,6 +280,7 @@
     (is (next-msgs-for
          ch1
          :request [(includes-hdrs {"expect" "100-continue"}) :chunked]))
+
     (is (next-msgs-for
          ch2
          :connected nil
@@ -291,11 +296,12 @@
          ch1
          :body "Hello"
          :done nil))
+
     (is (next-msgs-for
          ch2
-         :response [200 {:http-version    [1 1]
-                         "content-length" "5"
-                         "connection"     "close"} "Hello"]))))
+         :response  [200 {:http-version    [1 1]
+                          "content-length" "5"
+                          "connection"     "close"} "Hello"]))))
 
 (defcoretest defaults-to-port-80
   [_ ch]
@@ -305,12 +311,12 @@
    [{:path-info "/"
      :request-method "GET"}]
    (fn [_ evt val]
-     (if (= :response evt)
-       (enqueue ch [evt val]))))
+     (enqueue ch [evt val])))
 
   (is (next-msgs-for
        ch
-       :response [200 :dont-care :dont-care])))
+       :connected nil
+       :response  [200 :dont-care :dont-care])))
 
 (defcoretest connecting-to-an-invalid-server
   [_ ch]
@@ -340,11 +346,11 @@
        :abort #{#(instance? Exception %)})))
 
 (defcoretest observing-max-connections
-  [_ ch]
+  [_ ch1 ch2]
   :slow-hello-world
 
   (let [pool (client/mk-pool {:max-connections 1})]
-    (dotimes [_ 2]
+    (doseq [ch [ch1 ch2]]
       (client/request
        pool ["localhost" 4040]
        [{:path-info      "/"
@@ -353,9 +359,13 @@
          (enqueue ch [evt val]))))
 
     (is (next-msgs-for
-         ch
-         :abort    (cmp-with (fn [v] (instance? Exception v)))
-         :response :dont-care))
+         ch1
+         :connected nil
+         :response  :dont-care))
+
+    (is (next-msgs-for
+         ch2
+         :abort #(instance? Exception %)))
 
     ;; Close off the pool
     (client/request
@@ -366,17 +376,17 @@
      (fn [_ _ _]))))
 
 (defcoretest observing-max-per-address-connections
-  [_ ch2]
+  [_ ch1 ch2 ch3]
   :slow-hello-world
 
   (let [pool (client/mk-pool {:max-connections-per-address 1})]
-    (dotimes [_ 2]
+    (doseq [ch [ch1 ch2]]
       (client/request
        pool ["localhost" 4040]
        [{:path-info      "/"
          :request-method "GET"}]
        (fn [_ evt val]
-         (enqueue ch2 [evt val]))))
+         (enqueue ch [evt val]))))
 
     (client/request
      pool ["127.0.0.1" 4040]
@@ -384,13 +394,21 @@
        :request-method "GET"
        "connection" "close"}]
      (fn [_ evt val]
-       (enqueue ch2 [evt val])))
+       (enqueue ch3 [evt val])))
+
+    (is (next-msgs-for
+         ch1
+         :connected nil
+         :response  :dont-care))
 
     (is (next-msgs-for
          ch2
-         :abort    (cmp-with (fn [v] (instance? Exception v)))
-         :response :dont-care
-         :response :dont-care))
+         :abort #(instance? Exception %)))
+
+    (is (next-msgs-for
+         ch3
+         :connected nil
+         :response  :dont-care))
 
     (client/request
      pool ["localhost" 4040]
@@ -413,8 +431,8 @@
 
   (is (next-msgs-for
        ch2
-       :response :dont-care
-       :abort    :dont-care))
+       :connected nil
+       :abort     :dont-care))
 
   (is (no-msgs-for ch2)))
 
@@ -442,11 +460,12 @@
 
       (is (next-msgs-for
            event-channel
-           :abort    (cmp-with (fn [v] (instance? Exception v)))))
+           :connected nil
+           :abort     #(instance? Exception %)))
       (finally
        (server/stop s)))))
 
-(defcoretest ^{:focus true} sending-multiple-aborts-downstream
+(defcoretest sending-multiple-aborts-downstream
   [_ ch]
   (fn [downstream]
     (defstream

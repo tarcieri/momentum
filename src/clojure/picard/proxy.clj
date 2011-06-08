@@ -50,6 +50,7 @@
   (client/request
    pool (addr-from-req req) (add-xff-header req)
    (fn [upstream evt val]
+     (debug "PXY EVT: " [evt val])
      (cond
       (bad-gateway? @state evt val)
       (downstream :response bad-gateway)

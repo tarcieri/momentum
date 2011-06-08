@@ -178,16 +178,9 @@
       :else
       (assoc current-state :next-dn-fn response-pending)))
    finalize-request)
-  ;; The connected event is only sent downstream when the
-  ;; request body is marked as chunked because that's the
-  ;; only time that we really care. Also, there is somewhat
-  ;; of a race condition where the response could be sent
-  ;; upstream before this is called.
-  ;; TODO: This should be moved into the netty bridge so that
-  ;;       all downstream function calls happen on the same
-  ;;       thread.
-  (when (.chunked? current-state)
-    ((.upstream current-state) (.downstream current-state) :connected nil)))
+  ;; Signal upstream that we are connected and ready to start handling
+  ;; events.
+  ((.upstream current-state) (.downstream current-state) :connected nil))
 
 (defn- handle-ch-interest-change
   [state current-state writable?]
@@ -221,6 +214,7 @@
   (let [writable? (atom true)]
     (netty/upstream-stage
      (fn [_ evt]
+       (debug "CLT NETTY EVT: " evt)
        (let [current-state @state]
          (when-not (.aborted? current-state)
            (cond-let
@@ -249,6 +243,7 @@
 (defn- mk-downstream-fn
   [state]
   (fn [evt val]
+    (debug "CLT DN-STRM: " [evt val])
     (let [current-state @state]
       (if (= evt :abort)
         (when-not (.aborted? current-state)

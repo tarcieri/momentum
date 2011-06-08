@@ -14,7 +14,7 @@
     TimeoutException
     TimeUnit]))
 
-(declare ch1 ch2 ch3 netty-evts sock in out drain)
+(declare ch1 ch2 ch3 ch4 netty-evts sock in out drain)
 
 ;; ### TEST APPLICATIONS
 (defn tracking-middleware
@@ -126,8 +126,8 @@
     `(defcoretest ~name [] ~bindings ~app ~@body)
     `(deftest ~name
        (println ~(str name))
-       (binding [ch1 (channel) ch2 (channel) ch3 (channel)]
-         (let [~bindings [ch1 ch2 ch3]]
+       (binding [ch1 (channel) ch2 (channel) ch3 (channel) ch4 (channel)]
+         (let [~bindings [ch1 ch2 ch3 ch4]]
            (running-app*
             ~(cond
               (= app :hello-world)

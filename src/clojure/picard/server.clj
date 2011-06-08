@@ -169,6 +169,7 @@
   (swap! state #(assoc % :next-dn-fn initialize-response))
 
   (fn [evt val]
+    (debug "SRV DN-STRM: " [evt val])
     (let [current-state @state]
       (when-not (.aborting? current-state)
 
@@ -247,7 +248,7 @@
       (handle-err state err current-state))))
 
 (defn- handle-ch-interest-change
-  [state writable? current-state]
+  [state _ writable? current-state]
   (when-let [upstream (.upstream current-state)]
     (when-not (= (.isWritable (.ch current-state)) @writable?)
       (swap-then!
@@ -276,6 +277,7 @@
         writable? (atom true)]
     (netty/upstream-stage
      (fn [ch evt]
+       (debug "SRV NETTY EVT: " evt)
        (let [current-state @state]
          (cond-let
           ;; An actual HTTP message has been received
@@ -290,7 +292,7 @@
           [[ch-state val] (netty/channel-state-event evt)]
           (cond
            (= ch-state ChannelState/INTEREST_OPS)
-           (handle-ch-interest-change state writable? current-state)
+           (handle-ch-interest-change state val writable? current-state)
 
            ;; Connecting the channel - stash it.
            (and (= ch-state ChannelState/CONNECTED) val)

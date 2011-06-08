@@ -24,6 +24,11 @@
     InetAddress
     InetSocketAddress]))
 
+(defmacro debug
+  [& stmts]
+  ;; `(println ~@stmts)
+  )
+
 (defmacro returning
   [val & stmts]
   (if (vector? val)
