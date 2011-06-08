@@ -106,7 +106,7 @@
       (do (swap-then!
            state
            (fn [current-state]
-             (if (= response-pending (.next-up-fn current-state))
+             (if (= response-pending (.next-dn-fn current-state))
                (assoc current-state
                  :next-dn-fn request-complete
                  :next-up-fn nil)
