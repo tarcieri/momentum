@@ -601,5 +601,3 @@
               "Host: localhost\r\n\r\n")
 
   (is (received-response "")))
-
-;; TODO: :abort sent downstream after request is finished
