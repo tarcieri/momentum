@@ -15,7 +15,7 @@
    [java.util.concurrent
     TimeUnit]))
 
-(defcoretest simple-requests
+(defcoretest  simple-requests
   :hello-world
   (doseq [method ["GET" "POST" "PUT" "DELETE" "HEAD"]]
     (with-fresh-conn
@@ -601,3 +601,64 @@
               "Host: localhost\r\n\r\n")
 
   (is (received-response "")))
+
+(defcoretest timing-out-without-writing-request
+  {:timeout 1}
+  (deftrackedapp [downstream] (fn [_ _]))
+
+  ;; Socket is already connected
+  (Thread/sleep 2010)
+
+  (is (received-response "")))
+
+(defcoretest timing-out-when-server-doesnt-respond
+  {:timeout 1}
+  (deftrackedapp [downstream] (fn [evt val]))
+
+  (http-write "GET / HTTP/1.1\r\n"
+              "Host: localhost\r\n\r\n")
+
+  (Thread/sleep 2010)
+
+  (is (received-response "")))
+
+(defcoretest timing-out-halfway-streamed-chunked-request
+  [ch]
+  {:timeout 1}
+  (deftrackedapp [downstream] (fn [_ _]))
+
+  (http-write "POST / HTTP/1.1\r\n"
+              "Transfer-Encoding: chunked\r\n\r\n"
+              "5\r\nHello\r\n5\r\nWorld")
+
+  (is (next-msgs-for
+       ch
+       :request [:dont-care :chunked]
+       :body    "Hello"
+       :body    "World"))
+
+  (Thread/sleep 2010)
+
+  (is (received-response "")))
+
+(defcoretest timing-out-halfway-through-streamed-chunked-response
+  {:timeout 1}
+  (deftrackedapp [dn]
+    (fn [evt _]
+      (when (= :request evt)
+        (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
+        (dn :body "Hello")
+        (dn :body "World"))))
+
+  (http-write "GET / HTTP/1.1\r\n\r\n")
+
+  (is (receiving
+       "HTTP/1.1 200 OK\r\n"
+       "transfer-encoding: chunked\r\n\r\n"
+       "5\r\nHello\r\n5\r\nWorld\r\n"))
+
+  (Thread/sleep 2010)
+
+  (is (received-response "")))
+
+

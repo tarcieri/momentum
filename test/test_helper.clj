@@ -106,11 +106,11 @@
   pipeline)
 
 (defn running-app*
-  [app f]
+  [app opts f]
   (if app
     (let [netty-evts    (atom [])
           pipeline-fn   #(add-tracking-to-pipeline netty-evts %)
-          server        (server/start app {:pipeline-fn pipeline-fn})]
+          server        (server/start app (merge {:pipeline-fn pipeline-fn} opts))]
       (try
         (connect
          (fn [sock in out]
@@ -121,22 +121,30 @@
 
 (defmacro defcoretest
   "Defines a picard core test"
-  [name bindings app & body]
-  (if-not (vector? bindings)
-    `(defcoretest ~name [] ~bindings ~app ~@body)
-    `(deftest ~name
-       (println ~(str name))
-       (binding [ch1 (channel) ch2 (channel) ch3 (channel) ch4 (channel)]
-         (let [~bindings [ch1 ch2 ch3 ch4]]
-           (running-app*
-            ~(cond
-              (= app :hello-world)
-              `(tracking-middleware hello-world)
-              (= app :slow-hello-world)
-              `(tracking-middleware slow-hello-world)
-              :else
-              app)
-            (fn [] ~@body)))))))
+  ([name app test] `(defcoretest ~name [] {} ~app ~test))
+  ([name bindings server-opts app & body]
+     (cond
+      (not (vector? bindings))
+      `(defcoretest ~name [] ~bindings ~server-opts ~app ~@body)
+
+      (not (map? server-opts))
+      `(defcoretest ~name ~bindings {} ~server-opts ~app ~@body)
+
+      :else
+      `(deftest ~name
+         (println ~(str name))
+         (binding [ch1 (channel) ch2 (channel) ch3 (channel) ch4 (channel)]
+           (let [~bindings [ch1 ch2 ch3 ch4]]
+             (running-app*
+              ~(cond
+                (= app :hello-world)
+                `(tracking-middleware hello-world)
+                (= app :slow-hello-world)
+                `(tracking-middleware slow-hello-world)
+                :else
+                app)
+              ~server-opts
+              (fn [] ~@body))))))))
 
 (defmacro timeout-after
   [ms & body]

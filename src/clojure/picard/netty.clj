@@ -27,12 +27,17 @@
    [org.jboss.netty.channel.socket.nio
     NioClientSocketChannelFactory
     NioServerSocketChannelFactory]
+   [org.jboss.netty.util
+    HashedWheelTimer
+    Timeout
+    TimerTask]
    [java.net
     InetSocketAddress]
    [java.util
     LinkedList]
    [java.util.concurrent
-    Executors]))
+    Executors
+    TimeUnit]))
 
 (defprotocol INettyFuture
   (on-complete [future callback]))
@@ -62,14 +67,26 @@
 
 (def close-channel-future-listener ChannelFutureListener/CLOSE)
 
-(defmacro create-pipeline
+(defn mk-timer
+  ([] (mk-timer 100))
+  ([ms] (HashedWheelTimer. ms TimeUnit/MILLISECONDS)))
+
+(defn on-timeout
+  [^HashedWheelTimer timer ^long ms f]
+  (.newTimeout
+   timer (reify TimerTask (run [_ _] (f)))
+   ms TimeUnit/MILLISECONDS))
+
+(defn cancel-timeout
+  [^Timeout timeout]
+  (.cancel timeout))
+
+(defn create-pipeline
   [& stages]
-  (let [pipeline-var (gensym "pipeline")]
-    `(let [~pipeline-var (Channels/pipeline)]
-      ~@(map
-         (fn [[id# stage#]] (list '.addLast pipeline-var (name id#) stage#))
-         (partition 2 stages))
-      ~pipeline-var)))
+  (let [pipeline (Channels/pipeline)]
+    (doseq [[stage-name stage] (partition 2 stages)]
+      (.addLast pipeline (name stage-name) stage))
+    pipeline))
 
 (defn mk-socket-addr
   [[host port]]

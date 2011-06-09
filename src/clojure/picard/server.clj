@@ -37,14 +37,18 @@
      upstream
      last-write
      options
-     aborting?])
+     aborting?
+     timeout])
 
 ;; Declare some functions in advance -- letfn might be better
 (declare
  incoming-request
  stream-request-body
  awaiting-100-continue
- waiting-for-response)
+ waiting-for-response
+ handle-err)
+
+(def global-timer (netty/mk-timer 1000))
 
 (defn- mk-initial-state
   ([app options] (mk-initial-state app options nil))
@@ -61,11 +65,27 @@
              nil               ;; Upstream handler (external interface)
              nil               ;; Last write to the channel
              options           ;; Server options
-             false)))          ;; Are we aborting the exchange?
+             false
+             nil)))          ;; Are we aborting the exchange?
 
 (defn- fresh-state
   [state]
   (mk-initial-state (.app state) (.options state) (.ch state)))
+
+(defn- clear-timeout
+  [state current-state]
+  (when-let [old-timeout (.timeout current-state)]
+    (netty/cancel-timeout old-timeout)))
+
+(defn- bump-timeout
+  [state current-state]
+  (when-let [old-timeout (.timeout current-state)]
+    (netty/cancel-timeout old-timeout))
+  (let [new-timeout (netty/on-timeout
+                     global-timer
+                     (* (:timeout (.options current-state)) 1000)
+                     #(handle-err state (Exception. "timeout! facepalm!") @state))]
+    (swap! state #(assoc % :timeout new-timeout))))
 
 (defn- exchange-finished?
   [current-state]
@@ -93,6 +113,7 @@
   [state current-state]
   (when (exchange-finished? current-state)
     (let [current-state (maybe-write-chunk-trailer current-state)]
+      (clear-timeout state current-state)
       (if (.keepalive? current-state)
         (swap! state fresh-state)
         (do (swap! state #(assoc % :upstream nil))
@@ -188,6 +209,7 @@
 
          :else
          (when-let [next-dn-fn (.next-dn-fn current-state)]
+           (bump-timeout state current-state)
            (next-dn-fn state evt val current-state)))))
     true))
 
@@ -283,6 +305,7 @@
           ;; An actual HTTP message has been received
           [msg (netty/message-event evt)]
           (try
+            (bump-timeout state current-state)
             ((.next-up-fn current-state) state msg current-state)
             (catch Exception err
               (handle-err state err current-state)))
@@ -296,7 +319,9 @@
 
            ;; Connecting the channel - stash it.
            (and (= ch-state ChannelState/CONNECTED) val)
-           (swap! state (fn [current-state] (assoc current-state :ch ch)))
+           (do
+             (bump-timeout state current-state)
+             (swap! state (fn [current-state] (assoc current-state :ch ch))))
 
            (= ch-state ChannelState/CONNECTED)
            (handle-ch-disconnected state current-state))
@@ -307,20 +332,24 @@
             (handle-err state err current-state))))))))
 
 (defn- create-pipeline
-  [app]
+  [app opts]
   (netty/create-pipeline
    :decoder (HttpRequestDecoder.)
    :encoder (HttpResponseEncoder.)
    :pauser  (netty/message-pauser)
-   :handler (netty-bridge app {})))
+   :handler (netty-bridge app opts)))
 
 (def stop netty/shutdown)
+
+(def default-options
+  {:port      4040
+   :timeout   30
+   :keepalive 60})
 
 (defn start
   "Starts an HTTP server on the specified port."
   ([app]
      (start app {}))
   ([app opts]
-     (netty/start-server
-      #(create-pipeline app)
-      (merge {:port 4040} opts))))
+     (let [opts (merge default-options opts)]
+       (netty/start-server #(create-pipeline app opts) opts))))
