@@ -530,3 +530,54 @@
        (downstream :abort nil))))
 
   (is (no-msgs-for ch)))
+
+(defcoretest ^{:focus true} client-times-out-when-server-never-responses
+  [_ ch]
+  (fn [dn] (fn [_ _]))
+
+  (client/request
+   ["localhost" 4040]
+   [{:path-info      "/"
+     :request-method "GET"
+     "connection"    "close"}]
+   (fn [dn evt val]
+     (enqueue ch [evt val])))
+
+  (Thread/sleep 1050)
+
+  (is (next-msgs-for
+       ch
+       :connected nil
+       :abort     #(instance? Exception %))))
+
+(defcoretest ^{:focus true} timing-out-halfway-through-streamed-response
+  [_ ch ch2]
+  (deftrackedapp [dn]
+    (receive ch2 (fn [_] (dn :done nil)))
+    (fn [evt val]
+      (when (= :request evt)
+        (dn :response [200 {"transfer-encoding" "chunked"
+                            "connection"        "close"} :chunked])
+        (dn :body "Hello")
+        (dn :body "World"))))
+
+  (client/request
+   ["localhost" 4040]
+   [{:path-info      "/"
+     :request-method "GET"
+     "connection"    "close"}]
+   (fn [dn evt val]
+     (enqueue ch [evt val])))
+
+  (is (next-msgs-for
+       ch
+       :connected nil
+       :response  [200 :dont-care :chunked]
+       :body      "Hello"
+       :body      "World"))
+
+  (Thread/sleep 1)
+
+  (is (next-msgs-for ch :abort #(instance? Exception %)))
+
+  (enqueue ch2 nil))

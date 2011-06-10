@@ -40,7 +40,7 @@
      aborting?
      timeout])
 
-;; Declare some functions in advance -- letfn might be better
+;; Declare some functions in advance
 (declare
  incoming-request
  stream-request-body
@@ -81,8 +81,7 @@
   ([state current-state]
      (bump-timeout state (* (:timeout (.options current-state)) 1000) current-state))
   ([state ms current-state]
-     (when-let [old-timeout (.timeout current-state)]
-       (netty/cancel-timeout old-timeout))
+     (clear-timeout state current-state)
      (let [new-timeout (netty/on-timeout
                         global-timer
                         ms

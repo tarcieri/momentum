@@ -365,7 +365,7 @@
 
 (def default-options
   {:pool      (pool/mk-pool)
-   :timeout   30
+   :timeout   1
    :keepalive 60})
 
 (defn request
