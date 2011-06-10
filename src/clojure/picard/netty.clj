@@ -186,10 +186,9 @@
             (let [ch ^Channel (.getChannel evt)]
               (cond
                (instance? MessageEvent evt)
-               (do (purge-evt-buffer list ctx evt ch)
-                   (if (.isReadable ch)
-                     (.sendUpstream ctx evt)
-                     (.add list evt)))
+               (do
+                 (.add list evt)
+                 (purge-evt-buffer list ctx evt ch))
 
                (and (instance? ChannelStateEvent evt)
                     (= ChannelState/INTEREST_OPS (.getState ^ChannelState evt)))
