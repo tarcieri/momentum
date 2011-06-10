@@ -78,14 +78,20 @@
     (netty/cancel-timeout old-timeout)))
 
 (defn- bump-timeout
+  ([state current-state]
+     (bump-timeout state (* (:timeout (.options current-state)) 1000) current-state))
+  ([state ms current-state]
+     (when-let [old-timeout (.timeout current-state)]
+       (netty/cancel-timeout old-timeout))
+     (let [new-timeout (netty/on-timeout
+                        global-timer
+                        ms
+                        #(handle-err state (Exception. "timeout! facepalm!") @state))]
+       (swap! state #(assoc % :timeout new-timeout)))))
+
+(defn- start-keepalive-timer
   [state current-state]
-  (when-let [old-timeout (.timeout current-state)]
-    (netty/cancel-timeout old-timeout))
-  (let [new-timeout (netty/on-timeout
-                     global-timer
-                     (* (:timeout (.options current-state)) 1000)
-                     #(handle-err state (Exception. "timeout! facepalm!") @state))]
-    (swap! state #(assoc % :timeout new-timeout))))
+  (bump-timeout state (* (:keepalive (.options current-state)) 1000) current-state))
 
 (defn- exchange-finished?
   [current-state]
@@ -115,7 +121,9 @@
     (let [current-state (maybe-write-chunk-trailer current-state)]
       (clear-timeout state current-state)
       (if (.keepalive? current-state)
-        (swap! state fresh-state)
+        (let [new-state (fresh-state current-state)]
+          (reset! state new-state)
+          (start-keepalive-timer state current-state))
         (do (swap! state #(assoc % :upstream nil))
             (finalize-channel current-state))))))
 
@@ -175,10 +183,16 @@
 (defn- handle-err
   [state err current-state]
   (swap! state #(assoc % :aborting? true))
+  ;; If there is an upstream, try sending an abort event up
   (when (.upstream current-state)
     (try ((.upstream current-state) :abort err)
          (catch Exception _ nil))
     (swap! state #(assoc % :next-up-fn nil :upstream nil)))
+
+  ;; Clear out any timeouts
+  (clear-timeout state current-state)
+
+  ;; Finally, close the connection
   (if (.last-write current-state)
     (.addListener (.last-write current-state)
                   netty/close-channel-future-listener)
