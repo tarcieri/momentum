@@ -48,7 +48,7 @@
  waiting-for-response
  handle-err)
 
-(def global-timer (netty/mk-timer 1000))
+(def global-timer netty/global-timer)
 
 (defn- mk-initial-state
   ([app options] (mk-initial-state app options nil))

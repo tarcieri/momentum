@@ -71,6 +71,8 @@
   ([] (mk-timer 100))
   ([ms] (HashedWheelTimer. ms TimeUnit/MILLISECONDS)))
 
+(def global-timer (mk-timer 1000))
+
 (defn on-timeout
   [^HashedWheelTimer timer ^long ms f]
   (.newTimeout

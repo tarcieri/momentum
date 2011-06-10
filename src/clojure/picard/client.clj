@@ -31,7 +31,11 @@
      downstream
      upstream
      last-write
-     aborted?])
+     aborted?
+     timeout
+     options])
+
+(declare handle-err)
 
 (defn- keepalive?
   [[hdrs]]
@@ -41,6 +45,31 @@
   [^HttpResponse resp]
   (= HttpResponseStatus/CONTINUE
      (.getStatus resp)))
+
+(defn- clear-timeout
+  [state current-state]
+  (when-let [old-timeout (.timeout current-state)]
+    (netty/cancel-timeout old-timeout)))
+
+(defn- bump-timeout
+  ([state current-state]
+     (bump-timeout state (* ((.options current-state) :timeout) 1000)
+                   current-state))
+  ([state ms current-state]
+     ;; Out with the old
+     (when-let [old-timeout (.timeout current-state)]
+       (netty/cancel-timeout old-timeout))
+
+     ;; In with the new
+     (let [new-timeout (netty/on-timeout
+                        netty/global-timer
+                        ms
+                        #(handle-err state (Exception. "Timed out") @state))]
+       (swap! state #(assoc % :timeout new-timeout)))))
+
+(defn- start-keepalive-timer
+  [state current-state]
+  (bump-timeout state (* ((.options current-state) :keepalive) 1000) current-state))
 
 (defn- request-complete
   [_ evt _ _]
@@ -263,7 +292,7 @@
            ((.next-dn-fn current-state) state evt val current-state)))))))
 
 (defn- mk-initial-state
-  [pool [hdrs body :as  req] upstream-fn]
+  [pool [hdrs body :as  req] upstream-fn opts]
   (let [state       (atom nil)
         downstream-fn (mk-downstream-fn state)]
     (swap!
@@ -281,7 +310,9 @@
                     downstream-fn      ;; Downstream handler (passed in)
                     upstream-fn        ;; Upstream handler (external interface)
                     nil                ;; Last write
-                    nil)))             ;; Aborted?
+                    nil                ;; Aborted?
+                    nil                ;; Timeout
+                    opts)))            ;; Request options
     [state downstream-fn]))
 
 (defn- initialize-request
@@ -332,13 +363,17 @@
 ;; well as the client namespace
 (def mk-pool pool/mk-pool)
 
+(def default-options
+  {:pool      (pool/mk-pool)
+   :timeout   30
+   :keepalive 60})
+
 (defn request
   ([addr req upstream-fn]
      (request GLOBAL-POOL addr req upstream-fn))
   ([pool addr request upstream-fn]
      ;; Create an atom that contains the state of the request
-     (let [[state downstream-fn] (mk-initial-state pool request upstream-fn)]
-       ;; TODO: Handle cases where the channel returned is open but
-       ;;       writes to it will fail.
-       (initialize-request state addr request)
-       downstream-fn)))
+     (let [opts (merge default-options {})]
+      (let [[state downstream-fn] (mk-initial-state pool request upstream-fn opts)]
+        (initialize-request state addr request)
+        downstream-fn))))
