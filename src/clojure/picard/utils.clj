@@ -91,9 +91,14 @@
 (defn netty-msg->hdrs
   [^HttpMessage msg]
   (let [version ^HttpVersion (.getProtocolVersion msg)]
-    (-> {}
-        (into (map (fn [[k v]] [(str/lower-case k) v])
-                   (.getHeaders msg)))
+    (-> (reduce
+         (fn [hdrs [name val]]
+           (let [name (str/lower-case name)]
+             (assoc hdrs
+               name (if-let [existing (hdrs name)]
+                      (conj (if (vector? existing) existing [existing]) val)
+                      val))))
+         {} (.getHeaders msg))
         (assoc :http-version [(.getMajorVersion version)
                               (.getMinorVersion version)]))))
 
@@ -137,12 +142,12 @@
   (returning
    msg
    (doseq [[k v-or-vals] hdrs]
-     (when (and (string? k)
-                (not (nil? v-or-vals)))
-       (if (string? v-or-vals)
-         (.addHeader msg (name k) v-or-vals)
-         (doseq [val v-or-vals]8
-           (.addHeader msg (name k) v-or-vals)))))))
+     (if (string? v-or-vals)
+       (when-not (empty? v-or-vals)
+         (.addHeader msg (name k) v-or-vals))
+       (doseq [val v-or-vals]
+         (when-not (empty? val)
+           (.addHeader msg (name k) val)))))))
 
 (defn- mk-netty-response
   [status]

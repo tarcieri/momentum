@@ -53,6 +53,49 @@
                   :local-addr     :dont-care
                   :http-version   [1 0]} nil])))
 
+(defcoretest request-and-response-with-duplicated-headers
+  (deftrackedapp [dn]
+    (fn [evt _]
+      (when (= :request evt)
+        (dn :response
+            [200 {"content-length" "0"
+                  "connection"     "close"
+                  "foo"            "lol"
+                  "bar"            ["omg" "hi2u"]
+                  "baz"            ["1" "2" "3"]} ""]))))
+
+  (http-write "GET / HTTP/1.1\r\n"
+              ;; stuff
+              "baz: lol\r\n"
+              "bar: omg\r\n"
+              "bar: hi2u\r\n"
+              "foo: 1\r\n"
+              "foo: 2\r\n"
+              "foo: 3\r\n\r\n")
+
+  (is (received-response
+       "HTTP/1.1 200 OK\r\n"
+       "content-length: 0\r\n"
+       "connection: close\r\n"
+       "foo: lol\r\n"
+       "bar: omg\r\n"
+       "bar: hi2u\r\n"
+       "baz: 1\r\n"
+       "baz: 2\r\n"
+       "baz: 3\r\n\r\n"))
+
+  (is (next-msgs
+       :request [{:server-name    picard/SERVER-NAME
+                  :script-name    ""
+                  :path-info      "/"
+                  :request-method "GET"
+                  :remote-addr    :dont-care
+                  :local-addr     :dont-care
+                  :http-version   [1 1]
+                  "foo"           ["1" "2" "3"]
+                  "bar"           ["omg" "hi2u"]
+                  "baz"           "lol"} nil])))
+
 (defcoretest simple-request-with-body
   :hello-world
   (http-write "POST / HTTP/1.1\r\n"
@@ -641,6 +684,28 @@
 
   (is (received-response "")))
 
+(defcoretest each-event-resets-timer
+  [ch]
+  {:timeout 1}
+  (deftrackedapp [dn] (fn [_ _]))
+
+  (http-write "POST / HTTP/1.1\r\n"
+              "Transfer-Encoding: chunked\r\n\r\n")
+
+  (is (next-msgs-for ch :request :dont-care))
+
+  (Thread/sleep 800)
+  (http-write "5\r\nHello\r\n")
+  (is (next-msgs-for ch :body "Hello"))
+
+  (Thread/sleep 800)
+  (http-write "5\r\nWorld\r\n")
+  (is (next-msgs-for ch :body "World"))
+
+  (Thread/sleep 800)
+  (http-write "0\r\n\r\n")
+  (is (next-msgs-for ch :done nil)))
+
 (defcoretest timing-out-halfway-through-streamed-chunked-response
   {:timeout 1}
   (deftrackedapp [dn]
@@ -661,4 +726,20 @@
 
   (is (received-response "")))
 
+(defcoretest timing-out-during-keepalive
+  {:keepalive 1}
+  (deftrackedapp [dn]
+    (fn [evt _]
+      (when (= :request evt)
+        (dn :response [200 {"content-length" "5"} "Hello"]))))
 
+  (http-write "GET / HTTP/1.1\r\n\r\n")
+
+  (is (receiving
+       "HTTP/1.1 200 OK\r\n"
+       "content-length: 5\r\n\r\n"
+       "Hello"))
+
+  (Thread/sleep 2010)
+
+  (is (received-response "")))
