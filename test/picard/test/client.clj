@@ -53,6 +53,50 @@
                        "connection"     "close"}
                       "Hello"]))))
 
+(defcoretest request-and-response-with-duplicated-headers
+  [ch1 ch2]
+  (deftrackedapp [dn]
+    (fn [evt _]
+      (when (= :request evt)
+        (dn :response
+            [200 {"content-length" "0"
+                  "connection"     "close"
+                  "foo"            "lol"
+                  "bar"            ["omg" "hi2u"]
+                  "baz"            ["1" "2" "3"]} ""]))))
+
+  (client/request
+   ["localhost" 4040]
+   [{:path-info      "/"
+     :request-method "GET"
+     "baz"           "lol"
+     "bar"           ["omg" "hi2u"]
+     "lol"           ["1" "2" "3"]}]
+   (fn [_ evt val] (enqueue ch2 [evt val])))
+
+  (is (next-msgs-for
+       ch1
+       :request [{:server-name    picard/SERVER-NAME
+                  :script-name    ""
+                  :path-info      "/"
+                  :request-method "GET"
+                  :remote-addr    :dont-care
+                  :local-addr     :dont-care
+                  :http-version   [1 1]
+                  "baz"           "lol"
+                  "bar"           ["omg" "hi2u"]
+                  "lol"           ["1" "2" "3"]} nil]))
+
+  (is (next-msgs-for
+       ch2
+       :connected nil
+       :response  [200 {:http-version    [1 1]
+                        "content-length" "0"
+                        "connection"     "close"
+                        "foo"            "lol"
+                        "bar"            ["omg" "hi2u"]
+                        "baz"            ["1" "2" "3"]} ""])))
+
 (defcoretest receiving-a-chunked-body
   [ch1 ch2]
   (deftrackedapp [downstream]

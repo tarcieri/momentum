@@ -142,12 +142,13 @@
   (returning
    msg
    (doseq [[k v-or-vals] hdrs]
-     (if (string? v-or-vals)
-       (when-not (empty? v-or-vals)
-         (.addHeader msg (name k) v-or-vals))
-       (doseq [val v-or-vals]
-         (when-not (empty? val)
-           (.addHeader msg (name k) val)))))))
+     (when (string? k)
+      (if (string? v-or-vals)
+        (when-not (empty? v-or-vals)
+          (.addHeader msg (name k) v-or-vals))
+        (doseq [val v-or-vals]
+          (when-not (empty? val)
+            (.addHeader msg (name k) val))))))))
 
 (defn- mk-netty-response
   [status]
