@@ -180,22 +180,25 @@
            (finalize-exchange state current-state)))))))
 
 (defn- handle-err
-  [state err current-state]
-  (swap! state #(assoc % :aborting? true))
-  ;; If there is an upstream, try sending an abort event up
-  (when (.upstream current-state)
-    (try ((.upstream current-state) :abort err)
-         (catch Exception _ nil))
-    (swap! state #(assoc % :next-up-fn nil :upstream nil)))
+  [state err _]
+  (swap-then!
+   state
+   #(assoc % :aborting? true)
+   (fn [current-state]
+     ;; If there is an upstream, try sending an abort event up
+     (when (.upstream current-state)
+       (try ((.upstream current-state) :abort err)
+            (catch Exception _ nil))
+       (swap! state #(assoc % :next-up-fn nil :upstream nil)))
 
-  ;; Clear out any timeouts
-  (clear-timeout state current-state)
+     ;; Clear out any timeouts
+     (clear-timeout state current-state)
 
-  ;; Finally, close the connection
-  (if (.last-write current-state)
-    (.addListener (.last-write current-state)
-                  netty/close-channel-future-listener)
-    (.close (.ch current-state))))
+     ;; Finally, close the connection
+     (if (.last-write current-state)
+       (.addListener (.last-write current-state)
+                     netty/close-channel-future-listener)
+       (.close (.ch current-state))))))
 
 (defn- downstream-fn
   [state]
@@ -300,7 +303,7 @@
     ;; from netty that we don't care to pass to the application.
     ;; So, here we ensure that the channel actually gets closed.
     (.close (.ch current-state))
-    (try (upstream :abort nil)
+    (try (upstream :abort (Exception. "Connection reset by peer."))
          (catch Exception _ nil))
     (swap! state #(assoc % :next-dn-fn aborted-req))))
 

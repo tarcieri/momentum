@@ -251,7 +251,7 @@
 
   (is (next-msgs
        :request [:dont-care :chunked]
-       :abort   nil)))
+       :abort   #(instance? Exception %))))
 
 (defcoretest applications-raising-errors
   (deftrackedapp [downstream]

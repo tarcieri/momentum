@@ -47,29 +47,18 @@
      (.getStatus resp)))
 
 (defn- clear-timeout
-  [state current-state]
+  [current-state]
   (when-let [old-timeout (.timeout current-state)]
     (netty/cancel-timeout old-timeout)))
 
 (defn- bump-timeout
-  ([state current-state]
-     (bump-timeout state (* ((.options current-state) :timeout) 1000)
-                   current-state))
-  ([state ms current-state]
-     ;; Out with the old
-     (when-let [old-timeout (.timeout current-state)]
-       (netty/cancel-timeout old-timeout))
-
-     ;; In with the new
-     (let [new-timeout (netty/on-timeout
-                        netty/global-timer
-                        ms
-                        #(handle-err state (Exception. "Timed out") @state))]
-       (swap! state #(assoc % :timeout new-timeout)))))
-
-(defn- start-keepalive-timer
   [state current-state]
-  (bump-timeout state (* ((.options current-state) :keepalive) 1000) current-state))
+  (clear-timeout current-state)
+  (let [new-timeout (netty/on-timeout
+                     netty/global-timer
+                     (* ((.options current-state) :timeout) 1000)
+                     #(handle-err state (Exception. "Timed out") @state))]
+    (swap! state #(assoc % :timeout new-timeout))))
 
 (defn- request-complete
   [_ evt _ _]
@@ -82,6 +71,10 @@
     (netty/on-complete
      (.last-write current-state)
      (fn [_]
+       ;; The connection will either be closed or it will be moved
+       ;; into the connection pool which has it's own keepalive
+       ;; timeout, so clear any existing timeout for this connection.
+       (clear-timeout current-state)
        (if (and (.keepalive? current-state)
                 (not (.aborted? current-state)))
          (pool/checkin-conn (.pool current-state) (.ch current-state))
@@ -227,10 +220,9 @@
   [state err current-state]
   (swap-then!
    state
-   (fn [current-state]
-     (assoc current-state
-       :next-dn-fn request-complete
-       :aborted?   true))
+   #(assoc %
+      :next-dn-fn request-complete
+      :aborted?   true)
    (fn [current-state]
      (when (.upstream current-state)
        (try
@@ -248,7 +240,11 @@
          (when-not (.aborted? current-state)
            (cond-let
             [msg (netty/message-event evt)]
-            ((.next-up-fn current-state) state msg current-state)
+            (try
+              (bump-timeout state current-state)
+              ((.next-up-fn current-state) state msg current-state)
+              (catch Exception err
+                (handle-err state err current-state)))
 
             ;; The channel interest has changed to writable
             ;; or not writable
@@ -267,7 +263,7 @@
               (initial-write-succeeded state current-state))
 
             [err (netty/exception-event evt)]
-            (do (.printStackTrace err)))))))))
+            (handle-err state err current-state))))))))
 
 (defn- mk-downstream-fn
   [state]
@@ -277,6 +273,7 @@
       (if (= evt :abort)
         (when-not (.aborted? current-state)
           (handle-err state val current-state))
+
         (do
           (when (.aborted? current-state)
             (throw (Exception. "The request has been aborted")))
@@ -289,10 +286,12 @@
            (.setReadable (.ch current-state) true)
 
            :else
-           ((.next-dn-fn current-state) state evt val current-state)))))))
+           (when-let [next-dn-fn (.next-dn-fn current-state)]
+             (bump-timeout state current-state)
+             (next-dn-fn state evt val current-state))))))))
 
 (defn- mk-initial-state
-  [pool [hdrs body :as  req] upstream-fn opts]
+  [[hdrs body :as  req] upstream-fn {pool :pool :as opts}]
   (let [state       (atom nil)
         downstream-fn (mk-downstream-fn state)]
     (swap!
@@ -330,31 +329,55 @@
          ;; Start the request
          (swap-then!
           state
+          #(assoc %
+             :ch         ch-or-err
+             :next-dn-fn write-pending)
           (fn [current-state]
             (if (.aborted? current-state)
-              current-state
-              (assoc current-state
-                :ch         ch-or-err
-                :next-dn-fn write-pending)))
-          (fn [current-state]
-            (if (.aborted? current-state)
-              ;; Return to the connection pool
+              ;; Something happened (an error?) and this HTTP exchange
+              ;; is done. However, nothing was written to the socket
+              ;; yet so we can return the connection to pool for
+              ;; future use.
               (pool/checkin-conn pool ch-or-err)
 
               ;; Otherwise, do stuff with it
               (let [write-future (.write ch-or-err (req->netty-req request))]
+                ;; Start tracking timeouts for this exchange.
+                (bump-timeout state current-state)
+
                 ;; Save off the write future
-                (swap! state (fn [current-state]
-                               (assoc current-state :last-write write-future)))
+                (swap! state #(assoc % :last-write write-future))
+
                 ;; Write the request to the connection
                 (netty/on-complete
                  write-future
-                 ;; TODO: Handle unsuccessfull connections here
                  (fn [future]
+                   ;; When the write is not successfull, then there is something
+                   ;; wrong with the connection. If the connection is
+                   ;; "fresh" then it was established for this request
+                   ;; and the write failure indicates something wrong
+                   ;; with the end server. If the connection is not
+                   ;; "fresh" then a previous request succeeded on the
+                   ;; connection, so something else went wrong
+                   ;; (perhaps the server terminated the connection
+                   ;; before it received the write). In this case, we
+                   ;; want to retry the request since there is a good
+                   ;; chance that the request will eventually get through.
+                   ;; PS: If anybody knows how to test this code path, please
+                   ;; let me know.
                    (when-not (.isSuccess future)
                      (if fresh?
                        (handle-err state (.getCause future) current-state)
-                       (initialize-request state addr request))))))))))))))
+                       (do
+                         ;; Clear the timeout first since we're going
+                         ;; to discard the connection in a minute.
+                         (clear-timeout current-state)
+                         ;; Cleanup the bogus connection to make sure
+                         ;; we don't hit any max connections next time
+                         ;; around.
+                         (pool/close-conn pool ch-or-err)
+                         ;; Restart the exchange.
+                         (initialize-request state addr request)))))))))))))))
 
 ;; A global pool
 (def GLOBAL-POOL (pool/mk-pool))
@@ -365,15 +388,14 @@
 
 (def default-options
   {:pool      (pool/mk-pool)
-   :timeout   1
-   :keepalive 60})
+   :timeout   60})
 
 (defn request
   ([addr req upstream-fn]
-     (request GLOBAL-POOL addr req upstream-fn))
-  ([pool addr request upstream-fn]
+     (request addr req {} upstream-fn))
+  ([addr request opts upstream-fn]
      ;; Create an atom that contains the state of the request
-     (let [opts (merge default-options {})]
-      (let [[state downstream-fn] (mk-initial-state pool request upstream-fn opts)]
+     (let [opts (merge default-options opts)]
+      (let [[state downstream-fn] (mk-initial-state request upstream-fn opts)]
         (initialize-request state addr request)
         downstream-fn))))

@@ -219,7 +219,7 @@
 
   (let [downstream
         (client/request
-         ["Localhost" 4040]
+         ["localhost" 4040]
          [{:path-info      "/"
            :request-method "GET"
            "connection"    "close"}]
@@ -379,10 +379,10 @@
   [_ ch]
   nil
   (client/request
-   (client/mk-pool {:local-addr ["127.0.0.1" 12345]})
    ["www.google.com" 80]
    [{:path-info      "/"
      :request-method "GET"}]
+   {:pool (client/mk-pool {:local-addr ["127.0.0.1" 12345]})}
    (fn [_ evt val] (enqueue ch [evt val])))
 
   (is (next-msgs-for
@@ -396,9 +396,10 @@
   (let [pool (client/mk-pool {:max-connections 1})]
     (doseq [ch [ch1 ch2]]
       (client/request
-       pool ["localhost" 4040]
+       ["localhost" 4040]
        [{:path-info      "/"
          :request-method "GET"}]
+       {:pool pool}
        (fn [_ evt val]
          (enqueue ch [evt val]))))
 
@@ -413,10 +414,11 @@
 
     ;; Close off the pool
     (client/request
-     pool ["localhost" 4040]
+     ["localhost" 4040]
      [{:path-info      "/"
        :request-method "GET"
        "connection"    "close"}]
+     {:pool pool}
      (fn [_ _ _]))))
 
 (defcoretest observing-max-per-address-connections
@@ -426,17 +428,19 @@
   (let [pool (client/mk-pool {:max-connections-per-address 1})]
     (doseq [ch [ch1 ch2]]
       (client/request
-       pool ["localhost" 4040]
+       ["localhost" 4040]
        [{:path-info      "/"
          :request-method "GET"}]
+       {:pool pool}
        (fn [_ evt val]
          (enqueue ch [evt val]))))
 
     (client/request
-     pool ["127.0.0.1" 4040]
+     ["127.0.0.1" 4040]
      [{:path-info "/"
        :request-method "GET"
        "connection" "close"}]
+     {:pool pool}
      (fn [_ evt val]
        (enqueue ch3 [evt val])))
 
@@ -455,10 +459,11 @@
          :response  :dont-care))
 
     (client/request
-     pool ["localhost" 4040]
+     ["localhost" 4040]
      [{:path-info      "/"
        :request-method "GET"
        "connection"    "close"}]
+     {:pool pool}
      (fn [_ _ _]))))
 
 (defcoretest handling-abort-loops
@@ -519,11 +524,11 @@
         (downstream :done nil))))
 
   (client/request
-   (mk-tracked-pool ch)
    ["localhost" 4040]
    [{:path-info      "/"
      :request-method "GET"
      "connection"    "close"}]
+   {:pool (mk-tracked-pool ch)}
    (fn [downstream evt val]
      (when (= :response evt)
        (downstream :abort nil)
@@ -531,7 +536,7 @@
 
   (is (no-msgs-for ch)))
 
-(defcoretest ^{:focus true} client-times-out-when-server-never-responses
+(defcoretest client-times-out-when-server-never-responses
   [_ ch]
   (fn [dn] (fn [_ _]))
 
@@ -540,6 +545,7 @@
    [{:path-info      "/"
      :request-method "GET"
      "connection"    "close"}]
+   {:timeout 1}
    (fn [dn evt val]
      (enqueue ch [evt val])))
 
@@ -550,10 +556,9 @@
        :connected nil
        :abort     #(instance? Exception %))))
 
-(defcoretest ^{:focus true} timing-out-halfway-through-streamed-response
-  [_ ch ch2]
+(defcoretest timing-out-halfway-through-streamed-response
+  [_ ch]
   (deftrackedapp [dn]
-    (receive ch2 (fn [_] (dn :done nil)))
     (fn [evt val]
       (when (= :request evt)
         (dn :response [200 {"transfer-encoding" "chunked"
@@ -566,6 +571,7 @@
    [{:path-info      "/"
      :request-method "GET"
      "connection"    "close"}]
+   {:timeout 1}
    (fn [dn evt val]
      (enqueue ch [evt val])))
 
@@ -578,6 +584,4 @@
 
   (Thread/sleep 1)
 
-  (is (next-msgs-for ch :abort #(instance? Exception %)))
-
-  (enqueue ch2 nil))
+  (is (next-msgs-for ch :abort #(instance? Exception %))))

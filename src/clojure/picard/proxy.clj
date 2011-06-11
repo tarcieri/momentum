@@ -46,9 +46,9 @@
 (def bad-gateway [502 {"content-length" "0"} nil])
 
 (defn- initiate-request
-  [state pool req downstream]
+  [state opts req downstream]
   (client/request
-   pool (addr-from-req req) (add-xff-header req)
+   (addr-from-req req) (add-xff-header req) opts
    (fn [upstream evt val]
      (debug "PXY EVT: " [evt val])
      (cond
@@ -71,8 +71,8 @@
         (downstream :pause nil)))))
 
 (defn mk-proxy
-  ([] (mk-proxy client/GLOBAL-POOL))
-  ([pool]
+  ([] (mk-proxy {}))
+  ([opts]
      (fn [downstream]
        (let [state (atom nil)]
          (defstream
@@ -80,7 +80,7 @@
            (request [req]
              (if (proxy-loop? req)
                (downstream :response bad-gateway)
-               (initiate-request state pool req downstream)))
+               (initiate-request state opts req downstream)))
            ;; Handling all other events
            (:else [evt val]
              (if-let [upstream @state]
