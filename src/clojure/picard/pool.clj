@@ -83,7 +83,7 @@
   (.close conn))
 
 (def default-options
-  {:expire-after                60
+  {:keepalive                   60
    :max-connections             1000
    :max-connections-per-address 200    ;; Not implemented yet
    :max-queued-connections      5000}) ;; Not implemented yet
@@ -98,7 +98,8 @@
         ;; The channel pool with a callback that tracks open
         ;; connections
         (ChannelPool.
-         (options :expire-after)
+         (options :keepalive)
+         netty/global-timer
          (reify ChannelPoolCallback
            (channelClosed [_ addr]
              (decrement-count-for state addr))))

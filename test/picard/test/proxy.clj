@@ -58,7 +58,7 @@
 (defcoretest avoids-proxy-loops
   [ch1]
   (tracking-middleware
-   (prox/mk-proxy (client/mk-pool {:expire-after 1})))
+   (prox/mk-proxy (client/mk-pool {:keepalive 1})))
   (with-app (prox/mk-proxy)
     (GET "/" {"host" "localhost:4040" "connection" "close"})
 

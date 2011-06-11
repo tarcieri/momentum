@@ -585,3 +585,41 @@
   (Thread/sleep 1)
 
   (is (next-msgs-for ch :abort #(instance? Exception %))))
+
+(defcoretest timing-out-during-keepalive
+  [_ ch]
+  (fn [dn]
+    (fn [evt val]
+      (when (= :request evt)
+        (dn :response [200 {"content-length" "5"} "Hello"]))))
+
+  (let [pool (client/mk-pool {:keepalive 1})]
+    (client/request
+     ["localhost" 4040]
+     [{:path-info      "/"
+       :request-method "GET"}]
+     {:pool pool}
+     (fn [_ evt val]
+       (enqueue ch [evt val])))
+
+    (is (next-msgs-for
+         ch
+         :connected nil
+         :response  :dont-care))
+
+    (Thread/sleep 2050)
+
+    (client/request
+     ["localhost" 4040]
+     [{:path-info      "/"
+       :request-method "GET"}]
+     {:pool pool}
+     (fn [_ evt val]
+       (enqueue ch [evt val])))
+
+    (is (next-msgs-for
+         ch
+         :connected nil
+         :response  :dont-care)))
+
+  (is (= 3 (count (netty-connect-evts)))))
