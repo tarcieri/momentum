@@ -22,6 +22,12 @@
 (defn response-headers [[_ headers]] headers)
 (defn response-body    [[_ _ body]]  body)
 
+(defmacro defstack
+  "Builds an application stack from downstream to upstream. The last
+  argument should be the end application and everything before that
+  is middleware."
+  [& items] `(-> ~@(reverse items)))
+
 (defmacro defstream
   [& handlers]
   (let [evt (gensym) val (gensym)]
