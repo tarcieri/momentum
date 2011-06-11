@@ -31,8 +31,8 @@
     (client/request
      ["localhost" 4040]
      [{:path-info "/" :request-method method}]
-     (fn [_ evt val]
-       (enqueue ch2 [evt val])))
+     (fn [_]
+       (fn [evt val] (enqueue ch2 [evt val]))))
 
     (is (next-msgs-for
          ch1
@@ -72,7 +72,8 @@
      "baz"           "lol"
      "bar"           ["omg" "hi2u"]
      "lol"           ["1" "2" "3"]}]
-   (fn [_ evt val] (enqueue ch2 [evt val])))
+   (fn [dn]
+     (fn [evt val] (enqueue ch2 [evt val]))))
 
   (is (next-msgs-for
        ch1
@@ -112,8 +113,9 @@
    [{:path-info      "/"
      :request-method "GET"
      "connection"    "close"}]
-   (fn [_ evt val]
-     (enqueue ch2 [evt val])))
+   (fn [_]
+     (fn [evt val]
+       (enqueue ch2 [evt val]))))
 
   (is (next-msgs-for
        ch2
@@ -133,12 +135,13 @@
    [{:path-info          "/"
      :request-method     "GET"
      "transfer-encoding" "chunked"} :chunked]
-   (fn [downstream evt val]
-     (enqueue ch2 [evt val])
-     (when (= :connected evt)
-       (downstream :body "Foo!")
-       (downstream :body "Bar!")
-       (downstream :done nil))))
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch2 [evt val])
+       (when (= :connected evt)
+         (dn :body "Foo!")
+         (dn :body "Bar!")
+         (dn :done nil)))))
 
   (is (next-msgs-for
        ch1
@@ -165,7 +168,9 @@
   (client/request
    ["localhost" 4040]
    [{:path-info "/" :request-method "GET"}]
-   (fn [_ evt val] (enqueue ch2 [evt val])))
+   (fn [_]
+     (fn [evt val]
+       (enqueue ch2 [evt val]))))
 
   (is (next-msgs-for
        ch2
@@ -176,7 +181,8 @@
   (client/request
    ["localhost" 4040]
    [{:path-info "/" :request-method "GET"}]
-   (fn [_ evt val] (enqueue ch2 [evt val])))
+   (fn [_]
+     (fn [evt val] (enqueue ch2 [evt val]))))
 
   (is (next-msgs-for
        ch2
@@ -191,12 +197,13 @@
      "transfer-encoding" "chunked"
      "connection"        "close"}
     :chunked]
-   (fn [downstream evt val]
-     (enqueue ch2 [evt val])
-     (when (= :connected evt)
-       (downstream :body "HELLO")
-       (downstream :body "WORLD")
-       (downstream :done nil))))
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch2 [evt val])
+       (when (= :connected evt)
+         (dn :body "HELLO")
+         (dn :body "WORLD")
+         (dn :done nil)))))
 
   (is (next-msgs-for
        ch2
@@ -223,10 +230,12 @@
          [{:path-info      "/"
            :request-method "GET"
            "connection"    "close"}]
-         (fn [downstream evt val]
-           (enqueue ch2 [evt val])
-           (when (= evt :response)
-             (downstream :pause nil))))]
+         (fn [dn]
+           (fn [evt val]
+             (enqueue ch2 [evt val])
+             (when (= evt :response)
+               (dn :pause nil)))))]
+
     (receive ch3 (fn [_] (downstream :resume nil))))
 
   (is (next-msgs-for
@@ -259,13 +268,16 @@
        :request-method     "POST"
        "transfer-encoding" "chunked"
        "connection"        "close"} :chunked]
-     (fn [downstream evt val]
-       (enqueue ch2 [evt val])
-       (when (= :connected evt)
-         (bg-while @latch (downstream :body "HAMMER TIME!")))
-       (when (= :pause evt) (toggle! latch))
-       (when (= :resume evt)
-         (downstream :done nil))))
+     (fn [dn]
+       (fn [evt val]
+         (enqueue ch2 [evt val])
+
+         (when (= :connected evt)
+           (bg-while @latch (dn :body "HAMMER TIME!")))
+
+         (when (= :pause evt) (toggle! latch))
+         (when (= :resume evt)
+           (dn :done nil)))))
 
     (is (next-msgs-for
          ch2
@@ -282,13 +294,15 @@
 (defcoretest issuing-immediate-abort
   [_ ch]
   :hello-world
-  (let [upstream (client/request
-                  ["localhost" 4040]
-                  [{:path-info      "/"
-                    :request-method "POST"} nil]
-                  (fn [_ evt val]
-                    (enqueue ch [evt val])))]
-    (upstream :abort nil))
+  (let [downstream (client/request
+                    ["localhost" 4040]
+                    [{:path-info      "/"
+                      :request-method "POST"} nil]
+                    (fn [_]
+                      (fn [evt val]
+                        (enqueue ch [evt val]))))]
+
+    (downstream :abort nil))
 
   (is (not-receiving-messages))
 
@@ -298,7 +312,7 @@
    [{:path-info      "/"
      :request-method "GET"
      "connection"    "close"}]
-   (fn [_ _ _] true)))
+   (fn [_] (fn [_ _]))))
 
 (defcoretest handling-100-continue-requests-and-responses
   [ch1 ch2]
@@ -318,8 +332,9 @@
            :request-method  "POST"
            "content-length" "5"
            "expect"         "100-continue"} :chunked]
-         (fn [downstream evt val]
-           (enqueue ch2 [evt val])))]
+         (fn [_]
+           (fn [evt val]
+             (enqueue ch2 [evt val]))))]
 
     (is (next-msgs-for
          ch1
@@ -354,8 +369,9 @@
    ["google.com"]
    [{:path-info "/"
      :request-method "GET"}]
-   (fn [_ evt val]
-     (enqueue ch [evt val])))
+   (fn [_]
+     (fn [evt val]
+       (enqueue ch [evt val]))))
 
   (is (next-msgs-for
        ch
@@ -365,11 +381,14 @@
 (defcoretest connecting-to-an-invalid-server
   [_ ch]
   :hello-world
+
   (client/request
    ["localhost" 4041]
    [{:path-info      "/"
      :request-method "GET"}]
-   (fn [_ evt val] (enqueue ch [evt val])))
+   (fn [_]
+     (fn [evt val]
+       (enqueue ch [evt val]))))
 
   (is (next-msgs-for
        ch
@@ -378,12 +397,15 @@
 (defcoretest observes-local-addr-when-connecting
   [_ ch]
   nil
+
   (client/request
    ["www.google.com" 80]
    [{:path-info      "/"
      :request-method "GET"}]
    {:pool (client/mk-pool {:local-addr ["127.0.0.1" 12345]})}
-   (fn [_ evt val] (enqueue ch [evt val])))
+   (fn [_]
+     (fn [evt val]
+       (enqueue ch [evt val]))))
 
   (is (next-msgs-for
        ch
@@ -400,8 +422,9 @@
        [{:path-info      "/"
          :request-method "GET"}]
        {:pool pool}
-       (fn [_ evt val]
-         (enqueue ch [evt val]))))
+       (fn [_]
+         (fn [evt val]
+           (enqueue ch [evt val])))))
 
     (is (next-msgs-for
          ch1
@@ -419,7 +442,7 @@
        :request-method "GET"
        "connection"    "close"}]
      {:pool pool}
-     (fn [_ _ _]))))
+     (fn [_] (fn [_ _])))))
 
 (defcoretest observing-max-per-address-connections
   [_ ch1 ch2 ch3]
@@ -432,8 +455,9 @@
        [{:path-info      "/"
          :request-method "GET"}]
        {:pool pool}
-       (fn [_ evt val]
-         (enqueue ch [evt val]))))
+       (fn [_]
+         (fn [evt val]
+           (enqueue ch [evt val])))))
 
     (client/request
      ["127.0.0.1" 4040]
@@ -441,8 +465,9 @@
        :request-method "GET"
        "connection" "close"}]
      {:pool pool}
-     (fn [_ evt val]
-       (enqueue ch3 [evt val])))
+     (fn [_]
+       (fn [evt val]
+         (enqueue ch3 [evt val]))))
 
     (is (next-msgs-for
          ch1
@@ -464,7 +489,7 @@
        :request-method "GET"
        "connection"    "close"}]
      {:pool pool}
-     (fn [_ _ _]))))
+     (fn [_] (fn [_ _])))))
 
 (defcoretest handling-abort-loops
   [_ ch2]
@@ -474,9 +499,10 @@
    ["localhost" 4040]
    [{:path-info "/"
      :request-method "GET"}]
-   (fn [downstream evt val]
-     (enqueue ch2 [evt val])
-     (downstream :abort nil)))
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch2 [evt val])
+       (dn :abort nil))))
 
   (is (next-msgs-for
        ch2
@@ -504,8 +530,9 @@
        [{:path-info "/"
          :request-method "GET"
          "connection" "close"}]
-       (fn [_ evt val]
-         (enqueue event-channel [evt val])))
+       (fn [_]
+         (fn [evt val]
+           (enqueue event-channel [evt val]))))
 
       (is (next-msgs-for
            event-channel
@@ -529,10 +556,11 @@
      :request-method "GET"
      "connection"    "close"}]
    {:pool (mk-tracked-pool ch)}
-   (fn [downstream evt val]
-     (when (= :response evt)
-       (downstream :abort nil)
-       (downstream :abort nil))))
+   (fn [dn]
+     (fn [evt val]
+       (when (= :response evt)
+         (dn :abort nil)
+         (dn :abort nil)))))
 
   (is (no-msgs-for ch)))
 
@@ -546,8 +574,9 @@
      :request-method "GET"
      "connection"    "close"}]
    {:timeout 1}
-   (fn [dn evt val]
-     (enqueue ch [evt val])))
+   (fn [_]
+     (fn [evt val]
+       (enqueue ch [evt val]))))
 
   (Thread/sleep 1050)
 
@@ -572,8 +601,9 @@
      :request-method "GET"
      "connection"    "close"}]
    {:timeout 1}
-   (fn [dn evt val]
-     (enqueue ch [evt val])))
+   (fn [_]
+     (fn [evt val]
+       (enqueue ch [evt val]))))
 
   (is (next-msgs-for
        ch
@@ -599,8 +629,9 @@
      [{:path-info      "/"
        :request-method "GET"}]
      {:pool pool}
-     (fn [_ evt val]
-       (enqueue ch [evt val])))
+     (fn [_]
+       (fn [evt val]
+         (enqueue ch [evt val]))))
 
     (is (next-msgs-for
          ch
@@ -614,8 +645,9 @@
      [{:path-info      "/"
        :request-method "GET"}]
      {:pool pool}
-     (fn [_ evt val]
-       (enqueue ch [evt val])))
+     (fn [_]
+       (fn [evt val]
+         (enqueue ch [evt val]))))
 
     (is (next-msgs-for
          ch

@@ -49,21 +49,22 @@
   [state opts req downstream]
   (client/request
    (addr-from-req req) (add-xff-header req) opts
-   (fn [upstream evt val]
-     (debug "PXY EVT: " [evt val])
-     (cond
-      (bad-gateway? @state evt val)
-      (downstream :response bad-gateway)
+   (fn [client-dn]
+     (fn [evt val]
+       (debug "PXY EVT: " [evt val])
+       (cond
+        (bad-gateway? @state evt val)
+        (downstream :response bad-gateway)
 
-      (= :connected evt)
-      (locking req
-        (let [current-state @state]
-          (when (= :pending current-state)
-            (downstream :resume nil))
-          (reset! state upstream)))
+        (= :connected evt)
+        (locking req
+          (let [current-state @state]
+            (when (= :pending current-state)
+              (downstream :resume nil))
+            (reset! state client-dn)))
 
-      :else
-      (downstream evt val))))
+        :else
+        (downstream evt val)))))
   (when (chunked? req)
     (locking req
       (when-not @state

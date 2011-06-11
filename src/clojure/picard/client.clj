@@ -135,8 +135,8 @@
                (assoc current-state
                  :next-up-fn nil)))
            finalize-request)
-          (upstream-fn downstream-fn :done nil))
-      (upstream-fn downstream-fn :body (.getContent msg)))))
+          (upstream-fn :done nil))
+      (upstream-fn :body (.getContent msg)))))
 
 (defn- initial-response
   [state ^HttpResponse msg current-state]
@@ -176,7 +176,7 @@
             :keepalive? keepalive?
             :next-up-fn nil))))
      finalize-request)
-    (upstream-fn downstream-fn :response (netty-resp->resp msg))))
+    (upstream-fn :response (netty-resp->resp msg))))
 
 (defn- initial-write-succeeded
   [state current-state]
@@ -202,7 +202,7 @@
    finalize-request)
   ;; Signal upstream that we are connected and ready to start handling
   ;; events.
-  ((.upstream current-state) (.downstream current-state) :connected nil))
+  ((.upstream current-state) :connected nil))
 
 (defn- handle-ch-interest-change
   [state current-state writable?]
@@ -212,7 +212,7 @@
     (when (and upstream-fn (not= (.isWritable ch) @writable?))
       (swap-then!
        writable? not
-       #(try (upstream-fn downstream-fn (if % :resume :pause) nil)
+       #(try (upstream-fn (if % :resume :pause) nil)
              (catch Exception err
                (throw (Exception. "Not implemented yet"))))))))
 
@@ -226,7 +226,7 @@
    (fn [current-state]
      (when (.upstream current-state)
        (try
-         ((.upstream current-state) (.downstream current-state) :abort err)
+         ((.upstream current-state) :abort err)
          (catch Exception _))
        (finalize-request current-state)))))
 
@@ -291,9 +291,10 @@
              (next-dn-fn state evt val current-state))))))))
 
 (defn- mk-initial-state
-  [[hdrs body :as  req] upstream-fn {pool :pool :as opts}]
-  (let [state       (atom nil)
-        downstream-fn (mk-downstream-fn state)]
+  [[hdrs body :as  req] accept-fn {pool :pool :as opts}]
+  (let [state         (atom nil)
+        downstream-fn (mk-downstream-fn state)
+        upstream-fn   (accept-fn downstream-fn)]
     (swap!
      state
      (fn [_] (State. pool               ;; The connection pool
@@ -391,11 +392,11 @@
    :timeout   60})
 
 (defn request
-  ([addr req upstream-fn]
-     (request addr req {} upstream-fn))
-  ([addr request opts upstream-fn]
+  ([addr req accept-fn]
+     (request addr req {} accept-fn))
+  ([addr request opts accept-fn]
      ;; Create an atom that contains the state of the request
      (let [opts (merge default-options opts)]
-      (let [[state downstream-fn] (mk-initial-state request upstream-fn opts)]
+      (let [[state downstream-fn] (mk-initial-state request accept-fn opts)]
         (initialize-request state addr request)
         downstream-fn))))
