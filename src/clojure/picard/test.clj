@@ -123,7 +123,7 @@
 (defn last-body-chunks
   []
   (->> (exchange-events (last-exchange))
-       (filter (fn [[evt]] (= :body evt)))
+       (filter (fn [[evt val]] (and (= :body evt) val)))
        (map (comp second normalize-body))))
 
 ;; Helpers

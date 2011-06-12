@@ -33,19 +33,21 @@
         ;; Buffer up the body chunks
         ;; TODO: Make this work when chunks might not be ChannelBuffers
         (body [^ChannelBuffer chunk]
-          (let [[_ order ll] @msg]
-            (when-not (instance? ChannelBuffer chunk)
-              (throw (Exception. "Non ChannelBuffer chunks is not implemented yet")))
+          (let [[f order ll] @msg]
+            (if chunk
+              (do
+                (when-not (instance? ChannelBuffer chunk)
+                  (throw (Exception. (str "Non ChannelBuffer chunks is "
+                                          "not implemented yet"))))
 
-            (when-not order
-              (swap! msg (fn [[f _ ll]] [f (.order chunk) ll])))
+                (when-not order
+                  (swap! msg (fn [[f _ ll]] [f (.order chunk) ll])))
 
-            (.addLast ll chunk)))
+                (.addLast ll chunk))
 
-        ;; Compose all the chunks into one ChannelBuffer and send it up
-        (done []
-          (let [[f order chunks] @msg]
-            (f (CompositeChannelBuffer. order chunks))))
+              ;; The body is done, compose all the chunks into one ChannelBuffer
+              ;; and send it upstream.
+              (f (CompositeChannelBuffer. order ll)))))
 
         ;; Stream all the other events through
         (:else [evt val]

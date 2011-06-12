@@ -152,7 +152,7 @@
         (downstream :response [200 {"connection" "close"} :chunked])
         (downstream :body "Hello ")
         (downstream :body "world")
-        (downstream :done nil))))
+        (downstream :body nil))))
 
   (http-write "GET / HTTP/1.1\r\n\r\n")
 
@@ -170,7 +170,7 @@
             (downstream :response [200 {"transfer-encoding" "chunked"} :chunked])
             (downstream :body "Hello")
             (downstream :body "World")
-            (downstream :done nil))
+            (downstream :body nil))
           (downstream :response [202 {"content-length" "0"}])))))
 
   (http-write "GET / HTTP/1.1\r\n\r\n")
@@ -193,7 +193,7 @@
   (is (next-msgs
        :request [(includes-hdrs {"transfer-encoding" "chunked"}) :chunked]
        :body    "Hello"
-       :done    nil)))
+       :body    nil)))
 
 (defcoretest single-chunked-response
   (fn [downstream]
@@ -201,7 +201,7 @@
       (when (= :request evt)
         (downstream :response [200 {"transfer-encoding" "chunked"} :chunked])
         (downstream :body "Hello")
-        (downstream :done nil))))
+        (downstream :body nil))))
 
   (http-write "GET / HTTP/1.1\r\n"
               "Connection: close\r\n\r\n")
@@ -224,7 +224,7 @@
        :request [(includes-hdrs {"transfer-encoding" "chunked"}) :chunked]
        :body    "Hello"
        :body    " World"
-       :done    nil))
+       :body    nil))
 
   (http-write "POST / HTTP/1.1\r\n"
               "Transfer-Encoding: chunked\r\n\r\n"
@@ -233,7 +233,7 @@
        :request [(includes-hdrs {"transfer-encoding" "chunked"}) :chunked]
        :body    "ZomG!!"
        :body    "INCEPTION"
-       :done    nil))
+       :body    nil))
 
   (http-write "GET / HTTP/1.1\r\n"
               "Connection: close\r\n\r\n")
@@ -322,7 +322,7 @@
          (toggle! latch)
 
          (= :resume evt)
-         (downstream :done nil)))))
+         (downstream :body nil)))))
 
   ;; Now the tests
   (http-write "GET / HTTP/1.1\r\n"
@@ -403,7 +403,7 @@
        (= :request evt)
        (downstream :pause nil)
 
-       (= :done evt)
+       (request-done? evt val)
        (downstream :response [200 {"content-type"   "text/plain"
                                    "content-length" "5"} "Hello"]))))
 
@@ -427,7 +427,7 @@
   (is (next-msgs
        :body "Hello" :body "World" :body "Hello" :body "World"
        :body "WTF" :body "is" :body "going" :body "on"
-       :done nil)))
+       :body nil)))
 
 (defcoretest handling-100-continue-requests-with-100-response
   (deftrackedapp [downstream]
@@ -436,7 +436,7 @@
        (= :request evt)
        (downstream :response [100])
 
-       (= :done evt)
+       (request-done? evt val)
        (downstream :response [200 {"content-length" "5"} "Hello"]))))
 
   (http-write "POST / HTTP/1.1\r\n"
@@ -454,7 +454,7 @@
 
   (is (next-msgs
        :body "Hello"
-       :done nil)))
+       :body nil)))
 
 (defcoretest handling-100-continue-requests-by-responding-directly
   (deftrackedapp [downstream]
@@ -487,7 +487,7 @@
                 (catch Exception err
                   (enqueue ch [:error err]))))
 
-       (= :done evt)
+       (request-done? evt val)
        (downstream :response [204 {"connection" "close"}]))))
 
   (http-write "POST / HTTP/1.1\r\n"
@@ -509,7 +509,7 @@
 (defcoretest client-sends-body-and-expects-100
   (deftrackedapp [downstream]
     (fn [evt val]
-      (when (= :done evt)
+      (when (request-done? evt val)
         (downstream :response [204 {"connection" "close"}]))))
 
   (http-write "POST / HTTP/1.1\r\n"
@@ -520,7 +520,7 @@
   (is (next-msgs
        :request [(includes-hdrs {"expect" "100-continue"}) :chunked]
        :body    "Hello"
-       :done    nil))
+       :body    nil))
 
   (is (received-response
        "HTTP/1.1 204 No Content\r\n"
@@ -533,7 +533,7 @@
        (= :request evt)
        (downstream :response [100])
 
-       (= :done evt)
+       (request-done? evt val)
        (downstream :response [204 {"connection" "close"}]))))
 
   (http-write "POST / HTTP/1.1\r\n"
@@ -544,7 +544,7 @@
   (is (next-msgs
        :request [(includes-hdrs {"expect" "100-continue"}) :chunked]
        :body    "Hello"
-       :done    nil))
+       :body    nil))
 
   (is (received-response
        "HTTP/1.1 100 Continue\r\n\r\n"
@@ -609,7 +609,7 @@
   (http-write "5\r\nHello\r\n0\r\n\r\n")
 
   (is (next-msgs :body "Hello"
-                 :done nil))
+                 :body nil))
 
   (is (not-receiving-messages)))
 
@@ -704,7 +704,7 @@
 
   (Thread/sleep 800)
   (http-write "0\r\n\r\n")
-  (is (next-msgs-for ch :done nil)))
+  (is (next-msgs-for ch :body nil)))
 
 (defcoretest timing-out-halfway-through-streamed-chunked-response
   {:timeout 1}

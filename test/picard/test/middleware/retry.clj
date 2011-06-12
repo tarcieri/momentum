@@ -65,7 +65,7 @@
     ;; Send the request and body directly after
     (let [upstream (GET "/" :chunked)]
       (upstream :body "hello")
-      (upstream :done nil))
+      (upstream :body nil))
     ;; Make sure the response is 500
     (is (= 500 (last-response-status)))))
 

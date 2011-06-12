@@ -23,8 +23,7 @@
     (defstream
       (request [[_ body]]
         (downstream :response [200 {} body]))
-      (body [chunk] (downstream :body chunk))
-      (done [] (downstream :done nil)))))
+      (body [chunk] (downstream :body chunk)))))
 
 (def chunked-app
   (fn [downstream]
@@ -33,7 +32,7 @@
         (downstream :response [200 {} :chunked])
         (downstream :body (to-channel-buffer "Hello"))
         (downstream :body (to-channel-buffer "World"))
-        (downstream :done nil)))))
+        (downstream :body nil)))))
 
 (deftest passes-simple-requests-through
   (with-app (middleware/body-buffer hello-world-app)
@@ -52,9 +51,8 @@
       (upstream :body (to-channel-buffer "World"))
       (is (empty? (received-exchange-events (last-exchange))))
 
-      (upstream :done nil)
-      (is (= (last-response)
-             [200 {} "HelloWorld"])))))
+      (upstream :body nil)
+      (is (= (last-response) [200 {} "HelloWorld"])))))
 
 (deftest buffers-chunked-responses
   (with-app (middleware/body-buffer chunked-app)
@@ -66,13 +64,13 @@
   (with-app (middleware/body-buffer
              (fn [downstream]
                (fn [evt val]
-                 (when (= :done evt)
+                 (when (request-done? evt val)
                    (downstream :response [200 {} "YAY"]))))
              {:upstream false})
     (let [upstream (GET "/")]
       (upstream :body "Hello")
       (upstream :body "World")
-      (upstream :done nil))
+      (upstream :body nil))
 
     (is (= (last-response)
            [200 {} "YAY"]))))

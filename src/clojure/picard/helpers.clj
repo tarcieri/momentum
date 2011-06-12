@@ -22,6 +22,18 @@
 (defn response-headers [[_ headers]] headers)
 (defn response-body    [[_ _ body]]  body)
 
+(defn request-done?
+  [evt val]
+  (or (and (= :request evt) (not= :chunked (val 1)))
+      (and (= :body evt) (nil? val))
+      (= :abort evt)))
+
+(defn response-done?
+  [evt val]
+  (or (and (= :response evt) (not= :chunked (val 2)))
+      (and (= :body evt) (nil? val))
+      (= :abort evt)))
+
 (defmacro build-stack
   "Builds an application stack from downstream to upstream. The last
   argument should be the end application and everything before that

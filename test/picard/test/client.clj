@@ -106,7 +106,7 @@
         (downstream :response [200 {"transfer-encoding" "chunked"} :chunked])
         (downstream :body "Hello")
         (downstream :body "World")
-        (downstream :done nil))))
+        (downstream :body nil))))
 
   (client/request
    ["localhost" 4040]
@@ -124,7 +124,7 @@
                          "transfer-encoding" "chunked"} :chunked]
        :body      "Hello"
        :body      "World"
-       :done      nil)))
+       :body      nil)))
 
 (defcoretest sending-a-chunked-body
   [ch1 ch2]
@@ -141,14 +141,14 @@
        (when (= :connected evt)
          (dn :body "Foo!")
          (dn :body "Bar!")
-         (dn :done nil)))))
+         (dn :body nil)))))
 
   (is (next-msgs-for
        ch1
        :request [(includes-hdrs {"transfer-encoding" "chunked"}) :chunked]
        :body    "Foo!"
        :body    "Bar!"
-       :done    nil))
+       :body    nil))
 
   (is (next-msgs-for
        ch2
@@ -203,7 +203,7 @@
        (when (= :connected evt)
          (dn :body "HELLO")
          (dn :body "WORLD")
-         (dn :done nil)))))
+         (dn :body nil)))))
 
   (is (next-msgs-for
        ch2
@@ -222,7 +222,7 @@
         (downstream :response [200 {"transfer-encoding" "chunked"} :chunked])
         (downstream :body "Hello")
         (downstream :body "World")
-        (downstream :done nil))))
+        (downstream :body nil))))
 
   (let [downstream
         (client/request
@@ -250,7 +250,7 @@
        ch2
        :body "Hello"
        :body "World"
-       :done nil)))
+       :body nil)))
 
 (defcoretest telling-the-application-to-chill-out
   [_ ch2 ch3]
@@ -277,7 +277,7 @@
 
          (when (= :pause evt) (toggle! latch))
          (when (= :resume evt)
-           (dn :done nil)))))
+           (dn :body nil)))))
 
     (is (next-msgs-for
          ch2
@@ -320,7 +320,7 @@
     (fn [evt val]
       (when (= :request evt)
         (downstream :response [100]))
-      (when (= :done evt)
+      (when (request-done? evt val)
         (downstream
          :response
          [200 {"content-length" "5" "connection" "close"} "Hello"]))))
@@ -349,12 +349,12 @@
     (is (no-msgs-for ch2))
 
     (downstream :body "Hello")
-    (downstream :done nil)
+    (downstream :body nil)
 
     (is (next-msgs-for
          ch1
          :body "Hello"
-         :done nil))
+         :body nil))
 
     (is (next-msgs-for
          ch2
@@ -548,7 +548,7 @@
       (request [_]
         (downstream :response [200 {"transfer-encoding" "chunked"} :chunked])
         (downstream :body "Hello")
-        (downstream :done nil))))
+        (downstream :body nil))))
 
   (client/request
    ["localhost" 4040]

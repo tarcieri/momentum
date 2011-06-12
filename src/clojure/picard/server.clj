@@ -132,23 +132,23 @@
 
 (defn- stream-or-finalize-response
   [state evt val current-state]
-  (cond
-   (= :body evt)
-   (let [write (.write (.ch current-state) (mk-netty-chunk val))]
-     (swap!
-      state
-      #(assoc %
-         :next-dn-fn stream-or-finalize-response
-         :last-write write)))
+  (when-not (= :body evt)
+    (throw (Exception. "Unknown event: " evt)))
 
-   (= :done evt)
-   (swap-then!
-    state
-    #(assoc % :responded? true :next-dn-fn nil)
-    #(finalize-exchange state %))
+  (if val
+    ;; There is more coming
+    (let [write (.write (.ch current-state) (mk-netty-chunk val))]
+      (swap!
+       state
+       #(assoc %
+          :next-dn-fn stream-or-finalize-response
+          :last-write write)))
 
-   :else
-   (throw (Exception. "Unknown event: " evt))))
+    ;; This is the last chunk
+    (swap-then!
+     state
+     #(assoc % :responded? true :next-dn-fn nil)
+     #(finalize-exchange state %))))
 
 (defn- initialize-response
   [state evt [status hdrs body :as val] current-state]
@@ -241,7 +241,7 @@
   [state chunk current-state]
   (let [upstream (.upstream current-state)]
     (if (.isLast chunk)
-      (do (when upstream (upstream :done nil))
+      (do (when upstream (upstream :body nil))
           (swap-then!
            state
            #(assoc % :next-up-fn waiting-for-response)

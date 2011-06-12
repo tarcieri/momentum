@@ -87,7 +87,7 @@
 
 (defn- write-pending
   [_ evt _ _]
-  (if (or (= :done evt) (= :body evt))
+  (if (= :body evt)
     (throw (Exception. "The first write has not yet succeded"))))
 
 (defn- response-pending
@@ -95,8 +95,11 @@
 
 (defn- stream-or-finalize-request
   [state evt val current-state]
+  (when-not (= :body evt)
+    (throw (Exception. "Not expecting event: " evt)))
+
   (let [ch (.ch current-state)]
-    (if (= :done evt)
+    (if (nil? val)
       (let [last-write
             (when (.chunk-trailer? current-state)
               (.write ch HttpChunk/LAST_CHUNK))]
@@ -135,7 +138,7 @@
                (assoc current-state
                  :next-up-fn nil)))
            finalize-request)
-          (upstream-fn :done nil))
+          (upstream-fn :body nil))
       (upstream-fn :body (.getContent msg)))))
 
 (defn- initial-response
