@@ -299,7 +299,7 @@
            (= evt :resume)
            (.setReadable (.ch current-state) true)
 
-           :else
+           (= evt :body)
            (when-let [next-dn-fn (.next-dn-fn current-state)]
              (bump-timeout state current-state)
              (next-dn-fn state evt val current-state))))))))

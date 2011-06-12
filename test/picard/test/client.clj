@@ -309,6 +309,36 @@
          ch2
          :resume nil))))
 
+(defcoretest ignores-unknown-events
+  [ch1 ch2]
+  :hello-world
+
+  (client/request
+   ["localhost" 4040]
+   [{:path-info          "/"
+     :request-method     "POST"
+     "transfer-encoding" "chunked"} :chunked]
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch2 [evt val])
+       (when (= :connected evt)
+         (dn :zomg "hi2u")
+         (dn :body "foo")
+         (dn :body nil)))))
+
+  (is (next-msgs-for
+       ch1
+       :request [:dont-care :chunked]
+       :body    "foo"
+       :body    nil
+       :done    nil))
+
+  (is (next-msgs-for
+       ch2
+       :connected nil
+       :response  :dont-care
+       :done      nil)))
+
 (defcoretest issuing-immediate-abort
   [_ ch]
   :hello-world

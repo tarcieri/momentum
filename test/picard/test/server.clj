@@ -252,6 +252,24 @@
        :request [(includes-hdrs {"connection" "close"}) nil]
        :done    nil)))
 
+(defcoretest ignores-unknown-events
+  (deftrackedapp [dn]
+    (fn [evt val]
+      (when (= :request evt)
+        (dn :zomg "hi2u")
+        (dn :response [200 {"content-length" "0"} nil]))))
+
+  (http-write "GET / HTTP/1.1\r\n"
+              "Connection: close\r\n\r\n")
+
+  (is (next-msgs
+       :request :dont-care
+       :done    nil))
+
+  (is (received-response
+       "HTTP/1.1 200 OK\r\n"
+       "content-length: 0\r\n\r\n")))
+
 (defcoretest aborting-a-request
   :hello-world
 
