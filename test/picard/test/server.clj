@@ -15,7 +15,7 @@
    [java.util.concurrent
     TimeUnit]))
 
-(defcoretest  simple-requests
+(defcoretest simple-requests
   :hello-world
   (doseq [method ["GET" "POST" "PUT" "DELETE" "HEAD"]]
     (with-fresh-conn
@@ -30,7 +30,8 @@
                       :http-version   [1 1]
                       :remote-addr    ["127.0.0.1" :dont-care]
                       :local-addr     ["127.0.0.1" 4040]
-                      "connection"    "close"} nil]))
+                      "connection"    "close"} nil]
+           :done nil))
 
       (is (not-receiving-messages))
       (is (received-response
@@ -51,7 +52,8 @@
                   :request-method "GET"
                   :remote-addr    :dont-care
                   :local-addr     :dont-care
-                  :http-version   [1 0]} nil])))
+                  :http-version   [1 0]} nil]
+       :done nil)))
 
 (defcoretest request-and-response-with-duplicated-headers
   (deftrackedapp [dn]
@@ -94,7 +96,8 @@
                   :http-version   [1 1]
                   "foo"           ["1" "2" "3"]
                   "bar"           ["omg" "hi2u"]
-                  "baz"           "lol"} nil])))
+                  "baz"           "lol"} nil]
+       :done nil)))
 
 (defcoretest simple-request-with-body
   :hello-world
@@ -103,7 +106,8 @@
               "Content-Length: 5\r\n\r\n"
               "Hello")
   (is (next-msgs
-       :request [(includes-hdrs {"content-length" "5"}) "Hello"]))
+       :request [(includes-hdrs {"content-length" "5"}) "Hello"]
+       :done    nil))
   (is (not-receiving-messages)))
 
 (defcoretest keepalive-requests
@@ -118,9 +122,13 @@
               "connection: close\r\n\r\n")
   (is (next-msgs
        :request [(includes-hdrs {:request-method "GET" :path-info "/"}) nil]
+       :done    nil
        :request [(includes-hdrs {:request-method "GET" :path-info "/foo"}) nil]
+       :done    nil
        :request [(includes-hdrs {:request-method "POST" :path-info "/bar"
-                                 "connection" "close"}) nil]))
+                                 "connection" "close"}) nil]
+       :done    nil))
+
   (is (received-response
        "HTTP/1.1 200 OK\r\n"
        "content-length: 5\r\n\r\n"
@@ -193,7 +201,8 @@
   (is (next-msgs
        :request [(includes-hdrs {"transfer-encoding" "chunked"}) :chunked]
        :body    "Hello"
-       :body    nil)))
+       :body    nil
+       :done    nil)))
 
 (defcoretest single-chunked-response
   (fn [downstream]
@@ -224,7 +233,8 @@
        :request [(includes-hdrs {"transfer-encoding" "chunked"}) :chunked]
        :body    "Hello"
        :body    " World"
-       :body    nil))
+       :body    nil
+       :done    nil))
 
   (http-write "POST / HTTP/1.1\r\n"
               "Transfer-Encoding: chunked\r\n\r\n"
@@ -233,12 +243,14 @@
        :request [(includes-hdrs {"transfer-encoding" "chunked"}) :chunked]
        :body    "ZomG!!"
        :body    "INCEPTION"
-       :body    nil))
+       :body    nil
+       :done    nil))
 
   (http-write "GET / HTTP/1.1\r\n"
               "Connection: close\r\n\r\n")
   (is (next-msgs
-       :request [(includes-hdrs {"connection" "close"}) nil])))
+       :request [(includes-hdrs {"connection" "close"}) nil]
+       :done    nil)))
 
 (defcoretest aborting-a-request
   :hello-world
@@ -251,7 +263,9 @@
 
   (is (next-msgs
        :request [:dont-care :chunked]
-       :abort   #(instance? Exception %))))
+       :abort   #(instance? Exception %)))
+
+  (is (not-receiving-messages)))
 
 (defcoretest applications-raising-errors
   (deftrackedapp [downstream]
@@ -427,7 +441,8 @@
   (is (next-msgs
        :body "Hello" :body "World" :body "Hello" :body "World"
        :body "WTF" :body "is" :body "going" :body "on"
-       :body nil)))
+       :body nil
+       :done nil)))
 
 (defcoretest handling-100-continue-requests-with-100-response
   (deftrackedapp [downstream]
@@ -454,7 +469,8 @@
 
   (is (next-msgs
        :body "Hello"
-       :body nil)))
+       :body nil
+       :done nil)))
 
 (defcoretest handling-100-continue-requests-by-responding-directly
   (deftrackedapp [downstream]
@@ -468,7 +484,8 @@
               "Expect: 100-continue\r\n\r\n")
 
   (is (next-msgs
-       :request [(includes-hdrs {"expect" "100-continue"}) :chunked]))
+       :request [(includes-hdrs {"expect" "100-continue"}) :chunked]
+       :done    nil))
 
   (is (received-response
        "HTTP/1.1 417 Expectation Failed\r\n"
@@ -520,7 +537,8 @@
   (is (next-msgs
        :request [(includes-hdrs {"expect" "100-continue"}) :chunked]
        :body    "Hello"
-       :body    nil))
+       :body    nil
+       :done    nil))
 
   (is (received-response
        "HTTP/1.1 204 No Content\r\n"
@@ -544,7 +562,8 @@
   (is (next-msgs
        :request [(includes-hdrs {"expect" "100-continue"}) :chunked]
        :body    "Hello"
-       :body    nil))
+       :body    nil
+       :done    nil))
 
   (is (received-response
        "HTTP/1.1 100 Continue\r\n\r\n"
@@ -562,7 +581,8 @@
               "Expect: 100-continue\r\n\r\n")
 
   (is (next-msgs
-       :request [(includes-hdrs {"expect" "100-continue"}) nil]))
+       :request [(includes-hdrs {"expect" "100-continue"}) nil]
+       :done    nil))
 
   (is (received-response
        "HTTP/1.1 100 Continue\r\n\r\n"
@@ -590,7 +610,8 @@
   (is (next-msgs
        :request [(includes-hdrs {:http-version [1 0]
                                  "expect" "100-continue"}) "Hello"]
-       :error #(instance? Exception %)))
+       :error #(instance? Exception %)
+       :done  nil))
 
   (is (not-receiving-messages)))
 
@@ -609,7 +630,8 @@
   (http-write "5\r\nHello\r\n0\r\n\r\n")
 
   (is (next-msgs :body "Hello"
-                 :body nil))
+                 :body nil
+                 :done nil))
 
   (is (not-receiving-messages)))
 
@@ -681,6 +703,10 @@
        :body    "World"))
 
   (Thread/sleep 2010)
+
+  (is (next-msgs-for
+       ch
+       :abort #(instance? Exception %)))
 
   (is (received-response "")))
 

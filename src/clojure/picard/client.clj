@@ -68,13 +68,22 @@
 (defn- finalize-request
   [current-state]
   (when (= request-complete (.next-dn-fn current-state))
+    ;; Send an upstream message indicating that the exchange is complete
+    (when-not (.aborted? current-state)
+     (let [upstream (.upstream current-state)]
+       (upstream :done nil)))
+
+    ;; Clear the timeout since there will be no other user code called
+    (clear-timeout current-state)
+    ;; Don't close the connection or reuse it until all pending writes
+    ;; have been fully flushed to the socket.
     (netty/on-complete
      (.last-write current-state)
      (fn [_]
        ;; The connection will either be closed or it will be moved
        ;; into the connection pool which has it's own keepalive
        ;; timeout, so clear any existing timeout for this connection.
-       (clear-timeout current-state)
+
        (if (and (.keepalive? current-state)
                 (not (.aborted? current-state)))
          (pool/checkin-conn (.pool current-state) (.ch current-state))
@@ -137,8 +146,9 @@
                  :next-up-fn nil)
                (assoc current-state
                  :next-up-fn nil)))
-           finalize-request)
-          (upstream-fn :body nil))
+           (fn [current-state]
+             (upstream-fn :body nil)
+             (finalize-request current-state))))
       (upstream-fn :body (.getContent msg)))))
 
 (defn- initial-response
@@ -178,8 +188,9 @@
           (assoc current-state
             :keepalive? keepalive?
             :next-up-fn nil))))
-     finalize-request)
-    (upstream-fn :response (netty-resp->resp msg))))
+     (fn [current-state]
+       (upstream-fn :response (netty-resp->resp msg))
+       (finalize-request current-state)))))
 
 (defn- initial-write-succeeded
   [state current-state]

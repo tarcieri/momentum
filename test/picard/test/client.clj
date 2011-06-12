@@ -42,7 +42,9 @@
                     :path-info      "/"
                     :remote-addr    :dont-care
                     :local-addr     :dont-care
-                    :request-method method} nil]))
+                    :request-method method} nil]
+         :done nil))
+
     (is (next-msgs-for
          ch2
          :connected  nil
@@ -51,7 +53,10 @@
                        "content-length" "5"
                        "content-type"   "text/plain"
                        "connection"     "close"}
-                      "Hello"]))))
+                      "Hello"]
+         :done nil))
+
+    (is (no-msgs-for ch2))))
 
 (defcoretest request-and-response-with-duplicated-headers
   [ch1 ch2]
@@ -86,7 +91,8 @@
                   :http-version   [1 1]
                   "baz"           "lol"
                   "bar"           ["omg" "hi2u"]
-                  "lol"           ["1" "2" "3"]} nil]))
+                  "lol"           ["1" "2" "3"]} nil]
+       :done nil))
 
   (is (next-msgs-for
        ch2
@@ -96,7 +102,10 @@
                         "connection"     "close"
                         "foo"            "lol"
                         "bar"            ["omg" "hi2u"]
-                        "baz"            ["1" "2" "3"]} ""])))
+                        "baz"            ["1" "2" "3"]} ""]
+       :done nil))
+
+  (is (no-msgs-for ch2)))
 
 (defcoretest receiving-a-chunked-body
   [ch1 ch2]
@@ -124,7 +133,10 @@
                          "transfer-encoding" "chunked"} :chunked]
        :body      "Hello"
        :body      "World"
-       :body      nil)))
+       :body      nil
+       :done      nil))
+
+  (is (no-msgs-for ch2)))
 
 (defcoretest sending-a-chunked-body
   [ch1 ch2]
@@ -148,7 +160,8 @@
        :request [(includes-hdrs {"transfer-encoding" "chunked"}) :chunked]
        :body    "Foo!"
        :body    "Bar!"
-       :body    nil))
+       :body    nil
+       :done    nil))
 
   (is (next-msgs-for
        ch2
@@ -156,7 +169,8 @@
        :response   [200 {:http-version    [1 1]
                          "content-type"   "text/plain"
                          "content-length" "5"
-                         "connection"     "close"} "Hello"])))
+                         "connection"     "close"} "Hello"]
+       :done nil)))
 
 (defcoretest simple-keep-alive-requests
   [_ ch2]
@@ -176,7 +190,8 @@
        ch2
        :connected  nil
        :response   [200 {:http-version    [1 1]
-                         "content-length" "5"} "Hello"]))
+                         "content-length" "5"} "Hello"]
+       :done nil))
 
   (client/request
    ["localhost" 4040]
@@ -188,7 +203,8 @@
        ch2
        :connected nil
        :response   [200 {:http-version    [1 1]
-                         "content-length" "5"} "Hello"]))
+                         "content-length" "5"} "Hello"]
+       :done nil))
 
   (client/request
    ["localhost" 4040]
@@ -209,7 +225,8 @@
        ch2
        :connected nil
        :response   [200 {:http-version    [1 1]
-                         "content-length" "5"} "Hello"]))
+                         "content-length" "5"} "Hello"]
+       :done nil))
 
   ;; 2 is to account for the connection test-helper makes
   (is (= 2 (count (netty-connect-evts)))))
@@ -250,7 +267,8 @@
        ch2
        :body "Hello"
        :body "World"
-       :body nil)))
+       :body nil
+       :done nil)))
 
 (defcoretest telling-the-application-to-chill-out
   [_ ch2 ch3]
@@ -354,13 +372,15 @@
     (is (next-msgs-for
          ch1
          :body "Hello"
-         :body nil))
+         :body nil
+         :done nil))
 
     (is (next-msgs-for
          ch2
          :response  [200 {:http-version    [1 1]
                           "content-length" "5"
-                          "connection"     "close"} "Hello"]))))
+                          "connection"     "close"} "Hello"]
+         :done nil))))
 
 (defcoretest defaults-to-port-80
   [_ ch]
@@ -392,7 +412,9 @@
 
   (is (next-msgs-for
        ch
-       :abort (cmp-with #(instance? Exception %)))))
+       :abort (cmp-with #(instance? Exception %))))
+
+  (is (no-msgs-for ch)))
 
 (defcoretest observes-local-addr-when-connecting
   [_ ch]
@@ -409,7 +431,9 @@
 
   (is (next-msgs-for
        ch
-       :abort #{#(instance? Exception %)})))
+       :abort #{#(instance? Exception %)}))
+
+  (is (no-msgs-for ch)))
 
 (defcoretest observing-max-connections
   [_ ch1 ch2]
@@ -429,7 +453,8 @@
     (is (next-msgs-for
          ch1
          :connected nil
-         :response  :dont-care))
+         :response  :dont-care
+         :done      nil))
 
     (is (next-msgs-for
          ch2
@@ -472,7 +497,8 @@
     (is (next-msgs-for
          ch1
          :connected nil
-         :response  :dont-care))
+         :response  :dont-care
+         :done      nil))
 
     (is (next-msgs-for
          ch2
@@ -636,7 +662,8 @@
     (is (next-msgs-for
          ch
          :connected nil
-         :response  :dont-care))
+         :response  :dont-care
+         :done      nil))
 
     (Thread/sleep 2050)
 
@@ -652,6 +679,7 @@
     (is (next-msgs-for
          ch
          :connected nil
-         :response  :dont-care)))
+         :response  :dont-care
+         :done      nil)))
 
   (is (= 3 (count (netty-connect-evts)))))

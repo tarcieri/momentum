@@ -117,7 +117,9 @@
 (defn- finalize-exchange
   [state current-state]
   (when (exchange-finished? current-state)
-    (let [current-state (maybe-write-chunk-trailer current-state)]
+    (let [current-state (maybe-write-chunk-trailer current-state)
+          upstream      (.upstream current-state)]
+      (upstream :done nil)
       (clear-timeout state current-state)
       (if (.keepalive? current-state)
         (let [new-state (fresh-state current-state)]
@@ -223,7 +225,7 @@
          (= evt :abort)
          (handle-err state val current-state)
 
-         :else
+         (or (= evt :response) (= evt :body))
          (when-let [next-dn-fn (.next-dn-fn current-state)]
            (bump-timeout state current-state)
            (next-dn-fn state evt val current-state)))))
