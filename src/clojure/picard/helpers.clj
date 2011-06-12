@@ -22,7 +22,7 @@
 (defn response-headers [[_ headers]] headers)
 (defn response-body    [[_ _ body]]  body)
 
-(defmacro defstack
+(defmacro build-stack
   "Builds an application stack from downstream to upstream. The last
   argument should be the end application and everything before that
   is middleware."
