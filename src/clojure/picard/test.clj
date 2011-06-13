@@ -1,6 +1,8 @@
 (ns picard.test
   (:use
    [picard.utils])
+  (:require
+   [picard])
   (:import
    [org.jboss.netty.buffer
     ChannelBuffer]
@@ -13,8 +15,12 @@
 (declare *app* *responses*)
 
 (def default-headers
-  {:script-name "" :http-version [1 1] :server "picard.test"
-   "host" "example.org"})
+  {:script-name  ""
+   :http-version [1 1]
+   :server-name  "picard.test"
+   :remote-addr  ["127.0.0.1" 12345]
+   :local-addr   ["127.0.0.1" 80]
+   "host"        "example.org"})
 
 (defn- extract-verbatim
   [into [el & args]]
@@ -42,8 +48,7 @@
   [(merge default-headers
           hdrs
           {:request-method method
-           :path-info      path
-           :remote-addr    ["127.0.0.1" 12345]})
+           :path-info      path})
    body])
 
 (defmacro with-app
@@ -83,7 +88,7 @@
        (do (swap! state #(assoc % ::state :finalized))
            (upstream evt val))
 
-       (or (and (:request evt) (not (= :chunked (val 1))))
+       (or (and (= :request evt) (not (= :chunked (val 1))))
            (and (= :body evt) (nil? val)))
        (do
          (upstream evt val)

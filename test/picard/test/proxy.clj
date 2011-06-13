@@ -12,8 +12,7 @@
   [ch1]
   :hello-world
   (with-app (prox/mk-proxy)
-    (GET "/" {:remote-addr ["localhost" 1234]
-              "connection" "close"
+    (GET "/" {"connection" "close"
               "host"       "localhost:4040"})
 
     (is (next-msgs-for

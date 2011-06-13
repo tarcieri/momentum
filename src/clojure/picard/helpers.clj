@@ -22,6 +22,31 @@
 (defn response-headers [[_ headers]] headers)
 (defn response-body    [[_ _ body]]  body)
 
+(defn body-size
+  ([body] (body-size :body body))
+  ([type body]
+     (cond
+      (= :response type)
+      (body-size :body (nth body 2))
+
+      (= :request type)
+      (body-size :body (nth body 1))
+
+      (not= :body type)
+      (throw (Exception. "Not a valid body"))
+
+      (instance? String body)
+      (.length ^String body)
+
+      (instance? ChannelBuffer body)
+      (.readableBytes ^ChannelBuffer body)
+
+      (or (nil? body) (= :chunked body))
+      0
+
+      :else
+      (throw (Exception. "Not a valid body")))))
+
 (defn request-done?
   [evt val]
   (or (and (= :request evt) (not= :chunked (val 1)))
@@ -56,7 +81,7 @@
 
 (defmacro defmiddleware
   "Define a simple middleware."
-  [[state upstream downstream] app & handlers]
+  [[state downstream upstream] app & handlers]
   (let [handlers    (apply hash-map handlers)
         state*      (gensym "state")
         upstream*   (gensym "upstream")
