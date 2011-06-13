@@ -1,4 +1,6 @@
 (ns picard.test
+  (:use
+   [picard.utils])
   (:import
    [org.jboss.netty.buffer
     ChannelBuffer]
@@ -49,24 +51,78 @@
   `(binding [*app* ~app *responses* (atom [])]
      ~@stmts))
 
+(defn- mk-downstream
+  [state]
+  (fn [evt val]
+    (let [current-state @state
+          upstream (current-state ::upstream)]
+
+      ;; Handle an exception event
+      (when (= :abort evt)
+        (when (not= :finalized (current-state ::state))
+          (swap! state #(assoc % ::state :finalized))
+          (upstream evt val)))
+
+      ;; Handle the response is finished
+      (when (or (and (= :response evt) (not (= :chunked (val 2))))
+                (and (= :body evt) (nil? val)))
+        (cond
+         (= :pending-response (current-state ::state))
+         (do (swap! state #(assoc % ::state :finalized))
+             (upstream :done nil))
+
+         (= :initializing (current-state ::state))
+         (swap! state #(assoc % ::state :pending-request)))))))
+
+(defn- mk-upstream
+  [state upstream]
+  (fn [evt val]
+    (let [current-state @state]
+      (cond
+       (= :abort evt)
+       (do (swap! state #(assoc % ::state :finalized))
+           (upstream evt val))
+
+       (or (and (:request evt) (not (= :chunked (val 1))))
+           (and (= :body evt) (nil? val)))
+       (do
+         (upstream evt val)
+         ;; The state might have changed
+         (let [current-state @state]
+           (cond
+            (= :pending-request (current-state ::state))
+            (do (swap! state #(assoc % ::state :finalized))
+                (upstream :done nil))
+
+            (= :initializing (current-state ::state))
+            (swap! state #(assoc % ::state :pending-response)))))
+
+       :else
+       (upstream evt val)))))
+
 (defn request
   [& args]
   (when-not *app*
     (throw (Exception. "Need to wrap these tests with `with-app`")))
 
   (let [[method path hdrs body callback] (process-request-args args)
-        upstream (atom nil)
-        queue    (LinkedBlockingQueue.)]
+        state (atom {::state :initializing})
+        queue (LinkedBlockingQueue.)]
 
     (swap! *responses* #(conj % (atom [[] queue])))
     ;; Track the upstream
-    (reset! upstream
-            (*app* (fn [evt val]
-                     (.put queue [evt val])
-                     (when callback (callback evt val @upstream)))))
-    ;; Send the request
-    (@upstream :request (mk-request method path hdrs body))
-    @upstream))
+    (let [downstream (mk-downstream state)
+          upstream* (*app* (fn [evt val]
+                             (.put queue [evt val])
+                             (let [upstream (@state ::upstream)]
+                               (when callback (callback evt val upstream))
+                               (downstream evt val))))
+          upstream (mk-upstream state upstream*)]
+      (swap! state #(assoc % ::upstream upstream))
+
+      ;; Send the request
+      (upstream :request (mk-request method path hdrs body))
+      upstream)))
 
 (defn HEAD   [& args] (apply request "HEAD"   args))
 (defn GET    [& args] (apply request "GET"    args))

@@ -11,7 +11,7 @@
     (-> (fn [downstream]
           (defstream
             (request [_]
-              (downstream :response [202 {"content-length" "0"}]))))
+              (downstream :response [202 {"content-length" "0"} ""]))))
         middleware/retry)
     (GET "/")
     (is (= 202 (last-response-status)))))
@@ -25,8 +25,8 @@
                 (request [_]
                   (if @latch
                     (do (reset! latch false)
-                        (downstream :response [status {"content-length" "0"}]))
-                    (downstream :response [202 {"content-length" "0"}])))))
+                        (downstream :response [status {"content-length" "0"} ""]))
+                    (downstream :response [202 {"content-length" "0"} ""])))))
             (middleware/retry {:retries [5 5]})))
       (GET "/")
       (is (= 202 (last-response-status))))))
@@ -44,8 +44,8 @@
                 (request [_]
                   (if @latch
                     (do (reset! latch false)
-                        (downstream :response [status {"content-length" "0"}]))
-                    (downstream :response [202 {"content-length" "0"}])))))
+                        (downstream :response [status {"content-length" "0"} ""]))
+                    (downstream :response [202 {"content-length" "0"} ""])))))
             (middleware/retry {:retries [5 5]})))
       (GET "/")
       (is (= status (last-response-status))))))
@@ -59,8 +59,8 @@
                 (if @latch
                   (do (reset! latch false)
                       (timeout
-                       10 #(downstream :response [500 {"content-length" "0"}])))
-                  (downstream :response [202 {"content-length" "0"}])))))
+                       10 #(downstream :response [500 {"content-length" "0"} ""])))
+                  (downstream :response [202 {"content-length" "0"} ""])))))
           middleware/retry))
     ;; Send the request and body directly after
     (let [upstream (GET "/" :chunked)]
@@ -76,7 +76,7 @@
             (defstream
               (request [_]
                 (swap! count inc)
-                (downstream :response [500 {"content-length" "0"}]))))
+                (downstream :response [500 {"content-length" "0"} ""]))))
           (middleware/retry {:retries [5 5 5]}))
       (GET "/")
       (is (= 500 (last-response-status)))
@@ -89,7 +89,7 @@
             (defstream
               (request [_]
                 (swap! count inc)
-                (downstream :response [500 {"content-length" "0"}]))))
+                (downstream :response [500 {"content-length" "0"} ""]))))
           (middleware/retry {:retries [200 600 400]}))
 
       ;; Something to keep in mind with this test is that the timing
@@ -124,7 +124,7 @@
             (defstream
               (request [_]
                 (swap! count inc)
-                (downstream :response [500 {"content-length" "0"}]))))
+                (downstream :response [500 {"content-length" "0"} ""]))))
           (middleware/retry {:validate-response-with
                              (fn [_] true)}))
       (GET "/")

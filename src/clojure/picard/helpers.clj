@@ -54,6 +54,56 @@
          nil (reverse handlers))
        true)))
 
+(defmacro defmiddleware
+  "Define a simple middleware."
+  [[state upstream downstream] app & handlers]
+  (let [handlers    (apply hash-map handlers)
+        state*      (gensym "state")
+        upstream*   (gensym "upstream")
+        downstream* (gensym "downstream")]
+
+    `(fn [~downstream*]
+       (let [~state* (atom {})
+             ~upstream*
+             (~app ~(if (handlers :downstream)
+                      ;; If we're injecting a downstream handler,
+                      ;; we need to do a bit of heavy lifting here
+                      ;; in order to correctly get bindings.
+                      `(fn [evt# val#]
+                         ;; Call the downstream handler
+                         ((or (@~state* ::dn)
+                              (throw (Exception. "Can't call this yet")))
+                          evt# val#))
+                      ;; If there is no downstream handler, just
+                      ;; pass the one we have in.
+                      ~downstream*))
+
+             ;; Setup the bindings that were passed in
+             ~state      ~state*
+             ~upstream   ~upstream*
+             ~downstream ~downstream*]
+         ;; Set the state to hold the downstream fn
+         (reset! ~state* {::dn ~(handlers :downstream)})
+         ;; Run any initialization code now that the bindings
+         ;; have been setup.
+         ~(handlers :initialize)
+         ;; If there is a handler for finalize, then wrap the
+         ;; upstream fn to catch the :done event.
+         ~(if-let [finalize (handlers :finalize)]
+            `(let [upstream# ~(handlers :upstream upstream*)
+                   finalize# ~finalize]
+               (fn [evt# val#]
+                 (upstream# evt# val#)
+                 (cond
+                  (= :done evt#)
+                  (finalize# true)
+
+                  (= :abort evt#)
+                  (finalize# false))))
+
+            ;; There is no finalize handler, so ju
+            (handlers :upstream upstream*))))))
+
 (defn timer [] (HashedWheelTimer.))
 
 (def global-timer (timer))
