@@ -11,11 +11,13 @@
     ConnectException]))
 
 (defn- addr-from-req
-  [[{host "host"}]]
-  (let [[host port] (-> host str/trim (str/split #":" 2))]
-    (if (or (nil? port) (= "" port))
-     [host nil]
-     [host (try (Integer. port) (catch NumberFormatException _))])))
+  [[{proxy-host :proxy-host host "host"}]]
+  (if proxy-host
+    proxy-host
+    (let [[host port] (-> host str/trim (str/split #":" 2))]
+      (if (or (nil? port) (= "" port))
+        [host nil]
+        [host (try (Integer. port) (catch NumberFormatException _))]))))
 
 (defn- chunked?
   [[_ _ body]]

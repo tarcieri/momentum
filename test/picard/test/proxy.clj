@@ -31,6 +31,30 @@
     (is (= (last-response-body)
            "Hello"))))
 
+(defcoretest allows-specifying-proxy-host
+  [ch1]
+  :hello-world
+  (with-app (prox/mk-proxy)
+    (GET "/" {"connection" "close"
+              "host"       "www.google.com"
+              :proxy-host  ["localhost" 4040]})
+
+    (is (next-msgs-for
+         ch1
+         :request [(includes-hdrs {"host" "www.google.com"}) :dont-care]))
+
+    (is (= (last-response-status)
+           200))
+
+    (is (= (last-response-headers)
+           {:http-version    [1 1]
+            "content-type"   "text/plain"
+            "content-length" "5"
+            "connection"     "close"}))
+
+    (is (= (last-response-body)
+           "Hello"))))
+
 (deftest proxying-requests-to-invalid-host
   (with-app (prox/mk-proxy)
     (GET "/" {"host" "localhost:4040"})
