@@ -82,8 +82,10 @@
              (if (proxy-loop? req)
                (downstream :response bad-gateway)
                (initiate-request state opts req downstream)))
+           (done []) ;; We don't care about this
            ;; Handling all other events
            (:else [evt val]
              (if-let [upstream @state]
                (upstream evt val)
-               (throw (Exception. "Somehow, the upstream isn't set")))))))))
+               (throw (Exception. (str "Not expecting events:\n"
+                                       [evt val]))))))))))
