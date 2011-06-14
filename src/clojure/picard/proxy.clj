@@ -84,7 +84,7 @@
                (initiate-request state opts req downstream)))
            (done []) ;; We don't care about this
            ;; Handling all other events
-           (:else [evt val]
+           (else [evt val]
              (if-let [upstream @state]
                (upstream evt val)
                (throw (Exception. (str "Not expecting events:\n"

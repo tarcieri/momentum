@@ -50,7 +50,7 @@
               (f (CompositeChannelBuffer. order ll)))))
 
         ;; Stream all the other events through
-        (:else [evt val]
+        (else [evt val]
           (stream evt val))))))
 
 (defn body-buffer

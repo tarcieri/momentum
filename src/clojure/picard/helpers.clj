@@ -71,7 +71,7 @@
     `(fn [~evt ~val]
        ~(reduce
          (fn [else [evt* bindings & stmts]]
-           (if (= :else evt*)
+           (if (= 'else evt*)
              `(let [~bindings [~evt ~val]] ~@stmts)
              `(if (= ~(keyword evt*) ~evt)
                 (let [~bindings [~val]] ~@stmts)
