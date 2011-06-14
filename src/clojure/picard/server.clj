@@ -211,24 +211,26 @@
     (debug "SRV DN-STRM: " [evt val])
     (let [current-state @state]
       (when-not (.aborting? current-state)
-
-        (when-not (or (= :abort evt) (.upstream current-state))
-          (throw (Exception. "Not callable until request is sent.")))
-
         (cond
          (= evt :pause)
-         (.setReadable (.ch current-state) false)
+         (when (.upstream current-state)
+           (.setReadable (.ch current-state) false))
 
          (= evt :resume)
-         (.setReadable (.ch current-state) true)
+         (when (.upstream current-state)
+           (.setReadable (.ch current-state) true))
 
          (= evt :abort)
          (handle-err state val current-state)
 
          (or (= evt :response) (= evt :body))
-         (when-let [next-dn-fn (.next-dn-fn current-state)]
-           (bump-timeout state current-state)
-           (next-dn-fn state evt val current-state)))))
+         (if (.upstream current-state)
+           (when-let [next-dn-fn (.next-dn-fn current-state)]
+             (bump-timeout state current-state)
+             (next-dn-fn state evt val current-state))
+           (throw (Exception. (str "Not callable until request is sent.\n"
+                                   "Event: " evt "\n"
+                                   "Value: " val)))))))
     true))
 
 (defn- waiting-for-response

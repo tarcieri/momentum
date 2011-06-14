@@ -270,6 +270,23 @@
        "HTTP/1.1 200 OK\r\n"
        "content-length: 0\r\n\r\n")))
 
+(defcoretest receiving-done-after-http-exchange
+  [_ ch]
+  (deftrackedapp [dn]
+    (fn [evt val]
+      (when (= :request evt)
+        (dn :response [200 {"content-length" "0"} nil]))
+      (when (= :done evt)
+        (try
+          (dn :done nil)
+          (enqueue ch [:error nil])
+          (catch Exception err
+            (enqueue ch [:error err]))))))
+
+  (http-write "GET / HTTP/1.1\r\n\r\n")
+
+  (is (next-msgs-for ch :error nil)))
+
 (defcoretest aborting-a-request
   :hello-world
 
