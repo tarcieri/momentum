@@ -8,9 +8,9 @@
     SimpleDateFormat]
    [org.apache.log4j
     ConsoleAppender
+    Level
     Logger
     Layout
-    Priority
     SimpleLayout]
    [org.apache.log4j.spi
     LoggingEvent]))
@@ -21,7 +21,7 @@
   [request timestamp]
   (let [request-date (Date. (long timestamp))
         request-time-string (.format commons-date-formatter request-date)]
-    (format "%s - - [%s] \"%s %s HTTP/%d.%d\" %d %d"
+    (format "%s - - [%s] \"%s %s HTTP/%d.%d\" %d %d\n"
             (first (:remote-addr request ))
             request-time-string
             (:request-method request)
@@ -44,12 +44,12 @@
 (def default-options
   {:name     "request"
    :appender (ConsoleAppender. nil ConsoleAppender/SYSTEM_OUT)
-   :layout   commons-logging-format-layout
-   :priority Priority/INFO})
+   :layout   commons-logging-format-layout})
 
 (defn- mk-logger
   [{name :name appender :appender layout :layout :as opts}]
   (let [^Logger logger (Logger/getLogger name)]
+    (.setLevel logger Level/INFO)
     (.setLayout appender layout)
     (.addAppender logger appender)
     logger))
@@ -104,4 +104,4 @@
            (next-dn evt val))
 
          :finalize
-         (fn [_] (.log logger (:priority opts) @state))))))
+         (fn [_] (.info logger @state))))))
