@@ -339,6 +339,25 @@
        :response  :dont-care
        :done      nil)))
 
+(defcoretest sending-done-after-exchange
+  [_ ch]
+  :hello-world
+
+  (client/request
+   ["localhost" 4040]
+   [{:path-info      "/"
+     :request-method "GET"}] ""
+     (fn [dn]
+       (fn [evt val]
+         (when (= :done evt)
+           (try
+             (dn :done nil)
+             (enqueue ch [:error nil])
+             (catch Exception err
+               (enqueue ch [:error err])))))))
+
+  (is (next-msgs-for ch :error nil)))
+
 (defcoretest issuing-immediate-abort
   [_ ch]
   :hello-world
