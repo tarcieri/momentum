@@ -101,7 +101,7 @@
                           evt# val#))
                       ;; If there is no downstream handler, just
                       ;; pass the one we have in.
-                      ~downstream*))
+                      downstream*))
 
              ;; Setup the bindings that were passed in
              ~state      ~state*
