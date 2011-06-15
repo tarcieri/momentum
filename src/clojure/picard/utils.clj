@@ -59,10 +59,6 @@
      (~then-fn res#)
      res#))
 
-(defmacro blank?
-  [str]
-  `(or (nil? ~str) (= "" ~str)))
-
 (defn string->byte-buffer
   ([s] (string->byte-buffer s "UTF-8"))
   ([s charset]
@@ -144,12 +140,12 @@
    msg
    (doseq [[k v-or-vals] hdrs]
      (when (string? k)
-      (if (string? v-or-vals)
-        (when-not (empty? v-or-vals)
-          (.addHeader msg (name k) v-or-vals))
-        (doseq [val v-or-vals]
-          (when-not (empty? val)
-            (.addHeader msg (name k) val))))))))
+       (if (sequential? v-or-vals)
+         (doseq [val v-or-vals]
+           (when-not (empty? val)
+             (.addHeader msg (name k) (str val))))
+         (when-not (or (nil? v-or-vals) (= "" v-or-vals))
+           (.addHeader msg (name k) (str v-or-vals))))))))
 
 (defn- mk-netty-response
   [status]
@@ -179,7 +175,7 @@
         path-info (hdrs :path-info)
         netty-req (mk-netty-req
                    (HttpMethod. (hdrs :request-method))
-                   (if (blank? query-string)
+                   (if (empty? query-string)
                      path-info
                      (str path-info "?" query-string)))]
     (netty-assoc-hdrs netty-req hdrs)

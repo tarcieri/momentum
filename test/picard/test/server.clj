@@ -76,6 +76,21 @@
 
   (is (not-receiving-messages)))
 
+(defcoretest non-string-response-headers
+  (fn [dn]
+    (fn [evt val]
+      (when (= :request evt)
+        (dn :response [200 {"content-length" 5
+                            "connection" "close"} "Hello"]))))
+
+  (http-write "GET / HTTP/1.1\r\n\r\n")
+
+  (is (received-response
+       "HTTP/1.1 200 OK\r\n"
+       "content-length: 5\r\n"
+       "connection: close\r\n\r\n"
+       "Hello")))
+
 (defcoretest simple-http-1-0-request
   :hello-world
   (http-write "GET / HTTP/1.0\r\n\r\n")
