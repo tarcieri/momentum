@@ -300,17 +300,6 @@
           (catch Exception err
             (handle-err state err current-state)))))))
 
-(defn- handle-ch-disconnected
-  [state current-state]
-  (when-let [upstream (.upstream current-state)]
-    ;; Sometimes we call this function when we received errors
-    ;; from netty that we don't care to pass to the application.
-    ;; So, here we ensure that the channel actually gets closed.
-    (.close (.ch current-state))
-    (try (upstream :abort (Exception. "Connection reset by peer."))
-         (catch Exception _ nil))
-    (swap! state #(assoc % :next-dn-fn aborted-req))))
-
 (defn- netty-bridge
   [app opts]
   "Bridges the netty pipeline API to the picard API. This is done with
@@ -344,7 +333,8 @@
              (swap! state (fn [current-state] (assoc current-state :ch ch))))
 
            (= ch-state ChannelState/CONNECTED)
-           (handle-ch-disconnected state current-state))
+           (handle-err state (Exception. "Connection reset by peer")
+                       current-state))
 
           [err (netty/exception-event evt)]
           (when-not (instance? IOException err)
