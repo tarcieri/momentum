@@ -59,11 +59,9 @@
      (~then-fn res#)
      res#))
 
-;; TODO: Rename this o_O
-(defn hard-set!
-  "Hard because set! is already in use"
-  [atom val]
-  (swap! atom (constantly val)))
+(defmacro blank?
+  [str]
+  `(or (nil? ~str) (= "" ~str)))
 
 (defn string->byte-buffer
   ([s] (string->byte-buffer s "UTF-8"))
