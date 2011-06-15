@@ -347,8 +347,7 @@
            (handle-ch-disconnected state current-state))
 
           [err (netty/exception-event evt)]
-          (if (instance? IOException err)
-            (handle-ch-disconnected state current-state)
+          (when-not (instance? IOException err)
             (handle-err state err current-state))))))))
 
 (defn- create-pipeline
