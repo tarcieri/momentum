@@ -332,7 +332,7 @@
              (swap! state (fn [current-state] (assoc current-state :ch ch))))
 
            (= ch-state ChannelState/CONNECTED)
-           (handle-err state (Exception. "Connection reset by peer")
+           (handle-err state (IOException. "Connection reset by peer")
                        current-state))
 
           [err (netty/exception-event evt)]

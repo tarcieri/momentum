@@ -17,7 +17,9 @@
     HttpResponse
     HttpResponseDecoder
     HttpResponseStatus
-    HttpVersion]))
+    HttpVersion]
+   [java.io
+    IOException]))
 
 (defrecord State
     [pool
@@ -266,7 +268,8 @@
             (cond
              (and (nil? val) (= ch-state ChannelState/CONNECTED)
                   (not= request-complete (.next-dn-fn current-state)))
-             (handle-err state (Exception. "Connection reset by peer") current-state)
+             (handle-err state (IOException. "Connection reset by peer")
+                         current-state)
 
              (= ch-state ChannelState/INTEREST_OPS)
              (handle-ch-interest-change state current-state writable?))
