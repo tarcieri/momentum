@@ -40,6 +40,7 @@
                     :server-name    picard/SERVER-NAME
                     :script-name    ""
                     :path-info      "/"
+                    :query-string   ""
                     :remote-addr    :dont-care
                     :local-addr     :dont-care
                     :request-method method} nil]
@@ -85,6 +86,7 @@
        :request [{:server-name    picard/SERVER-NAME
                   :script-name    ""
                   :path-info      "/"
+                  :query-string   ""
                   :request-method "GET"
                   :remote-addr    :dont-care
                   :local-addr     :dont-care

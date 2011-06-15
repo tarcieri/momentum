@@ -26,9 +26,10 @@
            :request [{:server-name    picard/SERVER-NAME
                       :script-name    ""
                       :path-info      "/"
+                      :query-string   ""
                       :request-method method
                       :http-version   [1 1]
-                      :remote-addr    ["127.0.0.1" :dont-care]
+                      :remote-addr    ["127.0.0.1" #(number? %)]
                       :local-addr     ["127.0.0.1" 4040]
                       "connection"    "close"} nil]
            :done nil))
@@ -41,6 +42,40 @@
            "connection: close\r\n\r\n"
            "Hello")))))
 
+(defcoretest request-with-query-string
+  :hello-world
+  (http-write "GET /foo?bar=baz HTTP/1.1\r\n\r\n")
+
+  (is (next-msgs
+       :request [{:server-name picard/SERVER-NAME
+                  :script-name    ""
+                  :path-info      "/foo"
+                  :query-string   "bar=baz"
+                  :request-method "GET"
+                  :http-version   [1 1]
+                  :remote-addr    ["127.0.0.1" #(number? %)]
+                  :local-addr     ["127.0.0.1" 4040]} nil]
+       :done nil))
+
+  (is (not-receiving-messages)))
+
+(defcoretest request-with-full-uri
+  :hello-world
+  (http-write "GET http://www.google.com/search?q=zomg HTTP/1.1\r\n\r\n")
+
+  (is (next-msgs
+       :request [{:server-name picard/SERVER-NAME
+                  :script-name    ""
+                  :path-info      "/search"
+                  :query-string   "q=zomg"
+                  :request-method "GET"
+                  :http-version   [1 1]
+                  :remote-addr    ["127.0.0.1" #(number? %)]
+                  :local-addr     ["127.0.0.1" 4040]} nil]
+       :done nil))
+
+  (is (not-receiving-messages)))
+
 (defcoretest simple-http-1-0-request
   :hello-world
   (http-write "GET / HTTP/1.0\r\n\r\n")
@@ -49,6 +84,7 @@
        :request [{:server-name    picard/SERVER-NAME
                   :script-name    ""
                   :path-info      "/"
+                  :query-string   ""
                   :request-method "GET"
                   :remote-addr    :dont-care
                   :local-addr     :dont-care
@@ -90,6 +126,7 @@
        :request [{:server-name    picard/SERVER-NAME
                   :script-name    ""
                   :path-info      "/"
+                  :query-string   ""
                   :request-method "GET"
                   :remote-addr    :dont-care
                   :local-addr     :dont-care

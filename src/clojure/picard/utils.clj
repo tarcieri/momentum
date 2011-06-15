@@ -22,7 +22,8 @@
     HttpVersion]
    [java.net
     InetAddress
-    InetSocketAddress]))
+    InetSocketAddress
+    URI]))
 
 (defmacro debug
   [& stmts]
@@ -108,13 +109,15 @@
 
 (defn netty-req->hdrs
   [^HttpRequest req ^Channel ch]
-  (assoc (netty-msg->hdrs req)
-    :request-method (.. req getMethod toString)
-    :path-info      (.getUri req)
-    :script-name    ""
-    :server-name    picard/SERVER-NAME
-    :local-addr     (addr->ip (.getLocalAddress ch))
-    :remote-addr    (addr->ip (.getRemoteAddress ch))))
+  (let [uri (URI. (.getUri req))]
+    (assoc (netty-msg->hdrs req)
+      :request-method (.. req getMethod toString)
+      :path-info      (.getRawPath uri)
+      :query-string   (or (.getRawQuery uri) "")
+      :script-name    ""
+      :server-name    picard/SERVER-NAME
+      :local-addr     (addr->ip (.getLocalAddress ch))
+      :remote-addr    (addr->ip (.getRemoteAddress ch)))))
 
 (defn netty-req->req
   [^HttpMessage req ^Channel ch]
