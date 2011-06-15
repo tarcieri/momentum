@@ -80,8 +80,11 @@
   (fn [dn]
     (fn [evt val]
       (when (= :request evt)
-        (dn :response [200 {"content-length" 5
-                            "connection" "close"} "Hello"]))))
+        (try
+          (dn :response [200 {"content-length" 5
+                              "connection" "close"} "Hello"])
+          (catch Exception err
+            (.printStackTrace err))))))
 
   (http-write "GET / HTTP/1.1\r\n\r\n")
 
@@ -584,6 +587,7 @@
   [ch]
   (fn [downstream]
     (fn [evt val]
+      (if (instance? Exception val) (.printStackTrace val))
       (cond
        (= :request evt)
        (do (downstream :response [100])
@@ -614,7 +618,7 @@
   (deftrackedapp [downstream]
     (fn [evt val]
       (when (request-done? evt val)
-        (downstream :response [204 {"connection" "close"}]))))
+        (downstream :response [204 {"connection" "close"} nil]))))
 
   (http-write "POST / HTTP/1.1\r\n"
               "Content-Length: 5\r\n"
@@ -856,3 +860,22 @@
   (Thread/sleep 2010)
 
   (is (received-response "")))
+
+(defcoretest closing-the-connection-immedietly-after-receiving-body
+  (deftrackedapp [dn]
+    (fn [evt _]
+      (when (= :request evt)
+        (dn :response [200 {"content-length" 5} :chunked])
+        (dn :body "Hello"))))
+
+  (http-write "GET / HTTP/1.1\r\n\r\n")
+
+  (is (receiving
+       "HTTP/1.1 200 OK\r\n"
+       "content-length: 5\r\n\r\n"
+       "Hello"))
+
+  (close-socket)
+
+  (is (next-msgs :request :dont-care))
+  (is (not-receiving-messages)))

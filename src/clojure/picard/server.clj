@@ -4,6 +4,8 @@
    [clojure.string :as str]
    [picard.netty :as netty])
   (:import
+   [org.jboss.netty.buffer
+    ChannelBuffer]
    [org.jboss.netty.channel
     Channel
     ChannelState]
@@ -23,17 +25,23 @@
    [java.io
     IOException]))
 
+;; TODO:
+;; * content-length header != body size???
+;; * track request body content-length? Netty does this?
+
 (defrecord State
     [app
      ch
      keepalive?
      chunked?
-     streaming?
+     streaming? ;; TODO: remove this
      responded?
      expects-100?
      next-up-fn
      next-dn-fn
      upstream
+     bytes-expected
+     bytes-to-send
      last-write
      options
      aborting?
@@ -62,10 +70,12 @@
              incoming-request  ;; Next upstream event handler
              nil               ;; Next downstream event handler
              nil               ;; Upstream handler (external interface)
+             nil               ;; Bytes expected
+             0                 ;; Bytes sent
              nil               ;; Last write to the channel
              options           ;; Server options
-             false
-             nil)))          ;; Are we aborting the exchange?
+             false             ;; Are we aborting the exchange?
+             nil)))            ;; Timeout reference
 
 (defn- fresh-state
   [state]
@@ -131,6 +141,12 @@
   [_ _ _ _]
   (throw (Exception. "This request has been aborted")))
 
+(defn- body-size
+  [body]
+  (if (instance? ChannelBuffer body)
+    (.readableBytes ^ChannelBuffer body)
+    (count body)))
+
 (defn- stream-or-finalize-response
   [state evt val current-state]
   (when-not (= :body evt)
@@ -138,12 +154,23 @@
 
   (if val
     ;; There is more coming
-    (let [write (.write (.ch current-state) (mk-netty-chunk val))]
+    (do
       (swap!
        state
-       #(assoc %
-          :next-dn-fn stream-or-finalize-response
-          :last-write write)))
+       (fn [current-state]
+         (let [bytes-to-send (+ (.bytes-to-send current-state) (body-size val))]
+           (assoc current-state
+             :bytes-to-send bytes-to-send
+             ;; bytes-expected is nil unless a content-length header
+             ;; is provided.
+             :responded? (= (.bytes-expected current-state) bytes-to-send)))))
+
+      (let [write (.write (.ch current-state) (mk-netty-chunk val))]
+        (swap!
+         state
+         #(assoc %
+            :next-dn-fn stream-or-finalize-response
+            :last-write write))))
 
     ;; This is the last chunk
     (swap-then!
@@ -152,33 +179,59 @@
      #(finalize-exchange state %))))
 
 (defn- initialize-response
-  [state evt [status hdrs body :as val] current-state]
+  [state evt val current-state]
   (when-not (= :response evt)
     (throw (Exception. "Um... responses start with the head?")))
 
-  (when (and (= 100 status) (not (.expects-100? current-state)))
-    (throw (Exception. "Not expecting a 100 Continue response.")))
+  (let [[status hdrs body] val
+        hdrs (or hdrs {})]
+    (when (and (= 100 status) (not (.expects-100? current-state)))
+      (throw (Exception. "Not expecting a 100 Continue response.")))
 
-  (let [write (.write (.ch current-state) (resp->netty-resp val))]
-    (if (= 100 status)
-      (swap! state #(assoc % :expects-100? false))
-      (swap-then!
-       state
-       (fn [current-state]
-         (assoc current-state
-           :next-dn-fn (when (= :chunked body) stream-or-finalize-response)
-           :responded? (not (= :chunked body))
-           :streaming? (= :chunked body)
-           :chunked?   (= (hdrs "transfer-encoding") "chunked")
-           :last-write write
-           ;; TODO: Handle HTTP 1.0 responses
-           :keepalive? (and (.keepalive? current-state)
-                            (not= "close" (hdrs "connection"))
-                            (or (hdrs "content-length")
-                                (= (hdrs "transfer-encoding") "chunked")))))
-       (fn [current-state]
-         (when-not (.next-dn-fn current-state)
-           (finalize-exchange state current-state)))))))
+    ;; If there is a content-length header, we need to track it.
+    (let [content-length (hdrs "content-length")
+          bytes-expected (when content-length
+                           (if (number? content-length)
+                             (long content-length)
+                             (Long. (str content-length))))
+          bytes-to-send  (if (and body (not= :chunked body))
+                           (body-size body)
+                           0)]
+      ;; 100 responses mean there will be other responses
+      ;; following. When this is the final response header, track the
+      ;; number of bytes about to be sent as well as the number of
+      ;; bytes to expect as specified by the content-length
+      ;; header. The HTTP exchange is considered complete unless the
+      ;; body is specifically chunked. If there is no content-length
+      ;; or transfer-encoding: chunked header, then the HTTP exchange
+      ;; will be finalized by closing the connection.
+      (when (not= 100 status)
+        (swap!
+         state
+         #(assoc %
+            :bytes-to-send  bytes-to-send
+            :bytes-expected bytes-expected
+            :responded?     (not= :chunked body)))))
+
+    (let [write (.write (.ch current-state) (resp->netty-resp val))]
+      (if (= 100 status)
+        (swap! state #(assoc % :expects-100? false))
+        (swap-then!
+         state
+         (fn [current-state]
+           (assoc current-state
+             :next-dn-fn (when (= :chunked body) stream-or-finalize-response)
+             :streaming? (= :chunked body)
+             :chunked?   (= (hdrs "transfer-encoding") "chunked")
+             :last-write write
+             ;; TODO: Handle HTTP 1.0 responses
+             :keepalive? (and (.keepalive? current-state)
+                              (not= "close" (hdrs "connection"))
+                              (or (hdrs "content-length")
+                                  (= (hdrs "transfer-encoding") "chunked")))))
+         (fn [current-state]
+           (when-not (.next-dn-fn current-state)
+             (finalize-exchange state current-state))))))))
 
 (defn- handle-err
   [state err _]
@@ -332,8 +385,10 @@
              (swap! state (fn [current-state] (assoc current-state :ch ch))))
 
            (= ch-state ChannelState/CONNECTED)
-           (handle-err state (IOException. "Connection reset by peer")
-                       current-state))
+           (do
+             (when-not (exchange-finished? current-state)
+               (handle-err state (IOException. "Connection reset by peer")
+                           current-state))))
 
           [err (netty/exception-event evt)]
           (when-not (instance? IOException err)
