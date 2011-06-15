@@ -59,6 +59,37 @@
 
     (is (no-msgs-for ch2))))
 
+(defcoretest query-string-request
+  [ch1 ch2]
+  :hello-world
+
+  (client/request
+   ["localhost" 4040]
+   [{:request-method "GET" :path-info "/" :query-string "zomg"}]
+   (fn [_]
+     (fn [evt val] (enqueue ch2 [evt val]))))
+
+  (is (next-msgs-for
+       ch1
+       :request [{:http-version   [1 1]
+                  :server-name    picard/SERVER-NAME
+                  :script-name    ""
+                  :request-method "GET"
+                  :path-info      "/"
+                  :query-string   "zomg"
+                  :remote-addr    :dont-care
+                  :local-addr     :dont-care} nil]
+       :done nil))
+
+  (is (next-msgs-for
+       ch2
+       :connected nil
+       :response [200 {:http-version [1 1]
+                       "content-length" "5"
+                       "content-type" "text/plain"
+                       "connection" "close"} "Hello"]
+       :done nil)))
+
 (defcoretest request-and-response-with-duplicated-headers
   [ch1 ch2]
   (deftrackedapp [dn]

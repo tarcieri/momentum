@@ -175,15 +175,19 @@
 
 (defn req->netty-req
   [[hdrs body]]
-  (returning
-   [netty-req (mk-netty-req
-               (HttpMethod. (hdrs :request-method))
-               (hdrs :path-info))]
-   (netty-assoc-hdrs netty-req hdrs)
-   (when body
-     (if (= :chunked body)
-       (.setChunked netty-req true)
-       (.setContent netty-req (*->channel-buffer body))))))
+  (let [query-string (hdrs :query-string)
+        path-info (hdrs :path-info)
+        netty-req (mk-netty-req
+                   (HttpMethod. (hdrs :request-method))
+                   (if (blank? query-string)
+                     path-info
+                     (str path-info "?" query-string)))]
+    (netty-assoc-hdrs netty-req hdrs)
+    (when body
+      (if (= :chunked body)
+        (.setChunked netty-req true)
+        (.setContent netty-req (*->channel-buffer body))))
+    netty-req))
 
 (defn mk-netty-chunk
   [body]

@@ -16,6 +16,7 @@
 
 (def default-headers
   {:script-name  ""
+   :query-string ""
    :http-version [1 1]
    :server-name  "picard.test"
    :remote-addr  ["127.0.0.1" 12345]
