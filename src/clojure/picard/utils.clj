@@ -1,7 +1,6 @@
 (ns picard.utils
   (:require
-   [clojure.string :as str]
-   [picard])
+   [clojure.string :as str])
   (:import
    [java.nio
     ByteBuffer]
@@ -24,6 +23,9 @@
     InetAddress
     InetSocketAddress
     URI]))
+
+(def VERSION "0.0.1")
+(def SERVER-NAME (str "Picard " VERSION " - *FACEPALM*"))
 
 (defmacro debug
   [& stmts]
@@ -109,7 +111,7 @@
       :path-info      (.getRawPath uri)
       :query-string   (or (.getRawQuery uri) "")
       :script-name    ""
-      :server-name    picard/SERVER-NAME
+      :server-name    SERVER-NAME
       :local-addr     (addr->ip (.getLocalAddress ch))
       :remote-addr    (addr->ip (.getRemoteAddress ch)))))
 

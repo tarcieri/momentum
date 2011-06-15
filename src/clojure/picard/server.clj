@@ -2,7 +2,6 @@
   (:use [picard.utils])
   (:require
    [clojure.string :as str]
-   [picard]
    [picard.netty :as netty])
   (:import
    [org.jboss.netty.channel

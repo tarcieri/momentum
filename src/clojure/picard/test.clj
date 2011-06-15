@@ -1,8 +1,6 @@
 (ns picard.test
   (:use
    [picard.utils])
-  (:require
-   [picard])
   (:import
    [org.jboss.netty.buffer
     ChannelBuffer]
