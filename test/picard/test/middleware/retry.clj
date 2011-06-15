@@ -16,6 +16,32 @@
     (GET "/")
     (is (= 202 (last-response-status)))))
 
+(deftest handles-chunked-failures
+  (let [latch (atom false)]
+    (with-app
+      (-> (fn [dn]
+            (defstream
+              (request [req]
+                (if-not @latch
+                  (do
+                    (dn :response [500 {"transfer-encoding" "chunked"} :chunked])
+                    (dn :body "foo\n")
+                    (dn :body "bar\n")
+                    (dn :body "baz\n")
+                    (dn :body nil)
+                    (reset! latch true))
+                  (do
+                    (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
+                    (dn :body "hello\n")
+                    (dn :body "world\n")
+                    (dn :body nil))))))
+          (middleware/retry {:retries [5 5]}))
+
+      (GET "/")
+      (is (= 200 (last-response-status)))
+      (is (= ["hello\n" "world\n"] (last-body-chunks)))
+      )))
+
 (deftest retries-when-application-returns-standard-retry-codes
   (doseq [status [408 500 502 503 504]]
     (with-app
