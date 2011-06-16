@@ -2,6 +2,7 @@
   (:use
    [clojure.test]
    [picard.test]
+   [picard.helpers]
    [lamina.core]
    [test-helper])
   (:require
@@ -90,3 +91,25 @@
          :request [(includes-hdrs {"x-forwarded-for" "127.0.0.1"}) nil]))
 
     (is (= 502 (last-response-status)))))
+
+(defcoretest proxying-100-continue
+  [ch1]
+  (deftrackedapp [dn]
+    (defstream
+      (request [[hdrs val]]
+        (dn :response [100]))
+      (body [chunk]
+        (when (nil? chunk)
+          (dn :response [200 {"content-length" "5"
+                              "connection"     "close"} "Hello"])))))
+
+  (with-app (prox/mk-proxy)
+    (let [upstream (POST "/" {"expect"         "100-continue"
+                              "content-length" "5"
+                              "host"           "localhost:4040"
+                              "connection"     "close"} :chunked)]
+      (is (continue? (last-exchange)))
+      (upstream :body "Hello")
+      (upstream :body nil)
+
+      (is (= 200 (last-response-status))))))

@@ -172,7 +172,7 @@
 (defn last-response
   []
   (->> (exchange-events (last-exchange))
-       (filter (fn [[evt]] (= :response evt)))
+       (filter (fn [[evt val]] (and (= :response evt) (not= 100 (first val)))))
        (map (comp second normalize-response))
        first))
 
@@ -187,6 +187,11 @@
        (map (comp second normalize-body))))
 
 ;; Helpers
+(defn continue?
+  [ex]
+  (let [[evt [status]] (first (exchange-events ex))]
+    (and (= :response evt) (= 100 status))))
+
 (defn includes?
   [map1 map2]
   (every? (fn [[k v]] (= v (map2 k))) map1))
