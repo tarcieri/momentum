@@ -139,13 +139,23 @@
   (when (exchange-finished? current-state)
     (let [current-state (maybe-write-chunk-trailer current-state)
           upstream      (.upstream current-state)]
+      ;; The HTTP exchange is finished, send up an event to let all
+      ;; middleware / applications cleanup after themselves.
+      (debug {:msg "Sending upstream" :event [:done nil] :state current-state})
       (upstream :done nil)
+
+      ;; Either the connection will be closed or a new timer will be
+      ;; created. Either way, we don't want the existing activity
+      ;; timer to trigger
       (clear-timeout state current-state)
+
       (if (.keepalive? current-state)
         (let [new-state (fresh-state current-state)]
           (reset! state new-state)
+          (debug {:msg "Keeping connection alive" :state current-state})
           (start-keepalive-timer state current-state))
         (do (swap! state #(assoc % :upstream nil))
+            (debug {:msg "Killing connection" :state current-state})
             (finalize-channel current-state))))))
 
 (defn- aborted-req
@@ -164,7 +174,6 @@
     (throw (Exception. "Unknown event: " evt)))
 
   (if val
-    ;; There is more coming
     (do
       (swap!
        state
@@ -250,6 +259,7 @@
    state
    #(assoc % :aborting? true)
    (fn [current-state]
+     (debug {:msg "Handling error" :event err :state current-state})
      ;; If there is an upstream, try sending an abort event up
      (when (.upstream current-state)
        (try ((.upstream current-state) :abort err)
@@ -271,8 +281,10 @@
   (swap! state #(assoc % :next-dn-fn initialize-response))
 
   (fn [evt val]
-    (debug "SRV DN-STRM: " [evt val])
     (let [current-state @state]
+      (debug {:msg   "Downstream event"
+              :event [evt val]
+              :state current-state})
       (when-not (.aborting? current-state)
         (cond
          (= evt :pause)
@@ -308,12 +320,18 @@
   [state chunk current-state]
   (let [upstream (.upstream current-state)]
     (if (.isLast chunk)
-      (do (when upstream (upstream :body nil))
-          (swap-then!
-           state
-           #(assoc % :next-up-fn waiting-for-response)
-           #(finalize-exchange state %)))
-      (when upstream (upstream :body (.getContent chunk))))))
+
+      (do
+        (when upstream
+          (debug {:msg "Sending upstream" :event [:body nil]})
+          (upstream :body nil))
+        (swap-then!
+         state
+         #(assoc % :next-up-fn waiting-for-response)
+         #(finalize-exchange state %)))
+      (when upstream
+        (debug {:msg "Sending upstream" :event [:body (.getContent chunk)]})
+        (upstream :body (.getContent chunk))))))
 
 (defn- awaiting-100-continue
   [state chunk current-state]
@@ -344,12 +362,14 @@
        (fn [current-state]
          ;; Initialize the application
          (let [upstream (app (downstream-fn state))
-               ch (.ch current-state)]
+               ch (.ch current-state)
+               request (netty-req->req msg ch request-id)]
            (swap! state #(assoc % :upstream upstream))
            ;; Although technically possible, the applications
            ;; should not pause the exchange until after the
            ;; request has been sent.
-           (upstream :request (netty-req->req msg ch request-id))
+           (debug {:msg "Sending upstream" :event [:request request]})
+           (upstream :request request)
            #(finalize-exchange state %)))))
     (catch Exception err
       (handle-err state err current-state))))
@@ -361,6 +381,7 @@
       (swap-then!
        writable? not
        #(try
+          (debug {:msg "Sending upstream" :event [(if % :resume :pause) nil]})
           (upstream (if % :resume :pause) nil)
           (catch Exception err
             (handle-err state err current-state)))))))
@@ -374,9 +395,9 @@
     (netty/upstream-stage
      (fn [ch evt]
        (let [current-state @state]
-         (debug :server
-                "Netty event: " evt "\n"
-                "  - State:  " current-state)
+         (debug {:msg  "Netty event"
+                 :event evt
+                 :state current-state})
          (cond-let
           ;; An actual HTTP message has been received
           [msg (netty/message-event evt)]
@@ -430,5 +451,5 @@
      (start app {}))
   ([app opts]
      (let [opts (merge default-options opts)]
-       (debug :server "Starting server with options: " opts)
+       (debug {:msg (str "Starting server with options: " opts)})
        (netty/start-server #(create-pipeline app opts) opts))))

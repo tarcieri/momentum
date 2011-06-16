@@ -31,8 +31,8 @@
 (def SERVER-NAME (str "Picard " VERSION " - *FACEPALM*"))
 
 (defmacro debug
-  [cmpnt & msgs]
-  `(log/log :debug (str ~@msgs) nil ~(str "picard.internal." (name cmpnt))))
+  [cmpnt msg]
+  `(log/log :debug ~msg nil ~(str "picard.internal." (name cmpnt))))
 
 (defmacro when-debug
   [cmpnt & stmts]
