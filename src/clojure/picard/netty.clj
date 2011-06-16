@@ -295,9 +295,9 @@
 
 (defn shutdown
   [[bootstrap channel-group]]
-  (on-complete
-   (.close channel-group)
-   (fn [_] (.releaseExternalResources bootstrap))))
+  (let [close-future (.close channel-group)]
+    (.awaitUninterruptibly close-future)
+    (.releaseExternalResources bootstrap)))
 
 (defn start-server
   "Starts a server. Returns a function that stops the server"
