@@ -360,8 +360,10 @@
         writable? (atom true)]
     (netty/upstream-stage
      (fn [ch evt]
-       (debug "SRV NETTY EVT: " evt)
        (let [current-state @state]
+         (debug :server
+                "Netty event: " evt "\n"
+                "  - State:  " current-state)
          (cond-let
           ;; An actual HTTP message has been received
           [msg (netty/message-event evt)]
@@ -415,4 +417,5 @@
      (start app {}))
   ([app opts]
      (let [opts (merge default-options opts)]
+       (debug :server "Starting server with options: " opts)
        (netty/start-server #(create-pipeline app opts) opts))))

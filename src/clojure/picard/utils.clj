@@ -1,6 +1,7 @@
 (ns picard.utils
   (:require
-   [clojure.string :as str])
+   [clojure.string :as str]
+   [clojure.contrib.logging :as log])
   (:import
    [java.nio
     ByteBuffer]
@@ -28,9 +29,8 @@
 (def SERVER-NAME (str "Picard " VERSION " - *FACEPALM*"))
 
 (defmacro debug
-  [& stmts]
-  ;; `(println ~@stmts)
-  )
+  [cmpnt & msgs]
+  `(log/log :debug (str ~@msgs) nil ~(str "picard.internal." (name cmpnt))))
 
 (defmacro returning
   [val & stmts]
