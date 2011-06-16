@@ -73,8 +73,9 @@
                         (downstream :response [status {"content-length" "0"} ""]))
                     (downstream :response [202 {"content-length" "0"} ""])))))
             (middleware/retry {:retries [5 5]})))
+
       (GET "/")
-      (is (= status (last-response-status))))))
+      (is (= status (first (second (first (exchange-events (last-exchange))))))))))
 
 (deftest doesnt-retry-when-the-body-is-sent
   (with-app
