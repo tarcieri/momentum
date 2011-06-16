@@ -1,5 +1,6 @@
 (ns picard.server
-  (:use [picard.utils])
+  (:use
+   [picard.utils :rename {debug debug* when-debug when-debug*}])
   (:require
    [clojure.string :as str]
    [picard.netty :as netty])
@@ -37,6 +38,7 @@
      streaming? ;; TODO: remove this
      responded?
      expects-100?
+     request-id
      next-up-fn
      next-dn-fn
      upstream
@@ -57,6 +59,14 @@
 
 (def global-timer netty/global-timer)
 
+(defmacro debug
+  [& msgs]
+  `(debug* :server ~@msgs))
+
+(defmacro when-debug
+  [& stmts]
+  `(when-debug* :server ~@stmts))
+
 (defn- mk-initial-state
   ([app options] (mk-initial-state app options nil))
   ([app options ch]
@@ -67,6 +77,7 @@
              nil               ;; Is the response streaming?
              nil               ;; Has the response been sent?
              false             ;; Does the exchange expect an 100 Continue?
+             nil               ;; Request ID
              incoming-request  ;; Next upstream event handler
              nil               ;; Next downstream event handler
              nil               ;; Upstream handler (external interface)
@@ -312,32 +323,34 @@
 (defn- incoming-request
   [state msg {app :app :as current-state}]
   (try
-    ;; First set the states
-    (swap-then!
-     state
-     (fn [current-state]
-       (assoc current-state
-         :expects-100? (HttpHeaders/is100ContinueExpected msg)
-         :next-up-fn
-         (if (.isChunked msg)
-           (if (HttpHeaders/is100ContinueExpected msg)
-             awaiting-100-continue
-             stream-request-body)
-           waiting-for-response)
+    (let [request-id (gen-uuid)]
+      ;; First set the states
+      (swap-then!
+       state
+       (fn [current-state]
+         (assoc current-state
+           :expects-100? (HttpHeaders/is100ContinueExpected msg)
+           :request-id   request-id
+           :next-up-fn
+           (if (.isChunked msg)
+             (if (HttpHeaders/is100ContinueExpected msg)
+               awaiting-100-continue
+               stream-request-body)
+             waiting-for-response)
 
-         :keepalive?
-         (and (.keepalive? current-state)
-              (HttpHeaders/isKeepAlive msg))))
-     (fn [current-state]
-       ;; Initialize the application
-       (let [upstream (app (downstream-fn state))
-             ch (.ch current-state)]
-         (swap! state #(assoc % :upstream upstream))
-         ;; Although technically possible, the applications
-         ;; should not pause the exchange until after the
-         ;; request has been sent.
-         (upstream :request (netty-req->req msg ch))
-         #(finalize-exchange state %))))
+           :keepalive?
+           (and (.keepalive? current-state)
+                (HttpHeaders/isKeepAlive msg))))
+       (fn [current-state]
+         ;; Initialize the application
+         (let [upstream (app (downstream-fn state))
+               ch (.ch current-state)]
+           (swap! state #(assoc % :upstream upstream))
+           ;; Although technically possible, the applications
+           ;; should not pause the exchange until after the
+           ;; request has been sent.
+           (upstream :request (netty-req->req msg ch request-id))
+           #(finalize-exchange state %)))))
     (catch Exception err
       (handle-err state err current-state))))
 

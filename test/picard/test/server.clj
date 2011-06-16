@@ -27,6 +27,7 @@
                       :script-name    ""
                       :path-info      "/"
                       :query-string   ""
+                      :request-id     #(string? %)
                       :request-method method
                       :http-version   [1 1]
                       :remote-addr    ["127.0.0.1" #(number? %)]
@@ -52,6 +53,7 @@
                   :path-info      "/foo"
                   :query-string   "bar=baz"
                   :request-method "GET"
+                  :request-id     #(string? %)
                   :http-version   [1 1]
                   :remote-addr    ["127.0.0.1" #(number? %)]
                   :local-addr     ["127.0.0.1" 4040]} nil]
@@ -69,6 +71,7 @@
                   :path-info      "/search"
                   :query-string   "q=zomg"
                   :request-method "GET"
+                  :request-id     #(string? %)
                   :http-version   [1 1]
                   :remote-addr    ["127.0.0.1" #(number? %)]
                   :local-addr     ["127.0.0.1" 4040]} nil]
@@ -104,6 +107,7 @@
                   :path-info      "/"
                   :query-string   ""
                   :request-method "GET"
+                  :request-id     #(string? %)
                   :remote-addr    :dont-care
                   :local-addr     :dont-care
                   :http-version   [1 0]} nil]
@@ -146,6 +150,7 @@
                   :path-info      "/"
                   :query-string   ""
                   :request-method "GET"
+                  :request-id     #(string? %)
                   :remote-addr    :dont-care
                   :local-addr     :dont-care
                   :http-version   [1 1]

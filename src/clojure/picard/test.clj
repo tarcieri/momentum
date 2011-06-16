@@ -45,6 +45,7 @@
 (defn- mk-request
   [method path hdrs body]
   [(merge default-headers
+          {:request-id (gen-uuid)}
           hdrs
           {:request-method method
            :path-info      path})

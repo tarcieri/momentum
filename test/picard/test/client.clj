@@ -42,6 +42,7 @@
                     :script-name    ""
                     :path-info      "/"
                     :query-string   ""
+                    :request-id     #(string? %)
                     :remote-addr    :dont-care
                     :local-addr     :dont-care
                     :request-method method} nil]
@@ -76,6 +77,7 @@
                   :server-name    picard/SERVER-NAME
                   :script-name    ""
                   :request-method "GET"
+                  :request-id     #(string? %)
                   :path-info      "/"
                   :query-string   "zomg"
                   :remote-addr    :dont-care
@@ -120,6 +122,7 @@
                   :path-info      "/"
                   :query-string   ""
                   :request-method "GET"
+                  :request-id     #(string? %)
                   :remote-addr    :dont-care
                   :local-addr     :dont-care
                   :http-version   [1 1]

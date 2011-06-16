@@ -23,7 +23,9 @@
    [java.net
     InetAddress
     InetSocketAddress
-    URI]))
+    URI]
+   [java.util
+    UUID]))
 
 (def VERSION "0.0.1")
 (def SERVER-NAME (str "Picard " VERSION " - *FACEPALM*"))
@@ -31,6 +33,11 @@
 (defmacro debug
   [cmpnt & msgs]
   `(log/log :debug (str ~@msgs) nil ~(str "picard.internal." (name cmpnt))))
+
+(defmacro when-debug
+  [cmpnt & stmts]
+  (when (log/enabled? :debug (str "picard.internal." (name cmpnt)))
+    `(do ~@stmts)))
 
 (defmacro returning
   [val & stmts]
@@ -60,6 +67,10 @@
   `(let [res# (swap! ~atom ~swap-fn)]
      (~then-fn res#)
      res#))
+
+(defn gen-uuid
+  []
+  (.toString ^UUID (UUID/randomUUID)))
 
 (defn string->byte-buffer
   ([s] (string->byte-buffer s "UTF-8"))
@@ -104,9 +115,10 @@
   [(.. addr getAddress getHostAddress) (.getPort addr)])
 
 (defn netty-req->hdrs
-  [^HttpRequest req ^Channel ch]
+  [^HttpRequest req ^Channel ch request-id]
   (let [uri (URI. (.getUri req))]
     (assoc (netty-msg->hdrs req)
+      :request-id     request-id
       :request-method (.. req getMethod toString)
       :path-info      (.getRawPath uri)
       :query-string   (or (.getRawQuery uri) "")
@@ -116,8 +128,8 @@
       :remote-addr    (addr->ip (.getRemoteAddress ch)))))
 
 (defn netty-req->req
-  [^HttpMessage req ^Channel ch]
-  (let [hdrs (netty-req->hdrs req ch)]
+  [^HttpMessage req ^Channel ch request-id]
+  (let [hdrs (netty-req->hdrs req ch request-id)]
     [hdrs
      (cond
       (.isChunked req)        :chunked
