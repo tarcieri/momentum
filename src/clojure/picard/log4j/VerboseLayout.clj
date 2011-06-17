@@ -8,17 +8,28 @@
    :name picard.log4j.VerboseLayout
    :extends org.apache.log4j.Layout))
 
+(defn- format-value
+  [val]
+  (str/join
+   "\n                       " ;; lol
+   (map
+    #(str/trim (str/join (map str %)))
+    (partition 120 120 "" (str (or val "nil"))))))
+
 (defn- format-state
   [state]
   (str
    (format "%20s :\n" "State")
    (str/join
     "\n"
-    (map (fn [[k v]] (format "%20s : %s" (name k) v)) state))))
+    (map (fn [[k v]]
+           (format "%20s : %s"
+                   (name k) (format-value v)))
+         state))))
 
 (defn- format-event
   [event]
-  (format "%20s : %s\n" "Event" event))
+  (str (format "%20s : " "Event") (format-value event) "\n"))
 
 (defn- pretty-format
   [evt msg]
