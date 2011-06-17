@@ -5,13 +5,15 @@
    [org.apache.log4j
     Logger]
    [org.apache.log4j.spi
-    LoggingEvent]
-   [picard.log4j
-    CommonLogFormatLayout]))
+    LoggingEvent]))
+
+(def default-opts { :logger-name "picard.request" })
 
 (defn logging
-  ([app]
-     (let [^Logger logger (Logger/getLogger "requestLogger")]
+  ([app] (logging app {}))
+  ([app opts]
+     (let [opts (merge default-opts opts)
+           ^Logger logger (Logger/getLogger (:logger-name opts))]
        (defmiddleware [state next-dn next-up]
          app
 

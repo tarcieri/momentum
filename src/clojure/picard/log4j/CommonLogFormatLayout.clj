@@ -35,6 +35,5 @@
    (.getMessage logging-event)
    (.getTimeStamp logging-event)))
 
-(defn -ignoresThrowable
-  [this]
-  true)
+(defn -ignoresThrowable [_] true)
+(defn -activateOptions [_])

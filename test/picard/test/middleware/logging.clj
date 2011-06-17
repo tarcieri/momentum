@@ -134,7 +134,7 @@
 (defn- setup-logger
   [f]
   (binding [*log-msgs* (atom [])]
-    (let [logger (Logger/getLogger "requestLogger")
+    (let [logger (Logger/getRootLogger)
           appender (mock-appender)]
       (.removeAllAppenders logger)
       (.addAppender logger appender)
