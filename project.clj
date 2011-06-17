@@ -12,6 +12,6 @@
 
   :source-path      "src/clojure"
   :java-source-path "src/java"
-  :aot              [picard.log4j.VerboseLayout]
+  :aot              [picard.log4j.CommonLogFormatLayout picard.log4j.VerboseLayout]
   :test-selectors   {:focus (fn [v] (:focus v))
                      :all   (fn [_] true)})

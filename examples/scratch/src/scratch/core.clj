@@ -32,28 +32,15 @@
       (downstream evt val))
     ))
 
-(defn- commons-logging-middleware
-  [upstream-accept]
-  (defmiddleware
-    [state-atom downstream upstream]
-    upstream-accept
-
-    :upstream
-    (fn [evt val]
-      (println "evt up:" evt val)
-      (upstream evt val))
-
-    :downstream
-    (fn [evt val]
-      (println "evt down:" evt val)
-      (downstream evt val))
-    ))
+(def *counter-atom* 0)
 
 (defn- hello-world-accept
   [dn]
   (fn [evt val]
-    (when (= :request evt)
-      (dn :response [200 {"content-length" "6"} "Hello\n"]))))
+    (let [counter (swap! inc *counter-atom*)
+          response-text (str "hello " counter "\n")]
+     (when (= :request evt)
+       (dn :response [200 {"content-length" (str (count response-text))} response-text])))))
 
 (defn echo-app-accept
   [downstream]
@@ -69,7 +56,6 @@
     (body [body] (downstream :body body))
 
     (abort [err]
-      (println "ZZZZZOMG FIAL")
       (if err (.printStackTrace err)))))
 
 (defonce *picard-server-agent* (agent nil))
@@ -79,8 +65,11 @@
   (send-off
    *picard-server-agent*
    (fn [s]
-     (if s (server/stop s))
-     (server/start (minimal-macro-middleware echo-app-accept)))))
+     (when s
+       (println "about to stop server")
+       (server/stop s)
+       (println "did stop server"))
+     (server/start hello-world-accept))))
 
 (defn stop-picard-server
   []

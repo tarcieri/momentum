@@ -5,19 +5,41 @@
    [picard.test])
   (:require
    [picard.middleware :as middleware])
-  (:use
-   [picard.middleware.logging :only [format-commons-logging]])
   (:import
+   [java.util
+    Date]
+   [java.text
+    SimpleDateFormat]
    [org.apache.log4j
     AppenderSkeleton
+    Level
+    Layout
     Logger
     SimpleLayout]
    [org.apache.log4j.spi
-    LoggingEvent]))
+    LoggingEvent]
+   [picard.log4j
+    CommonLogFormatLayout]))
 
 (declare *log-msgs*)
 
 (defn now [] (System/currentTimeMillis))
+
+(def commons-date-formatter (SimpleDateFormat. "dd/MMM/yyyy:kk:mm:ss Z"))
+
+(defn- format-commons-logging
+  [request timestamp]
+  (let [request-date (Date. (long timestamp))
+        request-time-string (.format commons-date-formatter request-date)]
+    (format "%s - - [%s] \"%s %s HTTP/%d.%d\" %d %d\n"
+            (first (:remote-addr request ))
+            request-time-string
+            (:request-method request)
+            (:path-info request)
+            (first (:http-version request))
+            (second (:http-version request))
+            (:response-status request)
+            (:response-body-size request))))
 
 (defn- mock-appender
   []
@@ -50,7 +72,7 @@
    :response-body-size 5})
 
 (deftest logs-simple-exchanges
-  (with-app (middleware/logging hello-world-app {:appender (mock-appender)})
+  (with-app (middleware/logging hello-world-app)
     (GET "/")
     (POST "/foo")
 
@@ -66,11 +88,11 @@
 (deftest logs-the-response-status
   (with-app
     (build-stack
-     (middleware/logging {:appender (mock-appender)})
+     (middleware/logging)
      (fn [dn]
        (defstream
          (request []
-           (dn :response [302 {"content-length" "0"} ""])))))
+                  (dn :response [302 {"content-length" "0"} ""])))))
 
     (GET "/")
     (is (= 302 (last-response-status)))
@@ -83,14 +105,14 @@
 (deftest logs-chunked-response
   (with-app
     (build-stack
-     (middleware/logging {:appender (mock-appender)})
+     (middleware/logging)
      (fn [dn]
        (defstream
          (request []
-           (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
-           (dn :body "Hello")
-           (dn :body "World")
-           (dn :body nil)))))
+                  (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
+                  (dn :body "Hello")
+                  (dn :body "World")
+                  (dn :body nil)))))
 
     (GET "/")
     (is (= 200 (last-response-status)))
@@ -100,8 +122,7 @@
                :response-body-size 10) (now))]))))
 
 (deftest tracks-the-remote-ip
-  (with-app (middleware/logging hello-world-app
-                                {:appender (mock-appender)})
+  (with-app (middleware/logging hello-world-app)
     (GET "/" {:remote-addr ["12.34.56.78" 1234]})
 
     (is (= 200 (last-response-status)))
@@ -110,6 +131,14 @@
              (assoc default-request
                :remote-addr ["12.34.56.78" 1234]) (now))]))))
 
-(defn- setup-logger [f] (binding [*log-msgs* (atom [])] (f)))
+(defn- setup-logger
+  [f]
+  (binding [*log-msgs* (atom [])]
+    (let [logger (Logger/getLogger "requestLogger")
+          appender (mock-appender)]
+      (.removeAllAppenders logger)
+      (.addAppender logger appender)
+      (.setLayout appender (CommonLogFormatLayout.)))
+    (f)))
 
 (use-fixtures :each setup-logger)
