@@ -1,7 +1,7 @@
 (ns picard.proxy
   (:use
    [picard.helpers]
-   [picard.utils])
+   [picard.utils :rename {debug debug*}])
   (:require
    [clojure.string :as str]
    [clojure.contrib.string]
@@ -9,6 +9,10 @@
   (:import
    [java.net
     ConnectException]))
+
+(defmacro debug
+  [& msgs]
+  `(debug* :proxy ~@msgs))
 
 (defn- addr-from-req
   [[{proxy-host :proxy-host host "host"}]]
@@ -53,7 +57,8 @@
    (addr-from-req req) (add-xff-header req) opts
    (fn [client-dn]
      (fn [evt val]
-       (debug "PXY EVT: " [evt val])
+       (debug {:msg "Client event"
+               :event [evt val]})
        (cond
         (bad-gateway? @state evt val)
         (downstream :response bad-gateway)

@@ -1,5 +1,5 @@
 (ns picard.client
-  (:use [picard.utils])
+  (:use [picard.utils :rename {debug debug*}])
   (:require
    [clojure.string :as str]
    [picard.netty   :as netty]
@@ -39,6 +39,10 @@
 
 (declare handle-err)
 
+(defmacro debug
+  [& msgs]
+  `(debug* :client ~@msgs))
+
 (defn- keepalive?
   [[hdrs]]
   (not= "close" (hdrs "connection")))
@@ -72,8 +76,9 @@
   (when (= request-complete (.next-dn-fn current-state))
     ;; Send an upstream message indicating that the exchange is complete
     (when-not (.aborted? current-state)
-     (let [upstream (.upstream current-state)]
-       (upstream :done nil)))
+      (let [upstream (.upstream current-state)]
+        (debug {:msg "Sending upstream" :event [:done nil] :state current-state})
+        (upstream :done nil)))
 
     ;; Clear the timeout since there will be no other user code called
     (clear-timeout current-state)
@@ -149,9 +154,14 @@
                (assoc current-state
                  :next-up-fn nil)))
            (fn [current-state]
+             (debug {:msg "Sending upstream" :event [:body nil]
+                     :state current-state})
              (upstream-fn :body nil)
              (finalize-request current-state))))
-      (upstream-fn :body (.getContent msg)))))
+      (do
+        (debug {:msg "Sending upstream" :event [:body (.getContent msg)]
+                :state @state})
+        (upstream-fn :body (.getContent msg))))))
 
 (defn- initial-response
   [state ^HttpResponse msg current-state]
@@ -191,8 +201,11 @@
             :keepalive? keepalive?
             :next-up-fn nil))))
      (fn [current-state]
-       (upstream-fn :response (netty-resp->resp msg))
-       (finalize-request current-state)))))
+       (let [response (netty-resp->resp msg)]
+         (debug {:msg "Sending upstream" :event [:response response]
+                 :state current-state})
+         (upstream-fn :response response)
+         (finalize-request current-state))))))
 
 (defn- initial-write-succeeded
   [state current-state]
@@ -228,9 +241,12 @@
     (when (and upstream-fn (not= (.isWritable ch) @writable?))
       (swap-then!
        writable? not
-       #(try (upstream-fn (if % :resume :pause) nil)
-             (catch Exception err
-               (throw (Exception. "Not implemented yet"))))))))
+       #(try
+          (debug {:msg "Sending upstream" :event [(if % :resume :pause)]
+                  :state %})
+          (upstream-fn (if % :resume :pause) nil)
+          (catch Exception err
+            (throw (Exception. "Not implemented yet"))))))))
 
 (defn- handle-err
   [state err current-state]
@@ -251,8 +267,10 @@
   (let [writable? (atom true)]
     (netty/upstream-stage
      (fn [_ evt]
-       (debug "CLT NETTY EVT: " evt)
        (let [current-state @state]
+         (debug {:msg "Netty event"
+                 :event evt
+                 :state current-state})
          (when-not (.aborted? current-state)
            (cond-let
             [msg (netty/message-event evt)]
@@ -285,8 +303,10 @@
 (defn- mk-downstream-fn
   [state]
   (fn [evt val]
-    (debug "CLT DN-STRM: " [evt val])
     (let [current-state @state]
+      (debug {:msg   "Downstream event"
+              :event [evt val]
+              :state current-state})
       (if (= evt :abort)
         (when-not (.aborted? current-state)
           (handle-err state val current-state))

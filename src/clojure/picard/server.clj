@@ -1,6 +1,6 @@
 (ns picard.server
   (:use
-   [picard.utils :rename {debug debug* when-debug when-debug*}])
+   [picard.utils :rename {debug debug*}])
   (:require
    [clojure.string :as str]
    [picard.netty :as netty])
@@ -62,10 +62,6 @@
 (defmacro debug
   [& msgs]
   `(debug* :server ~@msgs))
-
-(defmacro when-debug
-  [& stmts]
-  `(when-debug* :server ~@stmts))
 
 (defn- mk-initial-state
   ([app options] (mk-initial-state app options nil))
@@ -451,5 +447,4 @@
      (start app {}))
   ([app opts]
      (let [opts (merge default-options opts)]
-       (debug {:msg (str "Starting server with options: " opts)})
        (netty/start-server #(create-pipeline app opts) opts))))
