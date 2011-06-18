@@ -294,7 +294,7 @@
        pipeline-fn)))))
 
 (defn shutdown
-  [[bootstrap channel-group]]
+  [{bootstrap :bootstrap channel-group :channel-group}]
   (let [close-future (.close channel-group)]
     (.awaitUninterruptibly close-future)
     (.releaseExternalResources bootstrap)))
@@ -306,7 +306,7 @@
         ch-group  (configure-bootstrap
                    bootstrap merge-netty-server-opts pipeline-fn options)]
     (.add ch-group (.bind bootstrap (mk-socket-addr [host port])))
-    [bootstrap ch-group]))
+    {:bootstrap bootstrap :channel-group ch-group}))
 
 (defn mk-client-factory
   [pipeline-fn options]
