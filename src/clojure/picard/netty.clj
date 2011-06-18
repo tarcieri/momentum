@@ -294,8 +294,9 @@
        pipeline-fn)))))
 
 (defn shutdown
-  [{bootstrap :bootstrap channel-group :channel-group}]
-  (let [close-future (.close channel-group)]
+  [{bootstrap :bootstrap srv-channel :server-channel ch-group :channel-group}]
+  (.add ch-group srv-channel)
+  (let [close-future (.close ch-group)]
     (.awaitUninterruptibly close-future)
     (.releaseExternalResources bootstrap)))
 
@@ -305,8 +306,9 @@
   (let [bootstrap (mk-server-bootstrap (mk-thread-pool))
         ch-group  (configure-bootstrap
                    bootstrap merge-netty-server-opts pipeline-fn options)]
-    (.add ch-group (.bind bootstrap (mk-socket-addr [host port])))
-    {:bootstrap bootstrap :channel-group ch-group}))
+    {:bootstrap      bootstrap
+     :server-channel (.bind bootstrap (mk-socket-addr [host port]))
+     :channel-group  ch-group}))
 
 (defn mk-client-factory
   [pipeline-fn options]
