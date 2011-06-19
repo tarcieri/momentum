@@ -16,6 +16,7 @@
     ChannelStateEvent
     ChannelUpstreamHandler
     Channels
+    ChildChannelStateEvent
     ExceptionEvent
     MessageEvent
     WriteCompletionEvent]
@@ -27,6 +28,8 @@
    [org.jboss.netty.channel.socket.nio
     NioClientSocketChannelFactory
     NioServerSocketChannelFactory]
+   [org.jboss.netty.handler.timeout
+    IdleStateEvent]
    [org.jboss.netty.util
     HashedWheelTimer
     Timeout
@@ -148,6 +151,16 @@
 (defn write-completion-event
   [evt]
   (instance? WriteCompletionEvent evt))
+
+(defn unknown-channel-event?
+  "Not a known netty channel event"
+  [evt]
+  (not (or (instance? ChannelStateEvent evt)
+           (instance? ChildChannelStateEvent evt)
+           (instance? ExceptionEvent evt)
+           (instance? IdleStateEvent evt)
+           (instance? MessageEvent evt)
+           (instance? WriteCompletionEvent evt))))
 
 (defn upstream-stage
   "Creates a pipeline state for upstream events."

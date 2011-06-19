@@ -424,7 +424,12 @@
 
           [err (netty/exception-event evt)]
           (when-not (instance? IOException err)
-            (handle-err state err current-state))))))))
+            (handle-err state err current-state))
+
+          :else
+          (when (netty/unknown-channel-event? evt)
+            (when-let [upstream (.upstream current-state)]
+              (upstream :netty-event evt)))))))))
 
 (defn- create-pipeline
   [app opts]

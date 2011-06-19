@@ -14,7 +14,7 @@
     TimeoutException
     TimeUnit]))
 
-(declare ch1 ch2 ch3 ch4 netty-evts sock in out drain)
+(declare ch1 ch2 ch3 ch4 netty-evts sock in out drain server)
 
 ;; ### TEST APPLICATIONS
 (defn tracking-middleware
@@ -114,7 +114,7 @@
       (try
         (connect
          (fn [sock in out]
-           (binding [sock sock in in out out netty-evts netty-evts]
+           (binding [sock sock in in out out netty-evts netty-evts server server]
              (f))))
         (finally (server/stop server))))
     (f)))
