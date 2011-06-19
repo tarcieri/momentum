@@ -313,7 +313,7 @@
   (throw (Exception. "Not expecting a message right now")))
 
 (defn- stream-request-body
-  [state chunk current-state]
+  [state ^HttpChunk chunk current-state]
   (let [upstream (.upstream current-state)]
     (if (.isLast chunk)
 
@@ -335,7 +335,7 @@
   (stream-request-body state chunk current-state))
 
 (defn- incoming-request
-  [state msg {app :app :as current-state}]
+  [state ^HttpRequest msg {app :app :as current-state}]
   (try
     (let [request-id (gen-uuid)]
       ;; First set the states
