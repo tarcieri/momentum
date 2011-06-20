@@ -31,6 +31,7 @@ public class ChannelPool {
 
     final int expiration;
     final ChannelPoolCallback callback;
+    boolean shuttingDown;
     Node head;
     Node tail;
     HashedWheelTimer timer;
@@ -38,6 +39,7 @@ public class ChannelPool {
 
     public ChannelPool(int expireAfter, HashedWheelTimer timer,
                        ChannelPoolCallback callback) {
+        shuttingDown = false;
 
         if (expireAfter < 1) {
             throw new IllegalArgumentException("Need a positive expiration");
@@ -53,6 +55,10 @@ public class ChannelPool {
         Channel channel;
 
         synchronized (this) {
+            if (shuttingDown) {
+                return null;
+            }
+
             while (true) {
                 channel = popChannelByAddr(addr);
 
@@ -71,6 +77,13 @@ public class ChannelPool {
     public void checkin(Channel channel) {
         final Node node = new Node(channel);
         InetSocketAddress addr = addrFrom(channel);
+
+        synchronized (this) {
+            if (shuttingDown) {
+                channel.close();
+                return;
+            }
+        }
 
         // This might technically be a race condition, but I hope that the
         // following synchronized code takes less than a second to run.
