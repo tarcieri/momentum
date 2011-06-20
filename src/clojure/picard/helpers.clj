@@ -1,4 +1,5 @@
 (ns picard.helpers
+  (:require [clojure.contrib.string :as string])
   (:import
    [org.jboss.netty.buffer
     ChannelBuffer
@@ -9,7 +10,9 @@
    [java.nio.charset
     Charset]
    [java.util.concurrent
-    TimeUnit]))
+    TimeUnit]
+   [java.net
+    URL]))
 
 ;; Conversions
 (defn to-channel-buffer
@@ -21,6 +24,23 @@
 (defn response-status  [[status]]    status)
 (defn response-headers [[_ headers]] headers)
 (defn response-body    [[_ _ body]]  body)
+
+(defn request-url
+  [[hdrs _]]
+  (let [[host port] (if-let [host-hdr (hdrs "host")]
+                      (string/split #":" 2 host-hdr)
+                      (:local-addr hdrs))
+        port (cond
+              (nil? port) 80
+              (number? port) port
+              (string? port) (Integer/parseInt port))
+        script-name (:script-name hdrs)
+        path-info (:path-info hdrs)
+        query-string-hdr (:query-string hdrs)
+        query-string (if-not (empty? query-string-hdr) (str "?" query-string-hdr) "")
+        file (str script-name path-info query-string)]
+    ;; TODO: work out http/https
+    (URL. "http" host port file)))
 
 (defn body-size
   ([body] (body-size :body body))
