@@ -1,4 +1,5 @@
 (ns picard.middleware.retry
+  (:require [clojure.contrib.logging :as log])
   (:use [picard helpers utils]))
 
 (defrecord State [app upstream retries sent-body? opts])
@@ -12,6 +13,8 @@
   [app opts]
   (let [opts (merge default-options opts)]
     (State. app nil (:retries opts) false opts)))
+
+(declare retry-request)
 
 (defn- attempt-request
   [state downstream request current-state]
@@ -41,8 +44,8 @@
                 (if (< 0 retry)
                   (timeout
                    (first (.retries current-state))
-                   #(attempt-request state downstream request current-state*))
-                  (attempt-request state downstream request current-state*)))))
+                   #(retry-request state downstream request current-state*))
+                  (retry-request state downstream request current-state*)))))
 
            (when-let [current-downstream @current-downstream-atom]
              (current-downstream evt val))
@@ -50,6 +53,11 @@
     :as upstream
     (swap! state #(assoc % :upstream upstream))
     (upstream :request request))))
+
+(defn- retry-request
+  [state downstream request current-state]
+  (log/info (str "retrying request: " (request-url request)))
+  (attempt-request state downstream request current-state))
 
 (defn retry
   ([app] (retry app {}))
