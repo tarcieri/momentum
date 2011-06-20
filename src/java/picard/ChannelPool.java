@@ -135,19 +135,17 @@ public class ChannelPool {
         }
     }
 
-    public InetSocketAddress purge() {
+    public void shutdown() {
+        // First, mark this pool as shutting down
         synchronized (this) {
-            if (tail == null) {
-                return null;
+            shuttingDown = true;
+
+            Node currentNode = head;
+
+            while (currentNode != null) {
+                expireNode(currentNode);
+                currentNode = head;
             }
-
-            Channel channel = tail.channel;
-
-            tail.timeout.cancel();
-            removeNode(tail);
-
-            channel.close();
-            return addrFrom(channel);
         }
     }
 

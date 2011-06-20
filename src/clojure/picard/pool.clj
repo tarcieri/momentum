@@ -106,3 +106,7 @@
         (netty/mk-client-factory
          create-pipeline options)
         options])))
+
+(defn shutdown
+  [[state channel-pool opts]]
+  (.shutdown channel-pool))

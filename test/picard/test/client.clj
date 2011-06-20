@@ -546,14 +546,7 @@
          ch2
          :abort #(instance? Exception %)))
 
-    ;; Close off the pool
-    (client/request
-     ["localhost" 4040]
-     [{:path-info      "/"
-       :request-method "GET"
-       "connection"    "close"}]
-     {:pool pool}
-     (fn [_] (fn [_ _])))))
+    (picard/shutdown-pool pool)))
 
 (defcoretest observing-max-per-address-connections
   [_ ch1 ch2 ch3]
@@ -595,13 +588,7 @@
          :connected nil
          :response  :dont-care))
 
-    (client/request
-     ["localhost" 4040]
-     [{:path-info      "/"
-       :request-method "GET"
-       "connection"    "close"}]
-     {:pool pool}
-     (fn [_] (fn [_ _])))))
+    (picard/shutdown-pool pool)))
 
 (defcoretest handling-abort-loops
   [_ ch2]
