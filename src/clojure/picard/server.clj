@@ -269,7 +269,8 @@
      (if (.last-write current-state)
        (.addListener (.last-write current-state)
                      netty/close-channel-future-listener)
-       (.close (.ch current-state))))))
+       (when-let [ch (.ch current-state)]
+         (.close ch))))))
 
 (defn- downstream-fn
   [state]
@@ -418,12 +419,15 @@
 
            (= ch-state ChannelState/CONNECTED)
            (do
-             (when-not (exchange-finished? current-state)
+             (when-not (or (exchange-finished? current-state)
+                           (nil? (.upstream current-state))
+                           (.aborting? current-state))
                (handle-err state (IOException. "Connection reset by peer")
                            current-state))))
 
           [err (netty/exception-event evt)]
-          (when-not (instance? IOException err)
+          (when-not (or (exchange-finished? current-state)
+                        (instance? IOException err))
             (handle-err state err current-state))
 
           :else
@@ -448,8 +452,17 @@
 
 (defn start
   "Starts an HTTP server on the specified port."
-  ([app]
-     (start app {}))
+  ([app] (start app {}))
   ([app opts]
      (let [opts (merge default-options opts)]
-       (netty/start-server #(create-pipeline app opts) opts))))
+       (merge
+        (netty/start-server #(create-pipeline app opts) opts)
+        {::options opts}))))
+
+(defn restart
+  ([server app] (restart server app {}))
+  ([{prev-opts ::options :as server} app opts]
+     (let [opts (merge default-options prev-opts opts)]
+       (merge
+        (netty/restart-server server #(create-pipeline app opts) opts)
+        {::options opts}))))

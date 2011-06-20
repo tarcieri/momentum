@@ -213,18 +213,25 @@
               (.printStackTrace err))))))))
 
 (defn- mk-pipeline-factory
-  [^ChannelGroup channel-group pipeline-fn]
-  (reify ChannelPipelineFactory
-    (getPipeline [_]
-      (let [pipeline ^ChannelPipeline (pipeline-fn)]
-        (.addFirst
-         pipeline "channel-listener"
-         (upstream-stage
-          (fn [ch evt]
-            (when-let [state (channel-state-event evt)]
-              (when (= ChannelState/OPEN state)
-                (.add channel-group ch))))))
-        pipeline))))
+  [^ChannelGroup channel-group pipeline-fn opts]
+  (let [pipeline-fn
+        ;; If the user passed in a pipeline function, wrap the
+        ;; base pipeline function with the user's function. Supplied
+        ;; functions must take in a pipeline and return a new pipeline.
+        (if-let [user-pipeline-fn (opts :pipeline-fn)]
+          #(user-pipeline-fn (pipeline-fn))
+          pipeline-fn)]
+    (reify ChannelPipelineFactory
+      (getPipeline [_]
+        (let [pipeline ^ChannelPipeline (pipeline-fn)]
+          (.addFirst
+           pipeline "channel-listener"
+           (upstream-stage
+            (fn [ch evt]
+              (when-let [state (channel-state-event evt)]
+                (when (= ChannelState/OPEN state)
+                  (.add channel-group ch))))))
+          pipeline)))))
 
 (def default-server-opts
   {"reuseAddress"               true
@@ -297,18 +304,11 @@
    ;; and that will also add all channels to the channel group
    (.setPipelineFactory
     bootstrap
-    (mk-pipeline-factory
-     channel-group
-     ;; If the user passed in a pipeline function, wrap the
-     ;; base pipeline function with the user's function. Supplied
-     ;; functions must take in a pipeline and return a new pipeline.
-     (if-let [user-pipeline-fn (options :pipeline-fn)]
-       #(user-pipeline-fn (pipeline-fn))
-       pipeline-fn)))))
+    (mk-pipeline-factory channel-group pipeline-fn options))))
 
 (defn shutdown
-  [{bootstrap :bootstrap srv-channel :server-channel ch-group :channel-group}]
-  (.add ch-group srv-channel)
+  [{bootstrap ::bootstrap srv-ch ::server-channel ch-group ::channel-group}]
+  (.add ch-group srv-ch)
   (let [close-future (.close ch-group)]
     (.awaitUninterruptibly close-future)
     (.releaseExternalResources bootstrap)))
@@ -319,9 +319,25 @@
   (let [bootstrap (mk-server-bootstrap (mk-thread-pool))
         ch-group  (configure-bootstrap
                    bootstrap merge-netty-server-opts pipeline-fn options)]
-    {:bootstrap      bootstrap
-     :server-channel (.bind bootstrap (mk-socket-addr [host port]))
-     :channel-group  ch-group}))
+    {::bootstrap      bootstrap
+     ::server-channel (.bind bootstrap (mk-socket-addr [host port]))
+     ::channel-group  ch-group}))
+
+(defn restart-server
+  [{srv-ch ::server-channel :as server} pipeline-fn opts]
+  (when-not srv-ch
+    (throw (IllegalArgumentException.
+            "Server state is missing the channel")))
+  (let [ch-group (DefaultChannelGroup.)]
+    (.. srv-ch
+        getConfig
+        (setPipelineFactory
+         (mk-pipeline-factory ch-group pipeline-fn opts)))
+
+    ;; Return the new server state
+    {::bootstrap     (server ::bootstrap)
+     ::server-channel srv-ch
+     ::channel-group  ch-group}))
 
 (defn mk-client-factory
   [pipeline-fn options]
