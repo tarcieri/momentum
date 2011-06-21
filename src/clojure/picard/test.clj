@@ -187,6 +187,10 @@
        (filter (fn [[evt val]] (and (= :body evt) val)))
        (map (comp second normalize-body))))
 
+(defn received-event?
+  [f]
+  (some f (exchange-events (last-exchange))))
+
 ;; Helpers
 (defn continue?
   [ex]

@@ -157,3 +157,57 @@
       (GET "/")
       (is (= 500 (last-response-status)))
       (is (= 1 @count)))))
+
+(deftest does-not-send-events-upstream-when-sleeping-between-requests
+  (let [count (atom 0)
+        zomg? (atom false)]
+    (with-app
+      (-> (fn [dn]
+            (defstream
+              (request [req]
+                (if (= 1 (swap! count inc))
+                  (dn :response [500 {"content-length" "0"} ""])
+                  (dn :response [200 {"content-length" "5"} "Hello"])))
+              ;; Y U NO WANT ZOMG?
+              (zomg [] (reset! zomg? true))))
+          (middleware/retry {:retries [5 5 5]}))
+
+      (let [upstream (GET "/")]
+        (upstream :zomg nil))
+
+      (is (= (last-response-status) 200))
+      (is (not @zomg?))
+      (is (= @count 2)))))
+
+(deftest does-not-retry-when-the-request-is-chunked
+  (let [count (atom 0)]
+    (with-app
+      (-> (fn [dn]
+            (defstream
+              (request [req]
+                (swap! count inc)
+                (dn :response [500 {"content-length" "0"} ""]))))
+          (middleware/retry {:retries [5 5 5]}))
+
+      (let [upstream (POST "/" :chunked)]
+        (upstream :body "Hello")
+        (upstream :body nil))
+
+      (is (= (last-response-status) 500))
+      (is (= @count 1)))))
+
+(deftest aborts-retry-when-receives-abort-event
+  (let [count (atom 0)]
+    (with-app
+      (-> (fn [dn]
+            (defstream
+              (request [req]
+                (swap! count inc)
+                (dn :response [500 {"content-length" "0"} ""]))))
+          (middleware/retry {:retries [5 5 5]}))
+
+      (let [upstream (GET "/")]
+        (upstream :abort (Exception. "DIE DIE DIE!!!!")))
+
+      (Thread/sleep 200)
+      (is (= @count 1)))))
