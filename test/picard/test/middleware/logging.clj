@@ -35,7 +35,7 @@
             (first (:remote-addr request ))
             request-time-string
             (:request-method request)
-            (:path-info request)
+            (request-url [request])
             (first (:http-version request))
             (second (:http-version request))
             (:response-status request)
@@ -136,9 +136,12 @@
   (binding [*log-msgs* (atom [])]
     (let [logger (Logger/getRootLogger)
           appender (mock-appender)]
-      (.removeAllAppenders logger)
-      (.addAppender logger appender)
-      (.setLayout appender (CommonLogFormatLayout.)))
-    (f)))
+      (try
+        (.removeAllAppenders logger)
+        (.addAppender logger appender)
+        (.setLayout appender (CommonLogFormatLayout.))
+        (f)
+        (finally
+         (.removeAllAppenders logger))))))
 
 (use-fixtures :each setup-logger)
