@@ -44,10 +44,11 @@
          remote-ip)) body]))
 
 (defn- proxy-loop?
-  [[{[remote-ip] :remote-addr xff-header "x-forwarded-for"}]]
+  [[{[remote-ip] :remote-addr xff-header "x-forwarded-for"}] {cycles :cycles}]
   (when xff-header
-    (some #(= % remote-ip)
-          (clojure.contrib.string/split #"\s*,\s*" xff-header))))
+    (< cycles
+       (count (filter #(= % remote-ip)
+                      (clojure.contrib.string/split #"\s*,\s*" xff-header))))))
 
 (def bad-gateway [502 {"content-length" "0"} nil])
 
@@ -78,21 +79,24 @@
         (reset! state :pending)
         (downstream :pause nil)))))
 
+(def default-options {:cycles 0})
+
 (defn mk-proxy
   ([] (mk-proxy {}))
   ([opts]
-     (fn [downstream]
-       (let [state (atom nil)]
-         (defstream
-           ;; Handling the initial request
-           (request [req]
-             (if (proxy-loop? req)
-               (downstream :response bad-gateway)
-               (initiate-request state opts req downstream)))
-           (done []) ;; We don't care about this
-           ;; Handling all other events
-           (else [evt val]
-             (if-let [upstream @state]
-               (upstream evt val)
-               (throw (Exception. (str "Not expecting events:\n"
-                                       [evt val]))))))))))
+     (let [opts (merge default-options opts)]
+       (fn [downstream]
+         (let [state (atom nil)]
+           (defstream
+             ;; Handling the initial request
+             (request [req]
+               (if (proxy-loop? req opts)
+                 (downstream :response bad-gateway)
+                 (initiate-request state opts req downstream)))
+             (done []) ;; We don't care about this
+             ;; Handling all other events
+             (else [evt val]
+               (if-let [upstream @state]
+                 (upstream evt val)
+                 (throw (Exception. (str "Not expecting events:\n"
+                                         [evt val])))))))))))

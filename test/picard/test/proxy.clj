@@ -82,13 +82,28 @@
 (defcoretest avoids-proxy-loops
   [ch1]
   (tracking-middleware
-   (prox/mk-proxy (client/mk-pool {:keepalive 1})))
+   (prox/mk-proxy {:pool (client/mk-pool {:keepalive 1})}))
   (with-app (prox/mk-proxy)
     (GET "/" {"host" "localhost:4040" "connection" "close"})
 
     (is (next-msgs-for
          ch1
          :request [(includes-hdrs {"x-forwarded-for" "127.0.0.1"}) nil]))
+
+    (is (= 502 (last-response-status)))))
+
+(defcoretest ^{:focus true} allows-one-proxy-loop
+  [ch1]
+  (tracking-middleware
+   (prox/mk-proxy {:pool (client/mk-pool {:keepalive 1}) :cycles 1}))
+
+  (with-app (prox/mk-proxy)
+    (GET "/" {"host" "localhost:4040" "connection" "close"})
+
+    (is (next-msgs-for
+         ch1
+         :request [(includes-hdrs {"x-forwarded-for" "127.0.0.1"}) nil]
+         :request [(includes-hdrs {"x-forwarded-for" "127.0.0.1, 127.0.0.1"}) nil]))
 
     (is (= 502 (last-response-status)))))
 
