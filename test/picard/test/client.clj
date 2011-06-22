@@ -548,6 +548,36 @@
 
     (picard/shutdown-pool pool)))
 
+(defcoretest ^{:focus true} doesnt-double-increment-connection-counting
+  [_ ch1 ch2 ch3]
+  :slow-hello-world
+
+  (let [pool (client/mk-pool {:max-connections 2})]
+    (doseq [ch [ch1 ch2 ch3]]
+      (client/request
+       ["localhost" 4040]
+       [{:path-info "/"
+         :request-method "GET"}]
+       {:pool pool}
+       (fn [_]
+         (fn [evt val] (enqueue ch [evt val])))))
+
+    (is (next-msgs-for
+         ch1
+         :connected nil
+         :response  :dont-care
+         :done      nil))
+
+    (is (next-msgs-for
+         ch2
+         :connected nil
+         :response  :dont-care
+         :done      nil))
+
+    (is (next-msgs-for ch3 :abort #(instance? Exception %)))
+
+    (picard/shutdown-pool pool)))
+
 (defcoretest observing-max-per-address-connections
   [_ ch1 ch2 ch3]
   :slow-hello-world

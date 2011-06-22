@@ -44,8 +44,7 @@
 (defn- return-conn
   [pool conn handler callback fresh?]
   (when (instance? Channel conn)
-    (.. conn getPipeline (addLast "handler" handler))
-    (increment-count-for pool (.getRemoteAddress conn)))
+    (.. conn getPipeline (addLast "handler" handler)))
   (callback conn fresh?))
 
 (defn- checkout-conn*
@@ -58,21 +57,39 @@
 
 (defn checkout-conn
   "Calls success fn with the channel"
-  [pool addr handler callback]
+  [[state :as pool] addr handler callback]
   (if-let [conn (checkout-conn* pool addr)]
-    (return-conn pool conn handler callback false)
+    (do
+      (increment-count-for pool addr)
+      (return-conn pool conn handler callback false))
     ;; TODO: handle decrementing the count when the connection
     ;; fails.
     (if (increment-count-for pool addr)
-      (connect-client pool addr #(return-conn pool % handler callback true))
-      (callback (Exception. "LOL") true))))
+      (connect-client
+       pool addr
+       (fn [conn-or-err]
+         (when (instance? Exception conn-or-err)
+           (decrement-count-for state addr))
+         (return-conn pool conn-or-err handler callback true)))
+      (callback (Exception. "Reached maximum connections") true))))
 
 (defn checkin-conn
   "Returns a connection to the pool"
   [[state ^ChannelPool pool] ^Channel conn]
+
+  ;; is this right?
+  (if (nil? conn)
+    (throw (Exception. (str "Attempted to check in nil channel to connection pool: " pool) )))
+
   (if (.isOpen conn)
-    (do (.. conn getPipeline removeLast)
-        (.checkin pool conn))
+    (do
+      (.. conn getPipeline removeLast)
+
+      ;; is this right?
+      (if (nil? conn)
+        (throw (Exception. (str "Attempted to check in nil channel to connection pool: " pool) )))
+
+      (.checkin pool conn))
     (decrement-count-for state (.getRemoteAddress conn))))
 
 (defn close-conn

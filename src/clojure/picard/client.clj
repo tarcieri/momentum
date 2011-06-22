@@ -67,9 +67,11 @@
     (swap! state #(assoc % :timeout new-timeout))))
 
 (defn- request-complete
-  [_ evt _ _]
+  [_ evt val _]
   (when-not (= :abort evt)
-    (throw (Exception. "The request is complete"))))
+    (throw (Exception. (str "The request is complete."
+                            "  Event: " evt "\n"
+                            "  Value: " val)))))
 
 (defn- finalize-request
   [current-state]
@@ -98,13 +100,17 @@
            (pool/close-conn (.pool current-state) ch)))))))
 
 (defn- connection-pending
-  [_ _ _ _]
-  (throw (Exception. "The connection has not yet been established")))
+  [_ evt val _]
+  (throw (Exception. (str "The connection has not yet been established.\n"
+                          "  Event: " evt "\n"
+                          "  Value: " val))))
 
 (defn- write-pending
-  [_ evt _ _]
+  [_ evt val _]
   (if (= :body evt)
-    (throw (Exception. "The first write has not yet succeded"))))
+    (throw (Exception. (str "The first write has not yet succeded.\n"
+                            "  Event: " evt "\n"
+                            "  Value: " val)))))
 
 (defn- response-pending
   [_ _ _ _])
@@ -112,7 +118,9 @@
 (defn- stream-or-finalize-request
   [state evt val current-state]
   (when-not (= :body evt)
-    (throw (Exception. "Not expecting event: " evt)))
+    (throw (Exception. (str "Not expecting event.\n"
+                            "  Event: " evt "\n"
+                            "  Value: " val))))
 
   (let [ch (.ch current-state)]
     (if (nil? val)
@@ -313,7 +321,9 @@
 
         (do
           (when (.aborted? current-state)
-            (throw (Exception. "The request has been aborted")))
+            (throw (Exception. (str "The request has been aborted.\n"
+                                    "  Event: " evt "\n"
+                                    "  Value: " val))))
 
           (cond
            (= evt :pause)
