@@ -1,4 +1,5 @@
 (ns picard.log4j.CommonLogFormatLayout
+  (:use [picard.helpers :only [request-url]])
   (:import
    [java.util
     Date]
@@ -23,7 +24,8 @@
             (first (:remote-addr request ))
             request-time-string
             (:request-method request)
-            (:path-info request)
+            ;; TODO: maybe change api of request-url to only take headers?
+            (request-url [request])
             (first (:http-version request))
             (second (:http-version request))
             (:response-status request)
