@@ -155,8 +155,10 @@
             (finalize-channel current-state))))))
 
 (defn- aborted-req
-  [_ _ _ _]
-  (throw (Exception. "This request has been aborted")))
+  [_ evt val _]
+  (throw (Exception. (str "This request has been aborted.\n"
+                          "  Event: " evt "\n"
+                          "  Value: " val))))
 
 (defn- body-size
   [body]
@@ -197,7 +199,9 @@
 (defn- initialize-response
   [state evt val current-state]
   (when-not (= :response evt)
-    (throw (Exception. "Um... responses start with the head?")))
+    (throw (Exception. (str "Um... responses start with the head?\n"
+                            "  Event: " evt "\n"
+                            "  Value: " val))))
 
   (let [[status hdrs body] val
         hdrs (or hdrs {})]
@@ -310,8 +314,9 @@
    In this state, any further downstream messages are unexpected
    since pipelining is not (yet?) supported. Also, if the connection
    does not support keep alives, the connection will get into this state."
-  [_ _ _]
-  (throw (Exception. "Not expecting a message right now")))
+  [_ msg _]
+  (throw (Exception. (str "Not expecting a message right now.\n"
+                          "Message: " msg))))
 
 (defn- stream-request-body
   [state ^HttpChunk chunk current-state]
