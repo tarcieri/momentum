@@ -30,44 +30,55 @@
        (not (.aborting? current-state))
        (not (empty? (.retries current-state)))))
 
+(defn- mk-downstream
+  [state downstream request]
+  (let [current-downstream-atom (atom downstream)]
+    (fn [evt val]
+      (let [current-state      @state
+            current-downstream @current-downstream-atom
+            retry-timeout-ms   (first (.retries current-state))
+            upstream           (.upstream current-state)]
+        (if (should-retry? request evt val current-state)
+
+          ;; should retry
+          (swap-then!
+           state
+           ;; this clears the upstream and removes a retry
+           #(assoc % :retries (rest (.retries %)) :upstream nil)
+           (fn [current-state]
+             ;; this is to prevent us sending downstream events
+             ;; after one of the retry requests has failed
+             (reset! current-downstream-atom nil)
+
+             ;; abort current upstream
+             (try
+               (upstream :abort (Exception. "retry handler failed"))
+               (catch Exception _))
+
+             ;; if we have another timeout to process then set it up
+             ;; and save it in the state so that it can be canceled if
+             ;; neeed be
+             (if (< 0 retry-timeout-ms)
+               ;; retry should take place in some amount of time
+               (let [retry-timeout
+                     (timeout
+                      retry-timeout-ms
+                      #(retry-request state downstream request))]
+                 (swap! state #(assoc % :retry-timeout retry-timeout)))
+
+               ;; retry of zero indicates retry immediately
+               (retry-request state downstream request))))
+
+          ;; shouldn't retry
+          (when-let [current-downstream @current-downstream-atom]
+            (current-downstream evt val)))))))
+
 (defn- attempt-request
   [state downstream request]
-  (let [current-state           @state
-        app                     (.app current-state)
-        current-downstream-atom (atom downstream)]
-    (with
-     (app
-      (fn [evt val]
-        (let [current-state      @state
-              current-downstream @current-downstream-atom
-              retry-timeout-ms   (first (.retries current-state))
-              upstream           (.upstream current-state)]
-          (if (should-retry? request evt val current-state)
-            (swap-then!
-             state
-             #(assoc % :retries (rest (.retries %)) :upstream nil)
-             (fn [current-state]
-
-               (reset! current-downstream-atom nil)
-
-               ;; abort current upstream
-               (try
-                 (upstream :abort (Exception. "retry handler failed"))
-                 (catch Exception _))
-
-               (if (< 0 retry-timeout-ms)
-                 (let [retry-timeout
-                       (timeout
-                        retry-timeout-ms
-                        #(retry-request state downstream request))]
-                   (swap! state #(assoc % :retry-timeout retry-timeout)))
-                 (retry-request state downstream request))))
-
-            (when-let [current-downstream @current-downstream-atom]
-              (current-downstream evt val))))))
-     :as upstream
-     (swap! state #(assoc % :upstream upstream))
-     (upstream :request request))))
+  (let [app      (.app @state)
+        upstream (app (mk-downstream state downstream request))]
+    (swap! state #(assoc % :upstream upstream))
+    (upstream :request request)))
 
 (defn- retry-request
   [state downstream request]
