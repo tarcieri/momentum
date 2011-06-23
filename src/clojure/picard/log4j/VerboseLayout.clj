@@ -2,11 +2,14 @@
   (:require
    [clojure.string :as str])
   (:import
-   [org.apache.log4j.spi
-    LoggingEvent])
+   java.util.Date
+   java.text.SimpleDateFormat
+   org.apache.log4j.spi.LoggingEvent)
   (:gen-class
    :name picard.log4j.VerboseLayout
    :extends org.apache.log4j.Layout))
+
+(def date-formatter (SimpleDateFormat. "dd/MMM/yyyy:kk:mm:ss Z"))
 
 (defn- format-value
   [val]
@@ -45,6 +48,7 @@
   (let [log-msg (.getMessage evt)]
     (str
      (str/upper-case (.getLoggerName evt)) " - "
+     (.format date-formatter (Date. (.getTimeStamp evt))) " - "
      (if (and (map? log-msg) (log-msg :msg))
        (pretty-format evt log-msg)
        (str log-msg "\n")))))
