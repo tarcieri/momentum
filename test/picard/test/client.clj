@@ -526,27 +526,29 @@
   :slow-hello-world
 
   (let [pool (client/mk-pool {:max-connections 1})]
-    (doseq [ch [ch1 ch2]]
-      (client/request
-       ["localhost" 4040]
-       [{:path-info      "/"
-         :request-method "GET"}]
-       {:pool pool}
-       (fn [_]
-         (fn [evt val]
-           (enqueue ch [evt val])))))
+    (try
+      (doseq [ch [ch1 ch2]]
+        (client/request
+         ["localhost" 4040]
+         [{:path-info      "/"
+           :request-method "GET"}]
+         {:pool pool}
+         (fn [_]
+           (fn [evt val]
+             (enqueue ch [evt val])))))
 
-    (is (next-msgs-for
-         ch1
-         :connected nil
-         :response  :dont-care
-         :done      nil))
+      (is (next-msgs-for
+           ch1
+           :connected nil
+           :response  :dont-care
+           :done      nil))
 
-    (is (next-msgs-for
-         ch2
-         :abort #(instance? Exception %)))
+      (is (next-msgs-for
+           ch2
+           :abort #(instance? Exception %)))
 
-    (picard/shutdown-pool pool)))
+      (finally
+       (picard/shutdown-pool pool)))))
 
 (defcoretest doesnt-double-increment-connection-counting
   [_ ch1 ch2 ch3]

@@ -143,6 +143,12 @@
     (and (= ChannelState/CONNECTED state)
          (not (nil? val)))))
 
+(defn channel-disconnected-event?
+  [evt]
+  (and (instance? ChannelStateEvent evt)
+       (= ChannelState/CONNECTED (.getState ^ChannelStateEvent evt))
+       (nil? (.getValue ^ChannelStateEvent evt))))
+
 (defn exception-event
   [evt]
   (when (instance? ExceptionEvent evt)

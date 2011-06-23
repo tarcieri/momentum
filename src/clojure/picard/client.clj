@@ -264,6 +264,7 @@
       :next-dn-fn request-complete
       :aborted?   true)
    (fn [current-state]
+     (debug {:msg "Handling error" :event err :state current-state})
      (when (.upstream current-state)
        (try
          ((.upstream current-state) :abort err)

@@ -4,115 +4,149 @@
   (:require
    [picard.netty :as netty])
   (:import
-   [picard
-    ChannelPool
-    ChannelPoolCallback]
+   picard.ChannelPool
    [org.jboss.netty.channel
     Channel
     ChannelPipeline]
    [org.jboss.netty.handler.codec.http
     HttpRequestEncoder
     HttpResponseDecoder]
-   [java.net
-    InetSocketAddress]))
+   java.net.InetSocketAddress))
 
 (defmacro debug
   [& msgs]
   `(debug* :pool ~@msgs))
 
-(defn- create-pipeline
-  []
-  (netty/create-pipeline
-   :decoder (HttpResponseDecoder.)
-   :encoder (HttpRequestEncoder.)))
+(defn- to-addr
+  [^InetSocketAddress addr]
+  [(.getHostName addr) (.getPort addr)])
 
 (defn- increment-count-for
   [[state _ _ options] addr]
-  (dosync
-   (let [[total by-addrs] @state]
-     (when (and (< total (options :max-connections))
-                (< (by-addrs addr 0) (options :max-connections-per-address)))
-       (ref-set
-        state
-        [(inc total) (assoc by-addrs addr (inc (by-addrs addr 0)))])))))
+  (swap!
+   state
+   (fn [[total by-addrs]]
+     (when (>= total (options :max-connections))
+       (debug {:msg   "Maximum global connections reached."
+               :state {"total-connections" total
+                       (str "connections for " addr) (by-addrs addr)}})
+       (throw (Exception. "Reached maximum global connections for pool")))
+
+     (when (>= (by-addrs addr 0) (options :max-connections-per-address))
+       (debug {:msg   "Maximum connections for " addr " reached."
+               :state {"total-connections" total
+                       (str "connections for " addr) (by-addrs addr)}})
+       (throw (Exception. "Reached maximum connections for " addr)))
+
+     [(inc total) (assoc by-addrs addr (inc (by-addrs addr 0)))])))
 
 (defn- decrement-count-for
   [state addr]
-  (dosync
-   (alter
-    state
-    (fn [[total by-addrs]]
-      [(dec total)
-       (if (> (by-addrs addr 0) 1)
-         (assoc by-addrs addr (dec (by-addrs addr)))
-         (dissoc by-addrs addr))]))))
+  (swap!
+   state
+   (fn [[total by-addrs]]
+     [(dec total)
+      (if (> (by-addrs addr 0) 1)
+        (assoc by-addrs addr (dec (by-addrs addr)))
+        (dissoc by-addrs addr))])))
 
-(defn- return-conn
-  [pool conn handler callback fresh?]
-  (when (instance? Channel conn)
-    (.. conn getPipeline (addLast "handler" handler)))
-  (callback conn fresh?))
+(defn- connection-closed-handler
+  [state]
+  (netty/upstream-stage
+   (fn [^Channel ch evt]
+     (when (netty/channel-disconnected-event? evt)
+       (let [addr (to-addr (.getRemoteAddress ch))]
+         (decrement-count-for state addr)
+         (debug
+          (let [[total by-addrs] @state]
+            {:msg   "Closing connection"
+             :event ch
+             :state {"total-connections" total
+                     (str "connections for " addr) (by-addrs addr)}})))))))
 
-(defn- checkout-conn*
-  [[_ pool] addr]
-  (.checkout pool (netty/mk-socket-addr addr)))
+(defn- create-pipeline
+  [pool]
+  (netty/create-pipeline
+   :track-closes (connection-closed-handler pool)
+   :decoder      (HttpResponseDecoder.)
+   :encoder      (HttpRequestEncoder.)))
 
-(defn- connect-client
-  [[_ _ factory opts] addr callback]
-  (netty/connect-client factory addr (opts :local-addr) callback))
+(defn- add-handler
+  [conn handler]
+  (.. conn getPipeline (addLast "handler" handler)))
 
 (defn checkout-conn
   "Calls success fn with the channel"
-  [[state :as pool] addr handler callback]
-  (if-let [conn (checkout-conn* pool addr)]
-    ;; There is a fresh connection available
+  [[state conn-pool factory opts :as pool] addr handler callback]
+  ;; First, attempt to grab a hot connection out of the connection
+  ;; pool for the requested socket address.
+  (if-let [conn (.checkout conn-pool (netty/mk-socket-addr addr))]
+    ;; There is a fresh connection available, add the netty handler to
+    ;; the end of the channel pipeline and invoke the callback with
+    ;; the connection and `false` in order to indicate that the
+    ;; connection is not fresh (came from a connection pool). That
+    ;; way, if the connection is bogus somehow, the client knows that
+    ;; it is able to attempt to get a different connection
     (do
-      (debug "Checking out connection from pool")
-      (return-conn pool conn handler callback false))
-    ;; Otherwise, let's try to create a connection
-    (do
-      (debug "Creating new connection")
-      (if (increment-count-for pool addr)
-        (connect-client
-         pool addr
-         (fn [conn-or-err]
-           ;; Creating the connection failed, so decrement the count
-           (when (instance? Exception conn-or-err)
-             (debug "Failed attempt to create new connection")
-             (decrement-count-for state addr))
-           (return-conn pool conn-or-err handler callback true)))
-        (callback (Exception. "Reached maximum connections") true)))))
+      (debug {:msg "Checking out connection from pool"
+              :event conn})
+      (add-handler conn handler)
+      (callback conn false))
+
+    ;; Otherwise, we'll need to establish a new connection (assuming
+    ;; that we haven't reached the maximum allotted connections
+    ;; already). The connection counters are incremented before the
+    ;; connection is established. This prevent any race conditions
+    ;; where a bazillion connections are established at the same
+    ;; time. If establishing the connection fails, the counters are
+    ;; decremented at that point.
+    (try
+      (let [[total by-addrs] (increment-count-for pool addr)]
+        (debug {:msg   "Establishing new connection"
+                :state {"total-connections" total
+                        (str "connections for " addr) (by-addrs addr)}}))
+      (netty/connect-client
+       ;; Alright, this is totally not valid since this can only be
+       ;; called once per pool. Somehow, we need to bind the channel
+       ;; pipeline to the state & addr
+       factory addr (opts :local-addr)
+       (fn [conn-or-err]
+         (if (instance? Exception conn-or-err)
+           (do (debug {:msg "Failed to establish connection"
+                       :event conn-or-err})
+               (decrement-count-for state addr))
+           (do (debug {:msg "Successfully established connection" :event conn-or-err})
+               (add-handler conn-or-err handler)))
+         (callback conn-or-err true)))
+      ;; Incrementing the count might raise an exception, if it does,
+      ;; return it to the client by passing it through the callback.
+      (catch Exception err
+        (callback err true)))))
 
 (defn checkin-conn
   "Returns a connection to the pool"
   [[state ^ChannelPool pool] ^Channel conn]
+  ;; Hope that this never happens
+  (when (nil? conn)
+    (throw (Exception. (str "Attempted to check in nil channel "
+                            "to connection pool: " pool))))
 
-  ;; is this right?
-  (if (nil? conn)
-    (throw (Exception.
-            (str "Attempted to check in nil channel to connection pool: " pool))))
-
-  (if (.isOpen conn)
-    (do
-      (debug "Checking connection back into pool")
-      (.. conn getPipeline removeLast)
-
-      ;; is this right?
-      (if (nil? conn)
-        (throw (Exception.
-                (str "Attempted to check in nil channel to connection pool: " pool))))
-
-      (.checkin pool conn))
-    (do
-      (debug "Discarding closed connection")
-      (decrement-count-for state (.getRemoteAddress conn)))))
+  (when (.isOpen conn)
+    (debug
+     (let [[total by-addrs] @state
+           addr (to-addr (.getRemoteAddress conn))]
+       {:msg   "Returning connection to pool"
+        :event conn
+        :state {"total-connections" total
+                (str "connections for " addr) (by-addrs addr)}}))
+    (.. conn getPipeline removeLast)
+    (.checkin pool conn)))
 
 (defn close-conn
   "Closes a connection that cannot be reused. The connection is
    not returned to the pool."
   [[state] ^Channel conn]
-  (debug "Connection closed while in client")
-  (decrement-count-for state (.getRemoteAddress conn))
+  (debug {:msg "Closing connection" :event conn})
   (.close conn))
 
 (def default-options
@@ -126,21 +160,13 @@
      (mk-pool {}))
   ([options]
      (let [options (merge default-options options)
-           state   (ref [0 {}])]
+           state   (atom [0 {}])]
        [state
-        ;; The channel pool with a callback that tracks open
-        ;; connections
-        (ChannelPool.
-         (options :keepalive)
-         netty/global-timer
-         (reify ChannelPoolCallback
-           (channelClosed [_ addr]
-             (debug "Connection closed while in pool")
-             (decrement-count-for state addr))))
-        (netty/mk-client-factory
-         create-pipeline options)
+        (ChannelPool. (options :keepalive) netty/global-timer)
+        (netty/mk-client-factory #(create-pipeline state) options)
         options])))
 
 (defn shutdown
   [[state channel-pool opts]]
+  (debug "Shutting down channel pool")
   (.shutdown channel-pool))
