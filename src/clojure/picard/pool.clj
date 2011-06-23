@@ -1,4 +1,6 @@
 (ns picard.pool
+  (:use
+   [picard.utils :rename {debug debug*}])
   (:require
    [picard.netty :as netty])
   (:import
@@ -13,6 +15,10 @@
     HttpResponseDecoder]
    [java.net
     InetSocketAddress]))
+
+(defmacro debug
+  [& msgs]
+  `(debug* :pool ~@msgs))
 
 (defn- create-pipeline
   []
@@ -59,19 +65,23 @@
   "Calls success fn with the channel"
   [[state :as pool] addr handler callback]
   (if-let [conn (checkout-conn* pool addr)]
+    ;; There is a fresh connection available
     (do
-      (increment-count-for pool addr)
+      (debug "Checking out connection from pool")
       (return-conn pool conn handler callback false))
-    ;; TODO: handle decrementing the count when the connection
-    ;; fails.
-    (if (increment-count-for pool addr)
-      (connect-client
-       pool addr
-       (fn [conn-or-err]
-         (when (instance? Exception conn-or-err)
-           (decrement-count-for state addr))
-         (return-conn pool conn-or-err handler callback true)))
-      (callback (Exception. "Reached maximum connections") true))))
+    ;; Otherwise, let's try to create a connection
+    (do
+      (debug "Creating new connection")
+      (if (increment-count-for pool addr)
+        (connect-client
+         pool addr
+         (fn [conn-or-err]
+           ;; Creating the connection failed, so decrement the count
+           (when (instance? Exception conn-or-err)
+             (debug "Failed attempt to create new connection")
+             (decrement-count-for state addr))
+           (return-conn pool conn-or-err handler callback true)))
+        (callback (Exception. "Reached maximum connections") true)))))
 
 (defn checkin-conn
   "Returns a connection to the pool"
@@ -84,6 +94,7 @@
 
   (if (.isOpen conn)
     (do
+      (debug "Checking connection back into pool")
       (.. conn getPipeline removeLast)
 
       ;; is this right?
@@ -92,12 +103,15 @@
                 (str "Attempted to check in nil channel to connection pool: " pool))))
 
       (.checkin pool conn))
-    (decrement-count-for state (.getRemoteAddress conn))))
+    (do
+      (debug "Discarding closed connection")
+      (decrement-count-for state (.getRemoteAddress conn)))))
 
 (defn close-conn
   "Closes a connection that cannot be reused. The connection is
    not returned to the pool."
   [[state] ^Channel conn]
+  (debug "Connection closed while in client")
   (decrement-count-for state (.getRemoteAddress conn))
   (.close conn))
 
@@ -121,6 +135,7 @@
          netty/global-timer
          (reify ChannelPoolCallback
            (channelClosed [_ addr]
+             (debug "Connection closed while in pool")
              (decrement-count-for state addr))))
         (netty/mk-client-factory
          create-pipeline options)

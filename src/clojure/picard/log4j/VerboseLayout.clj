@@ -44,10 +44,10 @@
   [this ^LoggingEvent evt]
   (let [log-msg (.getMessage evt)]
     (str
-     (.getLoggerName evt) " - "
+     (str/upper-case (.getLoggerName evt)) " - "
      (if (and (map? log-msg) (log-msg :msg))
        (pretty-format evt log-msg)
-       (str log-msg)))))
+       (str log-msg "\n")))))
 
 (defn -ignoresThrowable [_] true)
 (defn -activateOptions [_])
