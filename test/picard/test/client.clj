@@ -788,3 +788,45 @@
          :done      nil)))
 
   (is (= 3 (count (netty-connect-evts)))))
+
+(defcoretest doesnt-decrecement-pool-count-for-failed-connections
+  [_ ch1 ch2 ch3]
+  :slow-hello-world
+
+  (let [pool (client/mk-pool {:max-connections-per-address 1})]
+    ;; bogus request
+    (client/request
+     ["localhost" 666]
+     [{:path-info "/"
+       :request-method "GET"}]
+     {:pool pool}
+     (fn [_]
+       (fn [evt val]
+         (enqueue ch1 [evt val]))))
+
+
+    (doseq [ch [ch2 ch3]]
+      (client/request
+       ["localhost" 4040]
+       [{:path-info      "/"
+         :request-method "GET"}]
+       {:pool pool}
+       (fn [_]
+         (fn [evt val]
+           (enqueue ch [evt val])))))
+
+    (is (next-msgs-for
+         ch1
+         :abort #(instance? Exception %)))
+
+    (is (next-msgs-for
+         ch2
+         :connected nil
+         :response  :dont-care
+         :done      nil))
+
+    (is (next-msgs-for
+         ch3
+         :abort #(instance? Exception %)))
+
+    (picard/shutdown-pool pool)))
