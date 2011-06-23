@@ -236,7 +236,7 @@
                (let [stream (repeatedly (count http) #(.read in))]
                  (apply str (map char stream))))]
     (is (= http
-           (.get resp 100 TimeUnit/MILLISECONDS)))))
+           (.get resp 200 TimeUnit/MILLISECONDS)))))
 
 (defn cmp-with
   [f]
@@ -303,7 +303,7 @@
                                         (take (count expected#))
                                         (map char)
                                         (apply str)))
-                           100 TimeUnit/MILLISECONDS)]
+                           200 TimeUnit/MILLISECONDS)]
        (if (= expected# actual#)
          (do-report {:type :pass :message ~msg
                      :expected expected# :actual actual#})
@@ -315,7 +315,7 @@
     `(let [in#       in
            expected# (str ~@expected)
            actual#   (.get (future (apply str (map char (http-read in#))))
-                           100 TimeUnit/MILLISECONDS)]
+                           200 TimeUnit/MILLISECONDS)]
        (if (= expected# actual#)
          (do-report {:type :pass :message ~msg
                      :expected expected# :actual actual#})

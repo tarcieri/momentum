@@ -866,6 +866,27 @@
 
   (is (received-response "")))
 
+(defcoretest closing-connection-during-keepalive
+  (deftrackedapp [dn]
+    (fn [evt val]
+      (when (= :request evt)
+        (dn :response [200 {"content-length" "5"} "Hello"]))))
+
+  (http-write "GET / HTTP/1.1\r\n\r\n")
+
+  (is (receiving
+       "HTTP/1.1 200 OK\r\n"
+       "content-length: 5\r\n\r\n"
+       "Hello"))
+
+  (Thread/sleep 100)
+  (close-socket)
+
+  (is (next-msgs
+       :request :dont-care
+       :done    nil))
+  (is (not-receiving-messages)))
+
 (defcoretest closing-the-connection-immedietly-after-receiving-body
   (deftrackedapp [dn]
     (fn [evt _]

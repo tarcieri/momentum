@@ -424,11 +424,18 @@
 
            (= ch-state ChannelState/CONNECTED)
            (do
-             (when-not (or (exchange-finished? current-state)
-                           (nil? (.upstream current-state))
-                           (.aborting? current-state))
-               (handle-err state (IOException. "Connection reset by peer")
-                           current-state))))
+             (if (or (exchange-finished? current-state)
+                     (nil? (.upstream current-state))
+                     (.aborting? current-state))
+               ;; Gracefully closed connection
+               (clear-timeout state current-state)
+
+               ;; Scumbag client, says it wants an HTTP resource,
+               ;; disconnects mid exchange.
+               (handle-err
+                state
+                (IOException. "Connection reset by peer")
+                current-state))))
 
           [err (netty/exception-event evt)]
           (when-not (or (exchange-finished? current-state)
