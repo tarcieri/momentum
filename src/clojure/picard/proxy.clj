@@ -71,7 +71,7 @@
               (downstream :resume nil))
             (reset! state client-dn)))
 
-        :else
+        (not= :done evt)
         (downstream evt val)))))
   (when (chunked? req)
     (locking req

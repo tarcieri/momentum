@@ -77,7 +77,9 @@
          ch1
          :request
          [(includes-hdrs {"x-forwarded-for" "123.235.55.1, 127.0.0.1"})
-          :dont-care]))))
+          :dont-care]))
+
+    (is (not (received-event? (fn [evt val] (= :done evt)))))))
 
 (defcoretest avoids-proxy-loops
   [ch1]

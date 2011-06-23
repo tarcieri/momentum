@@ -189,7 +189,7 @@
 
 (defn received-event?
   [f]
-  (some f (exchange-events (last-exchange))))
+  (some #(apply f %) (exchange-events (last-exchange))))
 
 ;; Helpers
 (defn continue?
