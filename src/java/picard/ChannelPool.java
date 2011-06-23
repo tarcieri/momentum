@@ -160,13 +160,15 @@ public class ChannelPool {
         removeNode(node);
 
         retval = node.channel;
-        node.channel = null;
         node.timeout.cancel();
+        node.channel = null;
 
         return retval;
     }
 
     private void expireNode(Node node) {
+        removeNode(node);
+
         if (node.channel == null) {
             return;
         }
@@ -174,8 +176,6 @@ public class ChannelPool {
         if (node.channel.isOpen()) {
             node.channel.close();
         }
-
-        removeNode(node);
     }
 
     private void removeNode(Node node) {

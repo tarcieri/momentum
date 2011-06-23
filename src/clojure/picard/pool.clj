@@ -79,7 +79,8 @@
 
   ;; is this right?
   (if (nil? conn)
-    (throw (Exception. (str "Attempted to check in nil channel to connection pool: " pool) )))
+    (throw (Exception.
+            (str "Attempted to check in nil channel to connection pool: " pool))))
 
   (if (.isOpen conn)
     (do
@@ -87,7 +88,8 @@
 
       ;; is this right?
       (if (nil? conn)
-        (throw (Exception. (str "Attempted to check in nil channel to connection pool: " pool) )))
+        (throw (Exception.
+                (str "Attempted to check in nil channel to connection pool: " pool))))
 
       (.checkin pool conn))
     (decrement-count-for state (.getRemoteAddress conn))))

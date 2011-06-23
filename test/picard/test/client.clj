@@ -548,7 +548,7 @@
 
     (picard/shutdown-pool pool)))
 
-(defcoretest ^{:focus true} doesnt-double-increment-connection-counting
+(defcoretest doesnt-double-increment-connection-counting
   [_ ch1 ch2 ch3]
   :slow-hello-world
 

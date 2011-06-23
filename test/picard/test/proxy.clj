@@ -92,7 +92,7 @@
 
     (is (= 502 (last-response-status)))))
 
-(defcoretest ^{:focus true} allows-one-proxy-loop
+(defcoretest allows-one-proxy-loop
   [ch1]
   (tracking-middleware
    (prox/mk-proxy {:pool (client/mk-pool {:keepalive 1}) :cycles 1}))
