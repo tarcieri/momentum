@@ -367,6 +367,7 @@
         state         (atom current-state)]
 
     (reset! channel-state state)
+    (bump-timeout state current-state :exchange)
 
     (try
       (let [upstream-fn   (app (mk-downstream-fn state))
