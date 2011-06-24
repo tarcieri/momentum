@@ -83,11 +83,8 @@
   (fn [dn]
     (fn [evt val]
       (when (= :request evt)
-        (try
-          (dn :response [200 {"content-length" 5
-                              "connection" "close"} "Hello"])
-          (catch Exception err
-            (.printStackTrace err))))))
+        (dn :response [200 {"content-length" 5
+                            "connection" "close"} "Hello"]))))
 
   (http-write "GET / HTTP/1.1\r\n\r\n")
 
@@ -242,13 +239,15 @@
           (downstream :response [202 {"content-length" "0"}])))))
 
   (http-write "GET / HTTP/1.1\r\n\r\n")
+  (is (receiving
+       "HTTP/1.1 200 OK\r\n"
+       "transfer-encoding: chunked\r\n\r\n"
+       "5\r\nHello\r\n5\r\nWorld\r\n0\r\n\r\n"))
+
   (http-write "POST / HTTP/1.1\r\n"
               "Connection: close\r\n\r\n")
 
   (is (received-response
-       "HTTP/1.1 200 OK\r\n"
-       "transfer-encoding: chunked\r\n\r\n"
-       "5\r\nHello\r\n5\r\nWorld\r\n0\r\n\r\n"
        "HTTP/1.1 202 Accepted\r\n"
        "content-length: 0\r\n\r\n")))
 
@@ -280,11 +279,39 @@
        "transfer-encoding: chunked\r\n\r\n"
        "5\r\nHello\r\n0\r\n\r\n")))
 
+(defcoretest chunked-response-with-content-length
+  [_ ch2]
+  (deftrackedapp [dn]
+    (fn [evt val]
+      (try
+        (when (= :request evt)
+          (dn :response [200 {"content-length" "5"} :chunked])
+          (dn :body "Hello")
+          (dn :body nil))
+        (catch Exception err
+          (enqueue ch2 [:error err])))))
+
+  (http-write "GET / HTTP/1.1\r\n"
+              "Connection: close\r\n\r\n")
+
+  (is (received-response
+       "HTTP/1.1 200 OK\r\n"
+       "content-length: 5\r\n\r\n"
+       "Hello"))
+
+  (is (next-msgs
+       :request :dont-care
+       :done    nil))
+
+  (is (not-receiving-messages))
+  ;; (is (no-msgs-for ch2))
+  )
+
 (defcoretest chunked-requests-keep-alive
-  (deftrackedapp [upstream]
+  (deftrackedapp [dn]
     (fn [evt val]
       (when (= :request evt)
-        (upstream :response [200 {"content-length" "5"} "Hello"]))))
+        (dn :response [200 {"content-length" "5"} "Hello"]))))
 
   (http-write "POST / HTTP/1.1\r\n"
               "Transfer-Encoding: chunked\r\n\r\n"
@@ -592,7 +619,6 @@
   [ch]
   (fn [downstream]
     (fn [evt val]
-      (if (instance? Exception val) (.printStackTrace val))
       (cond
        (= :request evt)
        (do (downstream :response [100])
@@ -929,5 +955,7 @@
 
   (close-socket)
 
-  (is (next-msgs :request :dont-care))
+  (is (next-msgs
+       :request :dont-care
+       :done    nil))
   (is (not-receiving-messages)))

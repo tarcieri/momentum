@@ -119,49 +119,42 @@
     (netty/cancel-timeout old-timeout)))
 
 (defn- bump-timeout
-  ([state current-state]
-     (bump-timeout state (* (:timeout (.options current-state)) 1000) current-state))
-  ([state ms current-state]
+  ([state current-state msg]
+     (bump-timeout
+      state
+      (* (:timeout (.options current-state)) 1000)
+      current-state msg))
+  ([state ms current-state msg]
      (clear-timeout state current-state)
-     (let [new-timeout (netty/on-timeout
-                        global-timer
-                        ms
-                        #(handle-err state (Exception. "timeout! facepalm!") @state))]
+     (let [msg (if (= :exchange msg)
+                 "HTTP exchange timed out"
+                 "HTTP keep alive timed out")
+           new-timeout
+           (netty/on-timeout
+            global-timer ms
+            #(handle-err state (Exception. msg) @state))]
        (swap! state #(assoc % :timeout new-timeout)))))
 
 (defn- start-keepalive-timer
   [state current-state]
-  (bump-timeout state (* (:keepalive (.options current-state)) 1000) current-state))
-
-(defn- write-trailer-when-te-chunked
-  [last-write channel current-state]
-  (if (and (.streaming? current-state) (.chunked? current-state))
-    (.write channel HttpChunk/LAST_CHUNK)
-    last-write))
+  (bump-timeout
+   state (* (:keepalive (.options current-state)) 1000)
+   current-state :keepalive))
 
 (defn- write-msg
   [state current-state msg]
   (let [channel    ^Channel (.ch current-state)
         last-write (.write channel msg)]
-    (swap! state #(assoc % :last-write last-write))))
+    (swap! state #(assoc % :last-write last-write))
+    last-write))
 
 (defn- write-last-msg
   [state current-state msg close-channel?]
-  (if msg
-    ;; There is a message to write, so let's actually write and then
-    ;; do any needed work to clean up
-    (let [channel ^Channel (.ch current-state)
-          last-write (-> (.write channel msg)
-                         (write-trailer-when-te-chunked channel current-state))]
-      (swap! state #(assoc % :last-write last-write))
-      (when (and close-channel? (.responded? current-state))
-        (.addListener last-write netty/close-channel-future-listener)))
-
-    ;; There was no actual write but the channel needs to be closed,
-    ;; so pull out the future for the last write and close after that.
+  (let [last-write (if msg
+                     (write-msg state current-state msg)
+                     (.last-write current-state))]
     (when close-channel?
-      (let [last-write (.last-write current-state)]
-        (.addListener last-write netty/close-channel-future-listener)))))
+      (.addListener last-write netty/close-channel-future-listener))))
 
 (defn- finalize-exchange
   [state current-state last-msg]
@@ -203,7 +196,10 @@
   (when-not (= :body evt)
     (throw (Exception. "Unknown event: " evt)))
 
-  (let [msg (when chunk (mk-netty-chunk chunk))]
+  (let [msg (if chunk
+              (mk-netty-chunk chunk)
+              (and (.chunked? current-state) HttpChunk/LAST_CHUNK))]
+
     (swap-then!
      state
      (fn [current-state]
@@ -279,7 +275,6 @@
   (let [upstream (.upstream current-state)
         channel  (.ch current-state)]
 
-    (.printStackTrace err)
     (debug {:msg "Handling error" :event err :state current-state})
 
     (swap-then!
@@ -295,10 +290,9 @@
        ;; about to close it
        (clear-timeout state current-state)
 
-       ;; Let's not care about waiting for any pending writes to flush
-       ;; before closing the connection... This is an exceptional
-       ;; situation, so hard close the connection
-       (when channel (.close channel))
+       (if-let [last-write (.last-write current-state)]
+         (.addListener last-write netty/close-channel-future-listener)
+         (when channel (.close channel)))
 
        ;; If there still is an upstream handler, send an abort message
        (when upstream
@@ -311,37 +305,34 @@
   (swap! state #(assoc % :next-dn-fn initialize-response))
 
   (fn [evt val]
-    (try
-      (let [current-state @state]
+    (let [current-state @state]
 
-        (debug {:msg   "Downstream event"
-                :event [evt val]
-                :state current-state})
+      (debug {:msg   "Downstream event"
+              :event [evt val]
+              :state current-state})
 
-        (when-not (.aborting? current-state)
-          (cond
-           (= evt :pause)
-           (when (.upstream current-state)
-             (.setReadable (.ch current-state) false))
+      (when-not (.aborting? current-state)
+        (cond
+         (= evt :pause)
+         (when (.upstream current-state)
+           (.setReadable (.ch current-state) false))
 
-           (= evt :resume)
-           (when (.upstream current-state)
-             (.setReadable (.ch current-state) true))
+         (= evt :resume)
+         (when (.upstream current-state)
+           (.setReadable (.ch current-state) true))
 
-           (= evt :abort)
-           (handle-err state val current-state)
+         (= evt :abort)
+         (handle-err state val current-state)
 
-           (or (= evt :response) (= evt :body))
-           (if (.upstream current-state)
-             (when-let [next-dn-fn (.next-dn-fn current-state)]
-               (bump-timeout state current-state)
-               (next-dn-fn state evt val current-state))
-             (throw (Exception.
-                     (str "Not callable until request is sent.\n"
-                          "Event: " evt "\n"
-                          "Value: " val)))))))
-      (catch Exception e
-        (.printStackTrace e)))
+         (or (= evt :response) (= evt :body))
+         (if (.upstream current-state)
+           (when-let [next-dn-fn (.next-dn-fn current-state)]
+             (bump-timeout state current-state :exchange)
+             (next-dn-fn state evt val current-state))
+           (throw (Exception.
+                   (str "Not callable until request is sent.\n"
+                        "Event: " evt "\n"
+                        "Value: " val)))))))
     true))
 
 (defn- waiting-for-response
@@ -428,59 +419,56 @@
         writable? (atom true)]
     (netty/upstream-stage
      (fn [ch evt]
-       (try
-         (let [current-state @state]
-           (debug {:msg  "Netty event"
-                   :event evt
-                   :state current-state})
-           (cond-let
-            ;; An actual HTTP message has been received
-            [msg (netty/message-event evt)]
-            (try
-              (bump-timeout state current-state)
-              ((.next-up-fn current-state) state msg current-state)
-              (catch Exception err
-                (handle-err state err current-state)))
+       (let [current-state @state]
+         (debug {:msg  "Netty event"
+                 :event evt
+                 :state current-state})
+         (cond-let
+          ;; An actual HTTP message has been received
+          [msg (netty/message-event evt)]
+          (try
+            (bump-timeout state current-state :exchange)
+            ((.next-up-fn current-state) state msg current-state)
+            (catch Exception err
+              (handle-err state err current-state)))
 
-            ;; The channel interest has changed to writable
-            ;; or not writable
-            [[ch-state val] (netty/channel-state-event evt)]
-            (cond
-             (= ch-state ChannelState/INTEREST_OPS)
-             (handle-ch-interest-change state val writable? current-state)
+          ;; The channel interest has changed to writable
+          ;; or not writable
+          [[ch-state val] (netty/channel-state-event evt)]
+          (cond
+           (= ch-state ChannelState/INTEREST_OPS)
+           (handle-ch-interest-change state val writable? current-state)
 
-             ;; Connecting the channel - stash it.
-             (and (= ch-state ChannelState/CONNECTED) val)
-             (do
-               (bump-timeout state current-state)
-               (swap! state (fn [current-state] (assoc current-state :ch ch))))
+           ;; Connecting the channel - stash it.
+           (and (= ch-state ChannelState/CONNECTED) val)
+           (do
+             (bump-timeout state current-state :exchange)
+             (swap! state (fn [current-state] (assoc current-state :ch ch))))
 
-             (= ch-state ChannelState/CONNECTED)
-             (do
-               (if (or (exchange-finished? current-state)
-                       (nil? (.upstream current-state))
-                       (.aborting? current-state))
-                 ;; Gracefully closed connection
-                 (clear-timeout state current-state)
+           (= ch-state ChannelState/CONNECTED)
+           (do
+             (if (or (exchange-finished? current-state)
+                     (nil? (.upstream current-state))
+                     (.aborting? current-state))
+               ;; Gracefully closed connection
+               (clear-timeout state current-state)
 
-                 ;; Scumbag client, says it wants an HTTP resource,
-                 ;; disconnects mid exchange.
-                 (handle-err
-                  state
-                  (IOException. "Connection reset by peer")
-                  current-state))))
+               ;; Scumbag client, says it wants an HTTP resource,
+               ;; disconnects mid exchange.
+               (handle-err
+                state
+                (IOException. "Connection reset by peer")
+                current-state))))
 
-            [err (netty/exception-event evt)]
-            (when-not (or (exchange-finished? current-state)
-                          (instance? IOException err))
-              (handle-err state err current-state))
+          [err (netty/exception-event evt)]
+          (when-not (or (exchange-finished? current-state)
+                        (instance? IOException err))
+            (handle-err state err current-state))
 
-            :else
-            (when (netty/unknown-channel-event? evt)
-              (when-let [upstream (.upstream current-state)]
-                (upstream :netty-event evt)))))
-         (catch Exception e
-           (.printStackTrace e)))))))
+          :else
+          (when (netty/unknown-channel-event? evt)
+            (when-let [upstream (.upstream current-state)]
+              (upstream :netty-event evt)))))))))
 
 (defn- create-pipeline
   [app opts]

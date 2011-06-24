@@ -159,9 +159,10 @@
 
 (defn http-read
   ([] (http-read in))
-  ([in]
+  ([in] (http-read in 5000))
+  ([in timeout]
      (lazy-seq
-      (let [byte (timeout-after 5000 (.read in))]
+      (let [byte (timeout-after timeout (.read in))]
         (if (<= 0 byte)
           (cons byte (http-read in))
           [])))))
@@ -177,7 +178,7 @@
 
 (defn drain
   [in]
-  (doall (http-read in)))
+  (doall (http-read in 500)))
 
 (defn http-request
   [method path hdrs]

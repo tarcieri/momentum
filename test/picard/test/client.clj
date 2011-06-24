@@ -230,6 +230,9 @@
                          "content-length" "5"} "Hello"]
        :done nil))
 
+  ;; Need to sleep a second since the response might not have been
+  ;; returned yet
+  (Thread/sleep 10)
   (client/request
    ["localhost" 4040]
    [{:path-info "/" :request-method "GET"}]
@@ -243,6 +246,7 @@
                          "content-length" "5"} "Hello"]
        :done nil))
 
+  (Thread/sleep 10)
   (client/request
    ["localhost" 4040]
    [{:path-info          "/zomg"
