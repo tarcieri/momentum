@@ -149,6 +149,12 @@
        (= ChannelState/CONNECTED (.getState ^ChannelStateEvent evt))
        (nil? (.getValue ^ChannelStateEvent evt))))
 
+(defn channel-interest-changed-event?
+  [evt]
+  (and (instance? ChannelStateEvent evt)
+       (let [state (.getState ^ChannelStateEvent evt)]
+         (= ChannelState/INTEREST_OPS state))))
+
 (defn exception-event
   [evt]
   (when (instance? ExceptionEvent evt)
@@ -161,12 +167,12 @@
 (defn unknown-channel-event?
   "Not a known netty channel event"
   [evt]
-  (not (or (instance? ChannelStateEvent evt)
+  (not (or (instance? WriteCompletionEvent evt)
+           (instance? ChannelStateEvent evt)
            (instance? ChildChannelStateEvent evt)
            (instance? ExceptionEvent evt)
            (instance? IdleStateEvent evt)
-           (instance? MessageEvent evt)
-           (instance? WriteCompletionEvent evt))))
+           (instance? MessageEvent evt))))
 
 (defn upstream-stage
   "Creates a pipeline state for upstream events."

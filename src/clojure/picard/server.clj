@@ -1,6 +1,7 @@
 (ns picard.server
   (:use
-   [picard.utils :rename {debug debug*}])
+   [picard.utils :rename {debug debug*} :exclude [cond-let]]
+   [clojure.contrib.cond])
   (:require
    [clojure.string :as str]
    [picard.netty :as netty])
@@ -31,13 +32,12 @@
 ;; * track request body content-length? Netty does this?
 
 (defrecord State
-    [app
-     ch
+    [ch
      keepalive?
      chunked?
      streaming? ;; TODO: remove this
      responded?
-     expects-100?
+     expects-100? ;; TODO: remove this
      request-id
      next-up-fn
      next-dn-fn
@@ -47,11 +47,12 @@
      last-write
      options
      aborting?
+     writable?
      timeout])
 
 ;; Declare some functions in advance
 (declare
- incoming-request
+ initialize-response
  stream-request-body
  awaiting-100-continue
  waiting-for-response
@@ -63,26 +64,25 @@
   [& msgs]
   `(debug* :server ~@msgs))
 
-(defn- mk-initial-state
-  ([app options] (mk-initial-state app options nil))
-  ([app options ch]
-     (State. app               ;; Application for the server
-             ch                ;; Netty channel
-             true              ;; Is the exchange keepalive?
-             nil               ;; Is the request chunked?
-             nil               ;; Is the response streaming?
-             nil               ;; Has the response been sent?
-             false             ;; Does the exchange expect an 100 Continue?
-             nil               ;; Request ID
-             incoming-request  ;; Next upstream event handler
-             nil               ;; Next downstream event handler
-             nil               ;; Upstream handler (external interface)
-             nil               ;; Bytes expected
-             0                 ;; Bytes sent
-             nil               ;; Last write to the channel
-             options           ;; Server options
-             false             ;; Are we aborting the exchange?
-             nil)))            ;; Timeout reference
+(defn- initialize-exchange-state
+  [ch options]
+  (State. ch                  ;; Netty channel
+          true                ;; Is the exchange keepalive?
+          nil                 ;; Is the request chunked?
+          nil                 ;; Is the response streaming?
+          nil                 ;; Has the response been sent?
+          false               ;; Does the exchange expect an 100 Continue?
+          nil                 ;; Request ID
+          nil                 ;; Next upstream event handler
+          initialize-response ;; Next downstream event handler
+          nil                 ;; Upstream handler (external interface)
+          nil                 ;; Bytes expected
+          0                   ;; Bytes sent
+          nil                 ;; Last write to the channel
+          options             ;; Server options
+          false               ;; Are we aborting the exchange?
+          true                ;; Whether the upstream is writable
+          nil))               ;; Timeout reference
 
 (defn- content-length
   [hdrs]
@@ -104,14 +104,21 @@
    (count chunk)))
 
 (defn- exchange-finished?
-  [current-state]
-  (and (.responded? current-state)
-       (or (= waiting-for-response (.next-up-fn current-state))
-           (= awaiting-100-continue (.next-up-fn current-state)))))
+  [current-exchange]
+  (or (nil? current-exchange)
+      (.aborting? current-exchange)
+      (and (.responded? current-exchange)
+           (or (= waiting-for-response (.next-up-fn current-exchange))
+               (= awaiting-100-continue (.next-up-fn current-exchange))))))
 
-(defn- fresh-state
-  [state]
-  (mk-initial-state (.app state) (.options state) (.ch state)))
+(defmacro exchange-in-progress?
+  [current-exchange]
+  `(not (exchange-finished? ~current-exchange)))
+
+(defn- throw-http-pipelining-exception
+  []
+  (throw (Exception. (str "Not expecting an HTTP request right now, "
+                          "pipelining is not yet supported."))))
 
 (defn- clear-timeout
   [state current-state]
@@ -172,13 +179,10 @@
         (clear-timeout state current-state)
 
         (if (.keepalive? current-state)
-          (let [new-state (fresh-state current-state)]
-            (reset! state new-state)
+          (do
             (debug {:msg "Keeping connection alive" :state current-state})
-            (start-keepalive-timer state current-state)
             (write-last-msg state current-state last-msg false))
           (do
-            (swap! state #(assoc % :upstream nil))
             (debug {:msg "Killing connection" :state current-state})
             (write-last-msg state current-state last-msg true))))
       (write-last-msg state current-state last-msg false))))
@@ -279,12 +283,7 @@
 
     (swap-then!
      state
-     (fn [current-state]
-       (assoc current-state
-          :aborting?  true
-          :upstream   nil
-          :next-up-fn nil))
-
+     #(assoc % :aborting? true)
      (fn [current-state]
        ;; Clear any timeouts for the current connection since we're
        ;; about to close it
@@ -299,11 +298,8 @@
          (try (upstream :abort err)
               (catch Exception _ nil)))))))
 
-(defn- downstream-fn
+(defn- mk-downstream-fn
   [state]
-  ;; The state of the response needs to be tracked
-  (swap! state #(assoc % :next-dn-fn initialize-response))
-
   (fn [evt val]
     (let [current-state @state]
 
@@ -350,14 +346,13 @@
   (let [upstream (.upstream current-state)]
     (if (.isLast chunk)
       (do
-        (when upstream
-          (debug {:msg "Sending upstream" :event [:body nil]})
-          (upstream :body nil))
+        (debug {:msg "Sending upstream" :event [:body nil]})
+        (upstream :body nil)
         (swap-then!
          state
          #(assoc % :next-up-fn waiting-for-response)
          #(finalize-exchange state % nil)))
-      (when upstream
+      (do
         (debug {:msg "Sending upstream" :event [:body (.getContent chunk)]})
         (upstream :body (.getContent chunk))))))
 
@@ -366,109 +361,124 @@
   (swap! state #(assoc % :next-up-fn stream-request-body))
   (stream-request-body state chunk current-state))
 
-(defn- incoming-request
-  [state ^HttpRequest msg {app :app :as current-state}]
-  (let [request-id (gen-uuid)]
-    ;; First set the states
-    (swap-then!
-     state
-     (fn [current-state]
-       (assoc current-state
-         :expects-100? (HttpHeaders/is100ContinueExpected msg)
-         :request-id   request-id
-         :next-up-fn
-         (if (.isChunked msg)
-           (if (HttpHeaders/is100ContinueExpected msg)
-             awaiting-100-continue
-             stream-request-body)
-           waiting-for-response)
+(defn- initialize-exchange
+  [channel-state app ch ^HttpRequest netty-request options]
+  (let [current-state (initialize-exchange-state ch options)
+        state         (atom current-state)]
 
-         :keepalive?
-         (and (.keepalive? current-state)
-              (HttpHeaders/isKeepAlive msg))))
-     (fn [current-state]
-       ;; Initialize the application
-       (let [upstream (app (downstream-fn state))
-             ch (.ch current-state)
-             request (netty-req->req msg ch request-id)]
-         (swap! state #(assoc % :upstream upstream))
-         ;; Although technically possible, the applications
-         ;; should not pause the exchange until after the
-         ;; request has been sent.
-         (debug {:msg "Sending upstream" :event [:request request]})
-         (upstream :request request)
-         #(finalize-exchange state % nil))))))
+    (reset! channel-state state)
+
+    (try
+      (let [upstream-fn   (app (mk-downstream-fn state))
+            request-id    (gen-uuid)
+            request       (netty-req->req netty-request ch request-id)
+            keepalive?    (HttpHeaders/isKeepAlive netty-request)
+            expects-100?  (HttpHeaders/is100ContinueExpected netty-request)
+            chunked?      (.isChunked netty-request)
+            next-up-fn    (cond
+                           (not chunked?) waiting-for-response
+                           expects-100?   awaiting-100-continue
+                           :else          stream-request-body)]
+        (swap-then!
+         state
+         (fn [current-state]
+           (assoc current-state
+             :keepalive?   keepalive?
+             :expects-100? expects-100?
+             :request-id   request-id
+             :next-up-fn   next-up-fn
+             :upstream     upstream-fn))
+         (fn [current-state]
+           (debug {:msg   "Sending upstream"
+                   :event [:request request]
+                   :state current-state})
+
+           (upstream-fn :request request)
+           (finalize-exchange state current-state nil))))
+      (catch Exception err
+        (handle-err state err current-state)))))
 
 (defn- handle-ch-interest-change
-  [state _ writable? current-state]
+  [state current-state]
   (when-let [upstream (.upstream current-state)]
-    (when-not (= (.isWritable (.ch current-state)) @writable?)
+    (when-not (= (.isWritable (.ch current-state)) (.writable? current-state))
       (swap-then!
-       writable? not
-       #(try
-          (debug {:msg "Sending upstream" :event [(if % :resume :pause) nil]})
-          (upstream (if % :resume :pause) nil)
-          (catch Exception err
-            (handle-err state err current-state)))))))
+       state
+       #(assoc % :writable? (not (.writable? %)))
+       (fn [current-state]
+         (try
+           (let [event (if (.writable? current-state) :resume :pause)]
+             (debug {:msg "Sending upstream" :event [event nil]})
+             (upstream event nil))
+           (catch Exception err
+             (handle-err state err current-state))))))))
+
+(defn- handle-netty-event
+  [state evt msg current-state]
+  (cond
+   ;; The only upstream HTTP message that we care about at this point
+   ;; are HTTP chunks. Anything else is not recognized by Picard
+   ;; server and will be passed upstream in case the application wants
+   ;; to handle it.
+   (instance? HttpChunk msg)
+   (try
+     (bump-timeout state current-state :exchange)
+     ((.next-up-fn current-state) state msg current-state)
+     (catch Exception err
+       (handle-err state err current-state)))
+
+   ;; The channel's interest ops changed. If the writable op changed
+   ;; then we need to send an upstream event to tell the application
+   ;; to block / unblock
+   (netty/channel-interest-changed-event? evt)
+   (handle-ch-interest-change state current-state)
+
+   ;; Scumbag client, says it wants an HTTP resource, disconnects mid exchange
+   (netty/channel-disconnected-event? evt)
+   (handle-err state (IOException. "Connection reset by peer") current-state)
+
+   ;; We got an exception from netty, so handle it
+   (netty/exception-event evt)
+   (let [err (netty/exception-event evt)]
+     (when-not (instance? IOException err)
+       (handle-err state err current-state)))
+
+   ;; Send up events that might be interesting to the application
+   (or (netty/unknown-channel-event? evt) msg)
+   ((.upstream current-state) :netty-event evt)))
 
 (defn- netty-bridge
   [app opts]
   "Bridges the netty pipeline API to the picard API. This is done with
    a simple state machine that is tracked with an atom."
-  (let [state     (atom (mk-initial-state app opts))
-        writable? (atom true)]
+  (let [channel-state (atom nil)]
     (netty/upstream-stage
+     ;; TODO: Well, shit... we're gonna have to figure out how to deal
+     ;; with keep alive timeouts again o_O
      (fn [ch evt]
-       (let [current-state @state]
-         (debug {:msg  "Netty event"
+       (let [current-exchange @channel-state
+             exchange-state   (and current-exchange @current-exchange)
+             event-message    (netty/message-event evt)]
+
+         (debug {:msg   "Netty event"
                  :event evt
-                 :state current-state})
-         (cond-let
-          ;; An actual HTTP message has been received
-          [msg (netty/message-event evt)]
-          (try
-            (bump-timeout state current-state :exchange)
-            ((.next-up-fn current-state) state msg current-state)
-            (catch Exception err
-              (handle-err state err current-state)))
+                 :state exchange-state})
 
-          ;; The channel interest has changed to writable
-          ;; or not writable
-          [[ch-state val] (netty/channel-state-event evt)]
-          (cond
-           (= ch-state ChannelState/INTEREST_OPS)
-           (handle-ch-interest-change state val writable? current-state)
+         (cond
+          ;; New HTTP request, so we have to make sure that we are in
+          ;; not in the middle of an HTTP exchange and then initialize
+          ;; the new exchange
+          (instance? HttpRequest event-message)
+          (if (exchange-in-progress? exchange-state)
+            (throw-http-pipelining-exception)
+            (initialize-exchange channel-state app ch event-message opts))
 
-           ;; Connecting the channel - stash it.
-           (and (= ch-state ChannelState/CONNECTED) val)
-           (do
-             (bump-timeout state current-state :exchange)
-             (swap! state (fn [current-state] (assoc current-state :ch ch))))
+          (exchange-in-progress? exchange-state)
+          (handle-netty-event current-exchange evt event-message exchange-state)
 
-           (= ch-state ChannelState/CONNECTED)
-           (do
-             (if (or (exchange-finished? current-state)
-                     (nil? (.upstream current-state))
-                     (.aborting? current-state))
-               ;; Gracefully closed connection
-               (clear-timeout state current-state)
-
-               ;; Scumbag client, says it wants an HTTP resource,
-               ;; disconnects mid exchange.
-               (handle-err
-                state
-                (IOException. "Connection reset by peer")
-                current-state))))
-
-          [err (netty/exception-event evt)]
-          (when-not (or (exchange-finished? current-state)
-                        (instance? IOException err))
-            (handle-err state err current-state))
-
-          :else
-          (when (netty/unknown-channel-event? evt)
-            (when-let [upstream (.upstream current-state)]
-              (upstream :netty-event evt)))))))))
+          (netty/channel-disconnected-event? evt)
+          1 ;; Clear the keep alive timer
+          ))))))
 
 (defn- create-pipeline
   [app opts]
