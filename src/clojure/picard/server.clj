@@ -84,6 +84,31 @@
              false             ;; Are we aborting the exchange?
              nil)))            ;; Timeout reference
 
+(defn- content-length
+  [hdrs]
+  (when-let [content-length (hdrs "content-length")]
+    (if (number? content-length)
+      (long content-length)
+      (Long. (str content-length)))))
+
+(defn- chunk-size
+  [chunk]
+  (cond
+   (or (= :chunked chunk) (nil? chunk))
+   0
+
+   (instance? ChannelBuffer chunk)
+   (.readableBytes ^ChannelBuffer chunk)
+
+   :else
+   (count chunk)))
+
+(defn- exchange-finished?
+  [current-state]
+  (and (.responded? current-state)
+       (or (= waiting-for-response (.next-up-fn current-state))
+           (= awaiting-100-continue (.next-up-fn current-state)))))
+
 (defn- fresh-state
   [state]
   (mk-initial-state (.app state) (.options state) (.ch state)))
@@ -108,173 +133,177 @@
   [state current-state]
   (bump-timeout state (* (:keepalive (.options current-state)) 1000) current-state))
 
-(defn- exchange-finished?
-  [current-state]
-  (and (.responded? current-state)
-       (or (= waiting-for-response (.next-up-fn current-state))
-           (= awaiting-100-continue (.next-up-fn current-state)))))
+(defn- write-trailer-when-te-chunked
+  [last-write channel current-state]
+  (if (and (.streaming? current-state) (.chunked? current-state))
+    (.write channel HttpChunk/LAST_CHUNK)
+    last-write))
 
-(defn- maybe-write-chunk-trailer
-  [current-state]
-  (if (and (.streaming? current-state)
-           (.chunked? current-state))
-    (assoc current-state
-      :last-write (.write (.ch current-state) HttpChunk/LAST_CHUNK))
-    current-state))
+(defn- write-msg
+  [state current-state msg]
+  (let [channel    ^Channel (.ch current-state)
+        last-write (.write channel msg)]
+    (swap! state #(assoc % :last-write last-write))))
 
-(defn- finalize-channel
-  [current-state]
-  (let [last-write (.last-write current-state)]
-    (when-not last-write
-      (throw (Exception. "Somehow the last-write is nil")))
+(defn- write-last-msg
+  [state current-state msg close-channel?]
+  (if msg
+    ;; There is a message to write, so let's actually write and then
+    ;; do any needed work to clean up
+    (let [channel ^Channel (.ch current-state)
+          last-write (-> (.write channel msg)
+                         (write-trailer-when-te-chunked channel current-state))]
+      (swap! state #(assoc % :last-write last-write))
+      (when (and close-channel? (.responded? current-state))
+        (.addListener last-write netty/close-channel-future-listener)))
 
-    (.addListener last-write netty/close-channel-future-listener)))
+    ;; There was no actual write but the channel needs to be closed,
+    ;; so pull out the future for the last write and close after that.
+    (when close-channel?
+      (let [last-write (.last-write current-state)]
+        (.addListener last-write netty/close-channel-future-listener)))))
 
 (defn- finalize-exchange
-  [state current-state]
-  (when (exchange-finished? current-state)
-    (let [current-state (maybe-write-chunk-trailer current-state)
-          upstream      (.upstream current-state)]
+  [state current-state last-msg]
+  (let [upstream (.upstream current-state)]
+    (if (exchange-finished? current-state)
       ;; The HTTP exchange is finished, send up an event to let all
       ;; middleware / applications cleanup after themselves.
-      (debug {:msg "Sending upstream" :event [:done nil] :state current-state})
-      (upstream :done nil)
+      (do
+        (debug {:msg "Sending upstream" :event [:done nil] :state current-state})
+        (upstream :done nil)
 
-      ;; Either the connection will be closed or a new timer will be
-      ;; created. Either way, we don't want the existing activity
-      ;; timer to trigger
-      (clear-timeout state current-state)
+        ;; Either the connection will be closed or a new timer will be
+        ;; created. Either way, we don't want the existing activity
+        ;; timer to trigger
+        (clear-timeout state current-state)
 
-      (if (.keepalive? current-state)
-        (let [new-state (fresh-state current-state)]
-          (reset! state new-state)
-          (debug {:msg "Keeping connection alive" :state current-state})
-          (start-keepalive-timer state current-state))
-        (do (swap! state #(assoc % :upstream nil))
+        (if (.keepalive? current-state)
+          (let [new-state (fresh-state current-state)]
+            (reset! state new-state)
+            (debug {:msg "Keeping connection alive" :state current-state})
+            (start-keepalive-timer state current-state)
+            (write-last-msg state current-state last-msg false))
+          (do
+            (swap! state #(assoc % :upstream nil))
             (debug {:msg "Killing connection" :state current-state})
-            (finalize-channel current-state))))))
+            (write-last-msg state current-state last-msg true))))
+      (write-last-msg state current-state last-msg false))))
 
 (defn- aborted-req
   [_ evt val _]
-  (throw (Exception. (str "This request has been aborted.\n"
-                          "  Event: " evt "\n"
-                          "  Value: " val))))
-
-(defn- body-size
-  [body]
-  (if (instance? ChannelBuffer body)
-    (.readableBytes ^ChannelBuffer body)
-    (count body)))
+  (throw
+   (Exception.
+    (str "This request has been aborted.\n"
+         "  Event: " evt "\n"
+         "  Value: " val))))
 
 (defn- stream-or-finalize-response
-  [state evt val current-state]
+  [state evt chunk current-state]
   (when-not (= :body evt)
     (throw (Exception. "Unknown event: " evt)))
 
-  (if val
-    (do
-      (swap!
-       state
-       (fn [current-state]
-         (let [bytes-to-send (+ (.bytes-to-send current-state) (body-size val))]
-           (assoc current-state
-             :bytes-to-send bytes-to-send
-             ;; bytes-expected is nil unless a content-length header
-             ;; is provided.
-             :responded? (= (.bytes-expected current-state) bytes-to-send)))))
-
-      (let [write (.write (.ch current-state) (mk-netty-chunk val))]
-        (swap!
-         state
-         #(assoc %
-            :next-dn-fn stream-or-finalize-response
-            :last-write write))))
-
-    ;; This is the last chunk
+  (let [msg (when chunk (mk-netty-chunk chunk))]
     (swap-then!
      state
-     #(assoc % :responded? true :next-dn-fn nil)
-     #(finalize-exchange state %))))
+     (fn [current-state]
+       (if chunk
+         (let [bytes-sent     (.bytes-to-send current-state)
+               bytes-expected (.bytes-expected current-state)
+               bytes-to-send  (+ bytes-sent (chunk-size chunk))
+               responded?     (= bytes-expected bytes-to-send)]
+           (assoc current-state
+             :bytes-to-send bytes-to-send
+             :responded?    responded?
+             :next-dn-fn    (when-not responded?
+                              stream-or-finalize-response)))
+         (assoc current-state
+           :responded? true
+           :next-dn-fn nil)))
+     (fn [current-state]
+       (if (.responded? current-state)
+         (finalize-exchange state current-state msg)
+         (write-msg state current-state msg))))))
 
 (defn- initialize-response
   [state evt val current-state]
   (when-not (= :response evt)
-    (throw (Exception. (str "Um... responses start with the head?\n"
-                            "  Event: " evt "\n"
-                            "  Value: " val))))
+    (throw
+     (Exception.
+      (str "Um... responses start with the head?\n"
+           "  Event: " evt "\n"
+           "  Value: " val))))
 
   (let [[status hdrs body] val
-        hdrs (or hdrs {})]
+        hdrs               (or hdrs {})
+        bytes-expected     (content-length hdrs)
+        bytes-to-send      (chunk-size body)
+        msg                (resp->netty-resp val)]
+
+    ;; 100 responses mean there will be other responses
+    ;; following. When this is the final response header, track the
+    ;; number of bytes about to be sent as well as the number of
+    ;; bytes to expect as specified by the content-length
+    ;; header. The HTTP exchange is considered complete unless the
+    ;; body is specifically chunked. If there is no content-length
+    ;; or transfer-encoding: chunked header, then the HTTP exchange
+    ;; will be finalized by closing the connection.
+
     (when (and (= 100 status) (not (.expects-100? current-state)))
       (throw (Exception. "Not expecting a 100 Continue response.")))
 
-    ;; If there is a content-length header, we need to track it.
-    (let [content-length (hdrs "content-length")
-          bytes-expected (when content-length
-                           (if (number? content-length)
-                             (long content-length)
-                             (Long. (str content-length))))
-          bytes-to-send  (if (and body (not= :chunked body))
-                           (body-size body)
-                           0)]
-      ;; 100 responses mean there will be other responses
-      ;; following. When this is the final response header, track the
-      ;; number of bytes about to be sent as well as the number of
-      ;; bytes to expect as specified by the content-length
-      ;; header. The HTTP exchange is considered complete unless the
-      ;; body is specifically chunked. If there is no content-length
-      ;; or transfer-encoding: chunked header, then the HTTP exchange
-      ;; will be finalized by closing the connection.
-      (when (not= 100 status)
-        (swap!
-         state
-         #(assoc %
-            :bytes-to-send  bytes-to-send
-            :bytes-expected bytes-expected
-            :responded?     (not= :chunked body)))))
+    (swap-then!
+     state
+     (fn [current-state]
+       (if (= 100 status)
+         (assoc current-state :expects-100? false)
+         (assoc current-state
+           :bytes-to-send  bytes-to-send
+           :bytes-expected bytes-expected
+           :responded?     (not= :chunked body)
+           :streaming?     (= :chunked body)
+           :chunked?       (= (hdrs "transfer-encoding") "chunked")
+           :next-dn-fn     (when (= :chunked body) stream-or-finalize-response)
+           :keepalive?     (and (.keepalive? current-state)
+                                (not= "close" (hdrs "connection"))
+                                (or (hdrs "content-length")
+                                    (= (hdrs "transfer-encoding") "chunked"))))))
 
-    (let [write (.write (.ch current-state) (resp->netty-resp val))]
-      (if (= 100 status)
-        (swap! state #(assoc % :expects-100? false))
-        (swap-then!
-         state
-         (fn [current-state]
-           (assoc current-state
-             :next-dn-fn (when (= :chunked body) stream-or-finalize-response)
-             :streaming? (= :chunked body)
-             :chunked?   (= (hdrs "transfer-encoding") "chunked")
-             :last-write write
-             ;; TODO: Handle HTTP 1.0 responses
-             :keepalive? (and (.keepalive? current-state)
-                              (not= "close" (hdrs "connection"))
-                              (or (hdrs "content-length")
-                                  (= (hdrs "transfer-encoding") "chunked")))))
-         (fn [current-state]
-           (when-not (.next-dn-fn current-state)
-             (finalize-exchange state current-state))))))))
+     (fn [current-state]
+       (if (.responded? current-state)
+         (finalize-exchange state current-state msg)
+         (write-msg state current-state msg))))))
 
 (defn- handle-err
-  [state err _]
-  (swap-then!
-   state
-   #(assoc % :aborting? true)
-   (fn [current-state]
-     (debug {:msg "Handling error" :event err :state current-state})
-     ;; If there is an upstream, try sending an abort event up
-     (when (.upstream current-state)
-       (try ((.upstream current-state) :abort err)
-            (catch Exception _ nil))
-       (swap! state #(assoc % :next-up-fn nil :upstream nil)))
+  [state err current-state]
+  (let [upstream (.upstream current-state)
+        channel  (.ch current-state)]
 
-     ;; Clear out any timeouts
-     (clear-timeout state current-state)
+    (.printStackTrace err)
+    (debug {:msg "Handling error" :event err :state current-state})
 
-     ;; Finally, close the connection
-     (if (.last-write current-state)
-       (.addListener (.last-write current-state)
-                     netty/close-channel-future-listener)
-       (when-let [ch (.ch current-state)]
-         (.close ch))))))
+    (swap-then!
+     state
+     (fn [current-state]
+       (assoc current-state
+          :aborting?  true
+          :upstream   nil
+          :next-up-fn nil))
+
+     (fn [current-state]
+       ;; Clear any timeouts for the current connection since we're
+       ;; about to close it
+       (clear-timeout state current-state)
+
+       ;; Let's not care about waiting for any pending writes to flush
+       ;; before closing the connection... This is an exceptional
+       ;; situation, so hard close the connection
+       (when channel (.close channel))
+
+       ;; If there still is an upstream handler, send an abort message
+       (when upstream
+         (try (upstream :abort err)
+              (catch Exception _ nil)))))))
 
 (defn- downstream-fn
   [state]
@@ -282,31 +311,37 @@
   (swap! state #(assoc % :next-dn-fn initialize-response))
 
   (fn [evt val]
-    (let [current-state @state]
-      (debug {:msg   "Downstream event"
-              :event [evt val]
-              :state current-state})
-      (when-not (.aborting? current-state)
-        (cond
-         (= evt :pause)
-         (when (.upstream current-state)
-           (.setReadable (.ch current-state) false))
+    (try
+      (let [current-state @state]
 
-         (= evt :resume)
-         (when (.upstream current-state)
-           (.setReadable (.ch current-state) true))
+        (debug {:msg   "Downstream event"
+                :event [evt val]
+                :state current-state})
 
-         (= evt :abort)
-         (handle-err state val current-state)
+        (when-not (.aborting? current-state)
+          (cond
+           (= evt :pause)
+           (when (.upstream current-state)
+             (.setReadable (.ch current-state) false))
 
-         (or (= evt :response) (= evt :body))
-         (if (.upstream current-state)
-           (when-let [next-dn-fn (.next-dn-fn current-state)]
-             (bump-timeout state current-state)
-             (next-dn-fn state evt val current-state))
-           (throw (Exception. (str "Not callable until request is sent.\n"
-                                   "Event: " evt "\n"
-                                   "Value: " val)))))))
+           (= evt :resume)
+           (when (.upstream current-state)
+             (.setReadable (.ch current-state) true))
+
+           (= evt :abort)
+           (handle-err state val current-state)
+
+           (or (= evt :response) (= evt :body))
+           (if (.upstream current-state)
+             (when-let [next-dn-fn (.next-dn-fn current-state)]
+               (bump-timeout state current-state)
+               (next-dn-fn state evt val current-state))
+             (throw (Exception.
+                     (str "Not callable until request is sent.\n"
+                          "Event: " evt "\n"
+                          "Value: " val)))))))
+      (catch Exception e
+        (.printStackTrace e)))
     true))
 
 (defn- waiting-for-response
@@ -315,14 +350,14 @@
    since pipelining is not (yet?) supported. Also, if the connection
    does not support keep alives, the connection will get into this state."
   [_ msg _]
-  (throw (Exception. (str "Not expecting a message right now.\n"
-                          "Message: " msg))))
+  (throw (Exception.
+          (str "Not expecting a message right now.\n"
+               "Message: " msg))))
 
 (defn- stream-request-body
   [state ^HttpChunk chunk current-state]
   (let [upstream (.upstream current-state)]
     (if (.isLast chunk)
-
       (do
         (when upstream
           (debug {:msg "Sending upstream" :event [:body nil]})
@@ -330,7 +365,7 @@
         (swap-then!
          state
          #(assoc % :next-up-fn waiting-for-response)
-         #(finalize-exchange state %)))
+         #(finalize-exchange state % nil)))
       (when upstream
         (debug {:msg "Sending upstream" :event [:body (.getContent chunk)]})
         (upstream :body (.getContent chunk))))))
@@ -342,39 +377,36 @@
 
 (defn- incoming-request
   [state ^HttpRequest msg {app :app :as current-state}]
-  (try
-    (let [request-id (gen-uuid)]
-      ;; First set the states
-      (swap-then!
-       state
-       (fn [current-state]
-         (assoc current-state
-           :expects-100? (HttpHeaders/is100ContinueExpected msg)
-           :request-id   request-id
-           :next-up-fn
-           (if (.isChunked msg)
-             (if (HttpHeaders/is100ContinueExpected msg)
-               awaiting-100-continue
-               stream-request-body)
-             waiting-for-response)
+  (let [request-id (gen-uuid)]
+    ;; First set the states
+    (swap-then!
+     state
+     (fn [current-state]
+       (assoc current-state
+         :expects-100? (HttpHeaders/is100ContinueExpected msg)
+         :request-id   request-id
+         :next-up-fn
+         (if (.isChunked msg)
+           (if (HttpHeaders/is100ContinueExpected msg)
+             awaiting-100-continue
+             stream-request-body)
+           waiting-for-response)
 
-           :keepalive?
-           (and (.keepalive? current-state)
-                (HttpHeaders/isKeepAlive msg))))
-       (fn [current-state]
-         ;; Initialize the application
-         (let [upstream (app (downstream-fn state))
-               ch (.ch current-state)
-               request (netty-req->req msg ch request-id)]
-           (swap! state #(assoc % :upstream upstream))
-           ;; Although technically possible, the applications
-           ;; should not pause the exchange until after the
-           ;; request has been sent.
-           (debug {:msg "Sending upstream" :event [:request request]})
-           (upstream :request request)
-           #(finalize-exchange state %)))))
-    (catch Exception err
-      (handle-err state err current-state))))
+         :keepalive?
+         (and (.keepalive? current-state)
+              (HttpHeaders/isKeepAlive msg))))
+     (fn [current-state]
+       ;; Initialize the application
+       (let [upstream (app (downstream-fn state))
+             ch (.ch current-state)
+             request (netty-req->req msg ch request-id)]
+         (swap! state #(assoc % :upstream upstream))
+         ;; Although technically possible, the applications
+         ;; should not pause the exchange until after the
+         ;; request has been sent.
+         (debug {:msg "Sending upstream" :event [:request request]})
+         (upstream :request request)
+         #(finalize-exchange state % nil))))))
 
 (defn- handle-ch-interest-change
   [state _ writable? current-state]
@@ -396,56 +428,59 @@
         writable? (atom true)]
     (netty/upstream-stage
      (fn [ch evt]
-       (let [current-state @state]
-         (debug {:msg  "Netty event"
-                 :event evt
-                 :state current-state})
-         (cond-let
-          ;; An actual HTTP message has been received
-          [msg (netty/message-event evt)]
-          (try
-            (bump-timeout state current-state)
-            ((.next-up-fn current-state) state msg current-state)
-            (catch Exception err
-              (handle-err state err current-state)))
+       (try
+         (let [current-state @state]
+           (debug {:msg  "Netty event"
+                   :event evt
+                   :state current-state})
+           (cond-let
+            ;; An actual HTTP message has been received
+            [msg (netty/message-event evt)]
+            (try
+              (bump-timeout state current-state)
+              ((.next-up-fn current-state) state msg current-state)
+              (catch Exception err
+                (handle-err state err current-state)))
 
-          ;; The channel interest has changed to writable
-          ;; or not writable
-          [[ch-state val] (netty/channel-state-event evt)]
-          (cond
-           (= ch-state ChannelState/INTEREST_OPS)
-           (handle-ch-interest-change state val writable? current-state)
+            ;; The channel interest has changed to writable
+            ;; or not writable
+            [[ch-state val] (netty/channel-state-event evt)]
+            (cond
+             (= ch-state ChannelState/INTEREST_OPS)
+             (handle-ch-interest-change state val writable? current-state)
 
-           ;; Connecting the channel - stash it.
-           (and (= ch-state ChannelState/CONNECTED) val)
-           (do
-             (bump-timeout state current-state)
-             (swap! state (fn [current-state] (assoc current-state :ch ch))))
+             ;; Connecting the channel - stash it.
+             (and (= ch-state ChannelState/CONNECTED) val)
+             (do
+               (bump-timeout state current-state)
+               (swap! state (fn [current-state] (assoc current-state :ch ch))))
 
-           (= ch-state ChannelState/CONNECTED)
-           (do
-             (if (or (exchange-finished? current-state)
-                     (nil? (.upstream current-state))
-                     (.aborting? current-state))
-               ;; Gracefully closed connection
-               (clear-timeout state current-state)
+             (= ch-state ChannelState/CONNECTED)
+             (do
+               (if (or (exchange-finished? current-state)
+                       (nil? (.upstream current-state))
+                       (.aborting? current-state))
+                 ;; Gracefully closed connection
+                 (clear-timeout state current-state)
 
-               ;; Scumbag client, says it wants an HTTP resource,
-               ;; disconnects mid exchange.
-               (handle-err
-                state
-                (IOException. "Connection reset by peer")
-                current-state))))
+                 ;; Scumbag client, says it wants an HTTP resource,
+                 ;; disconnects mid exchange.
+                 (handle-err
+                  state
+                  (IOException. "Connection reset by peer")
+                  current-state))))
 
-          [err (netty/exception-event evt)]
-          (when-not (or (exchange-finished? current-state)
-                        (instance? IOException err))
-            (handle-err state err current-state))
+            [err (netty/exception-event evt)]
+            (when-not (or (exchange-finished? current-state)
+                          (instance? IOException err))
+              (handle-err state err current-state))
 
-          :else
-          (when (netty/unknown-channel-event? evt)
-            (when-let [upstream (.upstream current-state)]
-              (upstream :netty-event evt)))))))))
+            :else
+            (when (netty/unknown-channel-event? evt)
+              (when-let [upstream (.upstream current-state)]
+                (upstream :netty-event evt)))))
+         (catch Exception e
+           (.printStackTrace e)))))))
 
 (defn- create-pipeline
   [app opts]
