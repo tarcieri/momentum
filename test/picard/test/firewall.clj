@@ -3,7 +3,7 @@
    clojure.test
    picard.firewall))
 
-(deftest denies-all-ips-by-default
+(deftest ^{:network true} denies-all-ips-by-default
   (let [rules (define-rules "")]
     (doseq [ip ["127.0.0.1"
                 "74.125.224.114"
@@ -13,7 +13,7 @@
       (is (not (allows? rules ip)))
       (is (denies? rules ip)))))
 
-(deftest handles-allow-all-rule
+(deftest ^{:network true} handles-allow-all-rule
   (let [rules (define-rules "+i:*")]
     (doseq [ip ["127.0.0.1"
                 "74.125.224.114"
@@ -23,7 +23,7 @@
       (is (allows? rules ip))
       (is (not (denies? rules ip))))))
 
-(deftest handles-deny-all-rule
+(deftest ^{:network true} handles-deny-all-rule
   (let [rules (define-rules "-i:*")]
     (doseq [ip ["127.0.0.1"
                 "74.125.224.114"
@@ -33,7 +33,7 @@
       (is (not (allows? rules ip)))
       (is (denies? rules ip)))))
 
-(deftest handles-blocking-localhost
+(deftest ^{:network true} handles-blocking-localhost
   (let [rules (define-rules "+i:*, -i:127.*")]
     (doseq [ip ["127.0.0.1"
                 "127.0.0.1"
@@ -48,7 +48,7 @@
       (is (allows? rules ip))
       (is (not (denies? rules ip))))))
 
-(deftest handles-blocking-ipv6
+(deftest ^{:network true} handles-blocking-ipv6
   (let [rules (define-rules "+i:*, -c:::1/128")]
     (doseq [ip ["::1"]]
       (is (not (allows? rules ip)))
