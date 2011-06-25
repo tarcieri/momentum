@@ -149,13 +149,13 @@
       (.options current-state)))
   ([keepalive-timeout-atom ch options]
      (clear-keepalive-timeout keepalive-timeout-atom)
-     (reset! keepalive-timeout-atom
-             (netty/on-timeout
-              global-timer (* (:keepalive options) 1000)
-              (fn []
-                (debug {:msg "Connection reached max keepalive time."
-                        :event ch})
-                (.close ch))))))
+     (reset!
+      keepalive-timeout-atom
+      (netty/on-timeout
+       global-timer (* (:keepalive options) 1000)
+       (fn []
+         (debug {:msg "Connection reached max keepalive time." :event ch})
+         (.close ch))))))
 
 (defn- write-msg
   [state current-state msg]
@@ -166,9 +166,10 @@
 
 (defn- write-last-msg
   [state current-state msg close-channel?]
-  (let [last-write (if msg
-                     (write-msg state current-state msg)
-                     (.last-write current-state))]
+  (let [last-write
+        (if msg
+          (write-msg state current-state msg)
+          (.last-write current-state))]
     (when close-channel?
       (.addListener last-write netty/close-channel-future-listener))))
 
@@ -196,14 +197,6 @@
             (debug {:msg "Killing connection" :state current-state})
             (write-last-msg state current-state last-msg true))))
       (write-last-msg state current-state last-msg false))))
-
-(defn- aborted-req
-  [_ evt val _]
-  (throw
-   (Exception.
-    (str "This request has been aborted.\n"
-         "  Event: " evt "\n"
-         "  Value: " val))))
 
 (defn- stream-or-finalize-response
   [state evt chunk current-state]
@@ -286,27 +279,24 @@
 
 (defn- handle-err
   [state err current-state]
-  (let [upstream (.upstream current-state)
-        channel  (.ch current-state)]
-
-    (debug {:msg "Handling error" :event err :state current-state})
-
-    (swap-then!
-     state
-     #(assoc % :aborting? true)
-     (fn [current-state]
+  (swap-then!
+   state
+   #(assoc % :aborting? true)
+   (fn [current-state]
+     (debug {:msg "Handling error" :event err :state current-state})
+     (let [channel (.ch current-state)]
        ;; Clear any timeouts for the current connection since we're
        ;; about to close it
        (clear-timeout state current-state)
+       (clear-keepalive-timeout (.keepalive-timeout current-state))
 
        (if-let [last-write (.last-write current-state)]
          (.addListener last-write netty/close-channel-future-listener)
-         (when channel (.close channel)))
+         (when (.isOpen channel)
+           (.close channel)))
 
-       ;; If there still is an upstream handler, send an abort message
-       (when upstream
-         (try (upstream :abort err)
-              (catch Exception _ nil)))))))
+       (try ((.upstream current-state) :abort err)
+            (catch Exception _ nil))))))
 
 (defn- mk-downstream-fn
   [state]
