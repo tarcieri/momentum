@@ -48,7 +48,8 @@
      options
      aborting?
      writable?
-     timeout])
+     timeout
+     keepalive-timeout])
 
 ;; Declare some functions in advance
 (declare
@@ -65,7 +66,7 @@
   `(debug* :server ~@msgs))
 
 (defn- initialize-exchange-state
-  [ch options]
+  [ch keepalive-timeout options]
   (State. ch                  ;; Netty channel
           true                ;; Is the exchange keepalive?
           nil                 ;; Is the request chunked?
@@ -82,7 +83,8 @@
           options             ;; Server options
           false               ;; Are we aborting the exchange?
           true                ;; Whether the upstream is writable
-          nil))               ;; Timeout reference
+          nil                 ;; Timeout reference
+          keepalive-timeout)) ;; Channel keepalive timer atom
 
 (defn- content-length
   [hdrs]
@@ -126,27 +128,34 @@
     (netty/cancel-timeout old-timeout)))
 
 (defn- bump-timeout
-  ([state current-state msg]
-     (bump-timeout
-      state
-      (* (:timeout (.options current-state)) 1000)
-      current-state msg))
-  ([state ms current-state msg]
-     (clear-timeout state current-state)
-     (let [msg (if (= :exchange msg)
-                 "HTTP exchange timed out"
-                 "HTTP keep alive timed out")
-           new-timeout
-           (netty/on-timeout
-            global-timer ms
-            #(handle-err state (Exception. msg) @state))]
-       (swap! state #(assoc % :timeout new-timeout)))))
-
-(defn- start-keepalive-timer
   [state current-state]
-  (bump-timeout
-   state (* (:keepalive (.options current-state)) 1000)
-   current-state :keepalive))
+  (clear-timeout state current-state)
+  (let [new-timeout
+        (netty/on-timeout
+         global-timer (* (:timeout (.options current-state)) 1000)
+         #(handle-err state (Exception. "HTTP exchange timed out") current-state))]
+    (swap! state #(assoc % :timeout new-timeout))))
+
+(defn- clear-keepalive-timeout
+  [keepalive-timeout-atom]
+  (when-let [keepalive-timeout @keepalive-timeout-atom]
+    (netty/cancel-timeout keepalive-timeout)))
+
+(defn- bump-keepalive-timeout
+  ([current-state]
+     (bump-keepalive-timeout
+      (.keepalive-timeout current-state)
+      (.ch current-state)
+      (.options current-state)))
+  ([keepalive-timeout-atom ch options]
+     (clear-keepalive-timeout keepalive-timeout-atom)
+     (reset! keepalive-timeout-atom
+             (netty/on-timeout
+              global-timer (* (:keepalive options) 1000)
+              (fn []
+                (debug {:msg "Connection reached max keepalive time."
+                        :event ch})
+                (.close ch))))))
 
 (defn- write-msg
   [state current-state msg]
@@ -181,6 +190,7 @@
         (if (.keepalive? current-state)
           (do
             (debug {:msg "Keeping connection alive" :state current-state})
+            (bump-keepalive-timeout current-state)
             (write-last-msg state current-state last-msg false))
           (do
             (debug {:msg "Killing connection" :state current-state})
@@ -323,7 +333,7 @@
          (or (= evt :response) (= evt :body))
          (if (.upstream current-state)
            (when-let [next-dn-fn (.next-dn-fn current-state)]
-             (bump-timeout state current-state :exchange)
+             (bump-timeout state current-state)
              (next-dn-fn state evt val current-state))
            (throw (Exception.
                    (str "Not callable until request is sent.\n"
@@ -362,12 +372,13 @@
   (stream-request-body state chunk current-state))
 
 (defn- initialize-exchange
-  [channel-state app ch ^HttpRequest netty-request options]
-  (let [current-state (initialize-exchange-state ch options)
+  [channel-state keepalive-timeout app ch ^HttpRequest netty-request options]
+  (let [current-state (initialize-exchange-state ch keepalive-timeout options)
         state         (atom current-state)]
 
     (reset! channel-state state)
-    (bump-timeout state current-state :exchange)
+    (clear-keepalive-timeout keepalive-timeout)
+    (bump-timeout state current-state)
 
     (try
       (let [upstream-fn   (app (mk-downstream-fn state))
@@ -423,7 +434,7 @@
    ;; to handle it.
    (instance? HttpChunk msg)
    (try
-     (bump-timeout state current-state :exchange)
+     (bump-timeout state current-state)
      ((.next-up-fn current-state) state msg current-state)
      (catch Exception err
        (handle-err state err current-state)))
@@ -449,10 +460,13 @@
    ((.upstream current-state) :netty-event evt)))
 
 (defn- netty-bridge
-  [app opts]
   "Bridges the netty pipeline API to the picard API. This is done with
    a simple state machine that is tracked with an atom."
-  (let [channel-state (atom nil)]
+  [app opts]
+  ;; I'm not a huge fan of using a separate atom for tracking the
+  ;; keepalive timer; however, for now, it's the least of my worries.
+  (let [channel-state     (atom nil)
+        keepalive-timeout (atom nil)]
     (netty/upstream-stage
      ;; TODO: Well, shit... we're gonna have to figure out how to deal
      ;; with keep alive timeouts again o_O
@@ -472,14 +486,17 @@
           (instance? HttpRequest event-message)
           (if (exchange-in-progress? exchange-state)
             (throw-http-pipelining-exception)
-            (initialize-exchange channel-state app ch event-message opts))
+            (initialize-exchange channel-state keepalive-timeout
+                                 app ch event-message opts))
 
           (exchange-in-progress? exchange-state)
           (handle-netty-event current-exchange evt event-message exchange-state)
 
+          (netty/channel-connect-event? evt)
+          (bump-keepalive-timeout keepalive-timeout ch opts)
+
           (netty/channel-disconnected-event? evt)
-          1 ;; Clear the keep alive timer
-          ))))))
+          (clear-keepalive-timeout keepalive-timeout)))))))
 
 (defn- create-pipeline
   [app opts]

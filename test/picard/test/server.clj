@@ -790,7 +790,7 @@
   (is (received-response "")))
 
 (defcoretest timing-out-without-writing-request
-  {:timeout 1}
+  {:keepalive 1}
   (deftrackedapp [downstream] (fn [_ _]))
 
   ;; Socket is already connected
