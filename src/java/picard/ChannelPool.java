@@ -10,9 +10,12 @@ import org.jboss.netty.channel.ChannelUpstreamHandler;
 import org.jboss.netty.util.HashedWheelTimer;
 import org.jboss.netty.util.Timeout;
 import org.jboss.netty.util.TimerTask;
+
 import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
+
+import org.apache.log4j.Logger;
 
 public class ChannelPool {
 
@@ -28,6 +31,8 @@ public class ChannelPool {
             this.channel = channel;
         }
     }
+
+    final static Logger logger = Logger.getLogger("picard.internal.pool");
 
     final int expiration;
     boolean shuttingDown;
@@ -71,7 +76,7 @@ public class ChannelPool {
         }
     }
 
-    public void checkin(Channel channel) {
+    public void checkin(final Channel channel) {
         final Node node = new Node(channel);
         InetSocketAddress addr = addrFrom(channel);
 
@@ -82,10 +87,16 @@ public class ChannelPool {
             }
         }
 
+        ChannelPool.logger.debug("Setting keepalive timer for " + expiration +
+                                 " milliseconds from now");
+
         // This might technically be a race condition, but I hope that the
         // following synchronized code takes less than a second to run.
         node.timeout = timer.newTimeout(new TimerTask() {
             public void run(Timeout timeout) {
+                ChannelPool.logger.debug("Expiring channel while in poo: " +
+                                         channel);
+
                 synchronized (ChannelPool.this) {
                     ChannelPool.this.expireNode(node);
                 }
@@ -99,6 +110,9 @@ public class ChannelPool {
                     ChannelStateEvent evt = (ChannelStateEvent) e;
                     if (evt.getState() == ChannelState.CONNECTED &&
                         evt.getValue() == null) {
+                        ChannelPool.logger.debug("Channel disconnected while in " +
+                                                 "pool: " + channel);
+
                         synchronized (ChannelPool.this) {
                             ChannelPool.this.expireNode(node);
                         }
