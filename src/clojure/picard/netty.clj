@@ -149,6 +149,18 @@
        (= ChannelState/CONNECTED (.getState ^ChannelStateEvent evt))
        (nil? (.getValue ^ChannelStateEvent evt))))
 
+(defn channel-open-event?
+  [^ChannelStateEvent evt]
+  (and (instance? ChannelStateEvent evt)
+       (= ChannelState/OPEN (.getState evt))
+       (.getValue evt)))
+
+(defn channel-close-event?
+  [^ChannelStateEvent evt]
+  (and (instance? ChannelStateEvent evt)
+       (= ChannelState/OPEN (.getState evt))
+       (not (.getValue evt))))
+
 (defn channel-interest-changed-event?
   [evt]
   (and (instance? ChannelStateEvent evt)

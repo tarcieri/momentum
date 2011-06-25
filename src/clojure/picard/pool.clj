@@ -62,11 +62,11 @@
         (assoc by-addrs addr (dec (by-addrs addr)))
         (dissoc by-addrs addr))])))
 
-(defn- connection-closed-handler
+(defn- connection-count-handler
   [state]
   (netty/upstream-stage
    (fn [^Channel ch evt]
-     (when (netty/channel-disconnected-event? evt)
+     (when (netty/channel-close-event? evt)
        (let [addr (to-addr (.getRemoteAddress ch))]
          (decrement-count-for state addr)
          (debug
@@ -80,7 +80,7 @@
 (defn- create-pipeline
   [pool]
   (netty/create-pipeline
-   :track-closes (connection-closed-handler pool)
+   :track-closes (connection-count-handler pool)
    :decoder      (HttpResponseDecoder.)
    :encoder      (HttpRequestEncoder.)))
 
@@ -92,8 +92,6 @@
   "Calls success fn with the channel"
   [[state conn-pool factory opts :as pool] addr handler callback]
   (let [addr (normalize-addr addr)]
-    (debug {:msg "Checking out connection"
-            :event addr})
     ;; First, attempt to grab a hot connection out of the connection
     ;; pool for the requested socket address.
     (if-let [conn (.checkout conn-pool (netty/mk-socket-addr addr))]

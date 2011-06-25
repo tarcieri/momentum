@@ -94,10 +94,11 @@ public class ChannelPool {
         // following synchronized code takes less than a second to run.
         node.timeout = timer.newTimeout(new TimerTask() {
             public void run(Timeout timeout) {
-                ChannelPool.logger.debug("Expiring channel while in poo: " +
+                ChannelPool.logger.debug("Expiring channel while in pool: " +
                                          channel);
 
                 synchronized (ChannelPool.this) {
+                    channel.getPipeline().remove("poolPurger");
                     ChannelPool.this.expireNode(node);
                 }
             }
@@ -108,15 +109,14 @@ public class ChannelPool {
                                        ChannelEvent e) throws Exception {
                 if (e instanceof ChannelStateEvent) {
                     ChannelStateEvent evt = (ChannelStateEvent) e;
-                    if (evt.getState() == ChannelState.CONNECTED &&
-                        evt.getValue() == null) {
-                        ChannelPool.logger.debug("Channel disconnected while in " +
+                    if (evt.getState() == ChannelState.OPEN &&
+                        Boolean.FALSE.equals(evt.getValue())) {
+                        ChannelPool.logger.debug("Channel closed while in " +
                                                  "pool: " + channel);
 
                         synchronized (ChannelPool.this) {
                             ChannelPool.this.expireNode(node);
                         }
-                        return;
                     }
                 }
                 ctx.sendUpstream(e);
