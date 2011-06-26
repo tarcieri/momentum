@@ -402,25 +402,23 @@
 (defcoretest issuing-immediate-abort
   [_ ch]
   :hello-world
-  (let [downstream (client/request
-                    ["localhost" 4040]
-                    [{:path-info      "/"
-                      :request-method "POST"} nil]
-                    (fn [_]
-                      (fn [evt val]
-                        (enqueue ch [evt val]))))]
+  (let [pool (client/mk-pool)
+        downstream
+        (client/request
+         ["localhost" 4040]
+         [{:path-info      "/"
+           :request-method "POST"} nil]
+         {:pool pool}
+         (fn [_]
+           (fn [evt val]
+             (when (and (not= :connected evt)
+                        (not= :abort evt))
+               (enqueue ch [evt val])))))]
 
-    (downstream :abort nil))
+    (downstream :abort nil)
 
-  (is (not-receiving-messages))
-
-  ;; Need to issue a real request to get the connection closed
-  (client/request
-   ["localhost" 4040]
-   [{:path-info      "/"
-     :request-method "GET"
-     "connection"    "close"}]
-   (fn [_] (fn [_ _]))))
+    (is (no-msgs-for ch))
+    (picard/shutdown-pool pool)))
 
 (defcoretest handling-100-continue-requests-and-responses
   [ch1 ch2]
