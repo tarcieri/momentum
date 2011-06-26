@@ -10,6 +10,7 @@
     ChannelEvent
     ChannelFuture
     ChannelFutureListener
+    ChannelHandlerContext
     ChannelPipeline
     ChannelPipelineFactory
     ChannelState
@@ -190,7 +191,7 @@
   "Creates a pipeline state for upstream events."
   [handler]
   (reify ChannelUpstreamHandler
-    (handleUpstream [_ ctx evt]
+    (^void handleUpstream [_ ^ChannelHandlerContext ctx ^ChannelEvent evt]
       (handler (.getChannel evt) evt)
       (.sendUpstream ctx evt))))
 
