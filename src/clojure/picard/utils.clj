@@ -24,20 +24,17 @@
     InetAddress
     InetSocketAddress
     URI]
-   [java.util
-    UUID]))
+   java.util.UUID
+   org.apache.log4j.Logger))
 
 (def VERSION "0.0.1")
 (def SERVER-NAME (str "Picard " VERSION " - *FACEPALM*"))
 
 (defmacro debug
   [cmpnt msg]
-  `(log/log :debug ~msg nil ~(str "picard.internal." (name cmpnt))))
-
-(defmacro when-debug
-  [cmpnt & stmts]
-  (when (log/enabled? :debug (str "picard.internal." (name cmpnt)))
-    `(do ~@stmts)))
+  (let [logger-name (str "picard.internal." (name cmpnt))]
+    (when (.isDebugEnabled (Logger/getLogger logger-name))
+      `(log/log :debug ~msg nil ~logger-name))))
 
 (defmacro returning
   [val & stmts]
