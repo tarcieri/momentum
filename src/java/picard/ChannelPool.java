@@ -190,6 +190,8 @@ public class ChannelPool {
     }
 
     private void removeNode(Node node) {
+        InetSocketAddress addr = addrFrom(node);
+
         if (head == node) {
             head = node.nextGlobal;
         }
@@ -207,11 +209,20 @@ public class ChannelPool {
         }
 
         if (node.nextLocal != null) {
-            node.nextLocal.prevGlobal = null;
-            localHeadByAddr.put(addrFrom(node), node.nextLocal);
-        } else {
-            // Remove the key
-            localHeadByAddr.remove(addrFrom(node));
+            node.nextLocal.prevLocal = node.prevLocal;
+        }
+
+        if (node.prevLocal != null) {
+            node.prevLocal.nextLocal = node.nextLocal;
+        }
+
+        if (localHeadByAddr.get(addr) == node) {
+            if (node.nextLocal != null) {
+                node.nextLocal.prevLocal = null;
+                localHeadByAddr.put(addr, node.nextLocal);
+            } else {
+                localHeadByAddr.remove(addr);
+            }
         }
     }
 
