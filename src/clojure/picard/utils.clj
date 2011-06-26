@@ -166,7 +166,7 @@
   (DefaultHttpResponse. HttpVersion/HTTP_1_1
     (HttpResponseStatus/valueOf status)))
 
-(defn- mk-netty-req
+(defn- ^HttpRequest mk-netty-req
   [method uri]
   (when (not (or method uri))
     (throw (Exception. "Need to specify both the HTTP method and URI")))

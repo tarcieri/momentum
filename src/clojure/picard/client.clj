@@ -7,6 +7,8 @@
   (:import
    [org.jboss.netty.channel
     Channel
+    ChannelEvent
+    ChannelFuture
     ChannelState]
    [org.jboss.netty.handler.codec.http
     DefaultHttpRequest
@@ -53,12 +55,12 @@
      (.getStatus resp)))
 
 (defn- clear-timeout
-  [current-state]
+  [^State current-state]
   (when-let [old-timeout (.timeout current-state)]
     (netty/cancel-timeout old-timeout)))
 
 (defn- bump-timeout
-  [state current-state]
+  [state ^State current-state]
   (clear-timeout current-state)
   (let [new-timeout (netty/on-timeout
                      netty/global-timer
@@ -74,7 +76,7 @@
                             "  Value: " val)))))
 
 (defn- finalize-request
-  [current-state]
+  [^State current-state]
   (when (= request-complete (.next-dn-fn current-state))
     ;; Send an upstream message indicating that the exchange is complete
     (when-not (.aborted? current-state)
@@ -116,20 +118,20 @@
   [_ _ _ _])
 
 (defn- stream-or-finalize-request
-  [state evt val current-state]
+  [state evt val ^State current-state]
   (when-not (= :body evt)
     (throw (Exception. (str "Not expecting event.\n"
                             "  Event: " evt "\n"
                             "  Value: " val))))
 
-  (let [ch (.ch current-state)]
+  (let [ch ^Channel (.ch current-state)]
     (if (nil? val)
       (let [last-write
             (when (.chunk-trailer? current-state)
               (.write ch HttpChunk/LAST_CHUNK))]
         (swap-then!
          state
-         (fn [current-state]
+         (fn [^State current-state]
            (cond
             (nil? (.next-up-fn current-state))
             (assoc current-state
@@ -148,13 +150,13 @@
            (assoc current-state :last-write last-write)))))))
 
 (defn- stream-or-finalize-response
-  [state ^HttpChunk msg args]
-  (let [upstream-fn   (.upstream args)
-        downstream-fn (.downstream args)]
+  [state ^HttpChunk msg ^State current-state]
+  (let [upstream-fn   (.upstream current-state)
+        downstream-fn (.downstream current-state)]
     (if (.isLast msg)
       (do (swap-then!
            state
-           (fn [current-state]
+           (fn [^State current-state]
              (if (= response-pending (.next-dn-fn current-state))
                (assoc current-state
                  :next-dn-fn request-complete
@@ -172,7 +174,7 @@
         (upstream-fn :body (.getContent msg))))))
 
 (defn- initial-response
-  [state ^HttpResponse msg current-state]
+  [state ^HttpResponse msg ^State current-state]
   ;; Check to see that the response isn't too crazy
   (when (and (is-100-continue? msg) (not (.expects-100? current-state)))
     (throw (Exception. "Not expecting a 100 Continue response.")))
@@ -181,7 +183,7 @@
         downstream-fn (.downstream current-state)]
     (swap-then!
      state
-     (fn [current-state]
+     (fn [^State current-state]
        (let [keepalive? (and (.keepalive? current-state)
                              (HttpHeaders/isKeepAlive msg))]
          (cond
@@ -208,7 +210,7 @@
           (assoc current-state
             :keepalive? keepalive?
             :next-up-fn nil))))
-     (fn [current-state]
+     (fn [^State current-state]
        (let [response (netty-resp->resp msg)]
          (debug {:msg "Sending upstream" :event [:response response]
                  :state current-state})
@@ -216,10 +218,10 @@
          (finalize-request current-state))))))
 
 (defn- initial-write-succeeded
-  [state current-state]
+  [state ^State current-state]
   (swap-then!
    state
-   (fn [current-state]
+   (fn [^State current-state]
      (cond
       ;; If the body is chunked, the next events will
       ;; be the HTTP chunks
@@ -242,10 +244,10 @@
   ((.upstream current-state) :connected nil))
 
 (defn- handle-ch-interest-change
-  [state current-state writable?]
+  [state ^State current-state writable?]
   (let [upstream-fn   (.upstream current-state)
         downstream-fn (.downstream current-state)
-        ch            (.ch current-state)]
+        ch            ^Channel (.ch current-state)]
     (when (and upstream-fn (not= (.isWritable ch) @writable?))
       (swap-then!
        writable? not
@@ -263,7 +265,7 @@
    #(assoc %
       :next-dn-fn request-complete
       :aborted?   true)
-   (fn [current-state]
+   (fn [^State current-state]
      (debug {:msg "Handling error" :event err :state current-state})
      (when (.upstream current-state)
        (try
@@ -275,8 +277,8 @@
   [state]
   (let [writable? (atom true)]
     (netty/upstream-stage
-     (fn [_ evt]
-       (let [current-state @state]
+     (fn [_ ^ChannelEvent evt]
+       (let [current-state ^State @state]
          (debug {:msg "Netty event"
                  :event evt
                  :state current-state})
@@ -312,7 +314,7 @@
 (defn- mk-downstream-fn
   [state]
   (fn [evt val]
-    (let [current-state @state]
+    (let [current-state ^State @state]
       (debug {:msg   "Downstream event"
               :event [evt val]
               :state current-state})
@@ -328,10 +330,10 @@
 
           (cond
            (= evt :pause)
-           (.setReadable (.ch current-state) false)
+           (.setReadable ^Channel (.ch current-state) false)
 
            (= evt :resume)
-           (.setReadable (.ch current-state) true)
+           (.setReadable ^Channel (.ch current-state) true)
 
            (= evt :body)
            (when-let [next-dn-fn (.next-dn-fn current-state)]
@@ -365,12 +367,12 @@
 
 (defn- initialize-request
   [state addr request]
-  (let [current-state @state
+  (let [current-state ^State @state
         pool (.pool current-state)]
     (pool/checkout-conn
      pool addr (netty-bridge state)
      ;; When a connection to the remote host has been established.
-     (fn [ch-or-err fresh?]
+     (fn [^Channel ch-or-err fresh?]
        (if (instance? Exception ch-or-err)
          ;; Handle exceptions
          (handle-err state ch-or-err current-state)
@@ -381,7 +383,7 @@
           #(assoc %
              :ch         ch-or-err
              :next-dn-fn write-pending)
-          (fn [current-state]
+          (fn [^State current-state]
             (if (.aborted? current-state)
               ;; Something happened (an error?) and this HTTP exchange
               ;; is done. However, nothing was written to the socket
@@ -400,7 +402,7 @@
                 ;; Write the request to the connection
                 (netty/on-complete
                  write-future
-                 (fn [future]
+                 (fn [^ChannelFuture future]
                    ;; When the write is not successfull, then there is something
                    ;; wrong with the connection. If the connection is
                    ;; "fresh" then it was established for this request

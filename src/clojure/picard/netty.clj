@@ -3,6 +3,7 @@
    [picard.utils])
   (:import
    [org.jboss.netty.bootstrap
+    Bootstrap
     ClientBootstrap
     ServerBootstrap]
    [org.jboss.netty.channel
@@ -87,24 +88,29 @@
   [^Timeout timeout]
   (.cancel timeout))
 
-(defn create-pipeline
+(defmacro create-pipeline
   [& stages]
-  (let [pipeline (Channels/pipeline)]
-    (doseq [[stage-name stage] (partition 2 stages)]
-      (.addLast pipeline (name stage-name) stage))
-    pipeline))
+  (let [pipeline-sym (gensym "pipeline")]
+    `(let [~pipeline-sym ^ChannelPipeline (Channels/pipeline)]
+       ~@(map
+          (fn [[key handler]]
+            `(.addLast ~pipeline-sym ^String ~(name key)
+                       ^ChannelHandler ~handler))
+          (partition 2 stages))
+       ~pipeline-sym)))
 
-(defn mk-socket-addr
+(defn ^InetSocketAddress mk-socket-addr
   [[host port]]
-  (if host
-    (InetSocketAddress. host (or port 80))
-    (InetSocketAddress. (or port 80))))
+  (let [port (or port 80)]
+    (if host
+      (InetSocketAddress. host port)
+      (InetSocketAddress. port))))
 
 (defn mk-thread-pool
   []
   (Executors/newCachedThreadPool))
 
-(defn- mk-server-bootstrap
+(defn- ^ServerBootstrap mk-server-bootstrap
   [thread-pool]
   (ServerBootstrap.
    (NioServerSocketChannelFactory.
@@ -196,7 +202,7 @@
       (.sendUpstream ctx evt))))
 
 (defn- purge-evt-buffer
-  [list ctx evt ch]
+  [^LinkedList list ^ChannelHandlerContext ctx ^ChannelEvent evt ^Channel ch]
   (loop []
     (when (.isReadable ch)
       (when-let [evt (.poll list)]
@@ -229,7 +235,8 @@
                  (purge-evt-buffer list ctx evt ch))
 
                (and (instance? ChannelStateEvent evt)
-                    (= ChannelState/INTEREST_OPS (.getState ^ChannelState evt)))
+                    (= ChannelState/INTEREST_OPS
+                       (.getState ^ChannelStateEvent evt)))
                (do (purge-evt-buffer list ctx evt ch)
                    (.sendUpstream ctx evt))
                :else
@@ -237,7 +244,7 @@
             (catch Exception err
               (.printStackTrace err))))))))
 
-(defn- mk-pipeline-factory
+(defn- ^ChannelPipelineFactory mk-pipeline-factory
   [^ChannelGroup channel-group pipeline-fn opts]
   (let [pipeline-fn
         ;; If the user passed in a pipeline function, wrap the
@@ -318,7 +325,7 @@
    (opts :netty)))
 
 (defn- configure-bootstrap
-  [bootstrap opt-merge-fn pipeline-fn options]
+  [^Bootstrap bootstrap opt-merge-fn pipeline-fn options]
   (returning
    [channel-group (DefaultChannelGroup.)]
    ;; First set the options for the bootstrapper based
@@ -332,7 +339,9 @@
     (mk-pipeline-factory channel-group pipeline-fn options))))
 
 (defn shutdown
-  [{bootstrap ::bootstrap srv-ch ::server-channel ch-group ::channel-group}]
+  [{^Bootstrap bootstrap   ::bootstrap
+    srv-ch                 ::server-channel
+    ^ChannelGroup ch-group ::channel-group}]
   (.add ch-group srv-ch)
   (let [close-future (.close ch-group)]
     (.awaitUninterruptibly close-future)
@@ -349,7 +358,7 @@
      ::channel-group  ch-group}))
 
 (defn restart-server
-  [{srv-ch ::server-channel :as server} pipeline-fn opts]
+  [{^Channel srv-ch ::server-channel :as server} pipeline-fn opts]
   (when-not srv-ch
     (throw (IllegalArgumentException.
             "Server state is missing the channel")))
@@ -374,12 +383,12 @@
 (defn connect-client
   ([factory addr callback]
      (connect-client factory addr nil callback))
-  ([[bootstrap] addr local-addr callback]
+  ([[^ClientBootstrap bootstrap] addr local-addr callback]
      (on-complete
       (if local-addr
         (.connect bootstrap (mk-socket-addr addr) (mk-socket-addr local-addr))
         (.connect bootstrap (mk-socket-addr addr)))
-      (fn [future]
+      (fn [^ChannelFuture future]
         (if (.isSuccess future)
           (callback (.getChannel future))
           (callback (.getCause future)))))))

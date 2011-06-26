@@ -85,12 +85,12 @@
    :encoder      (HttpRequestEncoder.)))
 
 (defn- add-handler
-  [conn handler]
+  [^Channel conn ^ChannelHandler handler]
   (.. conn getPipeline (addLast "handler" handler)))
 
 (defn checkout-conn
   "Calls success fn with the channel"
-  [[state conn-pool factory opts :as pool] addr handler callback]
+  [[state ^ChannelPool conn-pool factory opts :as pool] addr handler callback]
   (let [addr (normalize-addr addr)]
     ;; First, attempt to grab a hot connection out of the connection
     ;; pool for the requested socket address.
@@ -183,6 +183,6 @@
         options])))
 
 (defn shutdown
-  [[state channel-pool opts]]
+  [[state ^ChannelPool channel-pool opts]]
   (debug "Shutting down channel pool")
   (.shutdown channel-pool))
