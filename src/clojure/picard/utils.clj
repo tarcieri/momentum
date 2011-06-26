@@ -32,8 +32,10 @@
 
 (defmacro debug
   [cmpnt msg]
-  (let [logger-name (str "picard.internal." (name cmpnt))]
-    (when (.isDebugEnabled (Logger/getLogger logger-name))
+  (let [logger-name (str "picard.internal." (name cmpnt))
+        logger      (Logger/getLogger logger-name)]
+    (when (and (not (nil? (.getLevel logger)))
+               (.isDebugEnabled (Logger/getLogger logger-name)))
       `(log/log :debug ~msg nil ~logger-name))))
 
 (defmacro returning
