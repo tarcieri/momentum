@@ -31,24 +31,27 @@
   [^InetSocketAddress addr]
   [(.getHostName addr) (.getPort addr)])
 
+(defn- pool-info
+  [msg addr total by-addrs]
+  {:msg   msg
+   :state {"total-connections" total
+           "hosts" (str/join ", " (map (fn [[k v]] (str k ": " v))
+                                       (take 100 by-addrs)))
+           (str "connections for " addr) (by-addrs addr)}})
+
 (defn- increment-count-for
   [[state _ _ options] addr]
   (swap!
    state
    (fn [[total by-addrs]]
      (when (>= total (options :max-connections))
-       (debug {:msg   "Maximum global connections reached."
-               :state {"total-connections" total
-                       "hosts" (str/join ", " (take 100 (keys by-addrs)))
-                       (str "connections for " addr) (by-addrs addr)}})
+       (debug (pool-info "Maximum global connections reached." addr total by-addrs))
        (throw (Exception. "Reached maximum global connections for pool")))
 
      (when (>= (by-addrs addr 0) (options :max-connections-per-address))
-       (debug {:msg   "Maximum connections for " addr " reached."
-               :state {"total-connections" total
-                       "hosts" (str/join ", " (take 100 (keys by-addrs)))
-                       (str "connections for " addr) (by-addrs addr)}})
-       (throw (Exception. (str "Reached maximum connections for " addr))))
+       (let [msg (str "Maximum connections for " addr " reached")]
+         (debug (pool-info msg addr total by-addrs))
+         (throw (Exception. msg))))
 
      [(inc total) (assoc by-addrs addr (inc (by-addrs addr 0)))])))
 
@@ -69,13 +72,7 @@
      (when (netty/channel-close-event? evt)
        (let [addr (to-addr (.getRemoteAddress ch))]
          (decrement-count-for state addr)
-         (debug
-          (let [[total by-addrs] @state]
-            {:msg   "Closing connection"
-             :event [ch addr]
-             :state {"total-connections" total
-                     "hosts" (str/join ", " (take 100 (keys by-addrs)))
-                     (str "connections for " addr) (by-addrs addr)}})))))))
+         (debug (apply pool-info "Closing connection" addr @state)))))))
 
 (defn- create-pipeline
   [pool]
@@ -102,8 +99,7 @@
       ;; way, if the connection is bogus somehow, the client knows that
       ;; it is able to attempt to get a different connection
       (do
-        (debug {:msg "Checking out connection from pool"
-                :event conn})
+        (debug {:msg "Checking out connection from pool" :event conn})
         (add-handler conn handler)
         (callback conn false))
 
@@ -116,10 +112,7 @@
       ;; decremented at that point.
       (try
         (let [[total by-addrs] (increment-count-for pool addr)]
-          (debug {:msg   "Establishing new connection"
-                  :state {"total-connections" total
-                          "hosts" (str/join ", " (take 100 (keys by-addrs)))
-                          (str "connections for " addr) (by-addrs addr)}}))
+          (debug (pool-info "Establishing new connection" addr total by-addrs)))
         (netty/connect-client
          ;; Alright, this is totally not valid since this can only be
          ;; called once per pool. Somehow, we need to bind the channel
@@ -127,8 +120,7 @@
          factory addr (opts :local-addr)
          (fn [conn-or-err]
            (if (instance? Exception conn-or-err)
-             (do (debug {:msg "Failed to establish connection"
-                         :event conn-or-err})
+             (do (debug {:msg "Failed to establish connection" :event conn-or-err})
                  (decrement-count-for state addr))
              (do (debug {:msg "Successfully established connection" :event conn-or-err})
                  (add-handler conn-or-err handler)))
@@ -148,13 +140,8 @@
 
   (when (.isOpen conn)
     (debug
-     (let [[total by-addrs] @state
-           addr (to-addr (.getRemoteAddress conn))]
-       {:msg   "Returning connection to pool"
-        :event conn
-        :state {"total-connections" total
-                "hosts" (str/join ", " (take 100 (keys by-addrs)))
-                (str "connections for " addr) (by-addrs addr)}}))
+     (apply pool-info "Returning connection to pool"
+            (to-addr (.getRemoteAddress conn)) @state))
     (.. conn getPipeline removeLast)
     (.checkin pool conn)))
 
