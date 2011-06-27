@@ -46,12 +46,13 @@
    (fn [[total by-addrs]]
      (when (>= total (options :max-connections))
        (debug (pool-info "Maximum global connections reached." addr total by-addrs))
-       (throw (Exception. "Reached maximum global connections for pool")))
+       (throw (picard.exceptions.PoolFullException.
+               "Reached maximum global connections for pool")))
 
      (when (>= (by-addrs addr 0) (options :max-connections-per-address))
        (let [msg (str "Maximum connections for " addr " reached")]
          (debug (pool-info msg addr total by-addrs))
-         (throw (Exception. msg))))
+         (throw (picard.exceptions.PoolFullException. msg))))
 
      [(inc total) (assoc by-addrs addr (inc (by-addrs addr 0)))])))
 
@@ -135,8 +136,8 @@
   [[state ^ChannelPool pool] ^Channel conn]
   ;; Hope that this never happens
   (when (nil? conn)
-    (throw (Exception. (str "Attempted to check in nil channel "
-                            "to connection pool: " pool))))
+    (throw (picard.exceptions.PoolFullException.
+            (str "Attempted to check in nil channel to connection pool: " pool))))
 
   (when (.isOpen conn)
     (debug
@@ -155,7 +156,7 @@
 (def default-options
   {:keepalive                   60
    :max-connections             1000
-   :max-connections-per-address 200    ;; Not implemented yet
+   :max-connections-per-address 200
    :max-queued-connections      5000}) ;; Not implemented yet
 
 (defn mk-pool

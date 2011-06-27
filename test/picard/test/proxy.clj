@@ -130,3 +130,13 @@
       (upstream :body nil)
 
       (is (= 200 (last-response-status))))))
+
+(defcoretest returns-503-when-connection-pool-full
+  :slow-hello-world
+  (let [pool (client/mk-pool {:max-connections-per-address 1})]
+    (with-app (prox/mk-proxy {:pool pool})
+      (GET "/")
+      (GET "/")
+
+      (is (= (last-response-status) 503))
+      (is (not (received-event? (fn [evt val] (= :abort evt))))))))

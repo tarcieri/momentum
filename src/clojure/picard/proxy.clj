@@ -35,6 +35,13 @@
        (or (nil? current-state)
            (= :pending current-state))))
 
+(defn- service-unavailable?
+  [current-state evt val]
+  (and (= :abort evt)
+       (instance? picard.exceptions.PoolFullException val)
+       (or (nil? current-state)
+           (= :pending current-state))))
+
 (defn- add-xff-header
   [[hdrs body]]
   (let [remote-ip (first (:remote-addr hdrs))]
@@ -51,7 +58,8 @@
        (count (filter #(= % remote-ip)
                       (clojure.contrib.string/split #"\s*,\s*" xff-header))))))
 
-(def bad-gateway [502 {"content-length" "0"} nil])
+(def bad-gateway         [502 {"content-length" "0"} nil])
+(def service-unavailable [503 {"content-length" "0"} nil])
 
 (defn- initiate-request
   [state opts req downstream]
@@ -64,6 +72,9 @@
        (cond
         (bad-gateway? @state evt val)
         (downstream :response bad-gateway)
+
+        (service-unavailable? @state evt val)
+        (downstream :response service-unavailable)
 
         (= :connected evt)
         (locking req
