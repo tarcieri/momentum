@@ -81,9 +81,9 @@
     (upstream :request request)))
 
 (defn- retry-request
-  [state downstream request]
+  [state downstream [hdrs :as request]]
   (when-not (.aborting? @state)
-    (log/info (str "retrying request: " (request-url request)))
+    (log/info (str "retrying request: " (request-url hdrs)))
     (attempt-request state downstream request)))
 
 (defn retry

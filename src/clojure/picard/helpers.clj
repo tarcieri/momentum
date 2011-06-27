@@ -47,7 +47,7 @@
   (= "https" (request-scheme hdrs)))
 
 (defn request-url
-  [[hdrs _]]
+  [hdrs]
   (let [[host port] (if-let [host-hdr (hdrs "host")]
                       (string/split #":" 2 host-hdr)
                       (:local-addr hdrs))

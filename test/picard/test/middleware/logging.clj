@@ -35,7 +35,7 @@
             (first (:remote-addr request ))
             request-time-string
             (:request-method request)
-            (request-url [request])
+            (request-url request)
             (first (:http-version request))
             (second (:http-version request))
             (:response-status request)

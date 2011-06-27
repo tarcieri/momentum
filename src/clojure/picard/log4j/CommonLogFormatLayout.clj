@@ -18,14 +18,13 @@
 
 (defn format-commons-logging
   [request timestamp]
-  (let [request-date (Date. (long timestamp))
+  (let [request-date        (Date. (long timestamp))
         request-time-string (.format commons-date-formatter request-date)]
     (format "%s - - [%s] \"%s %s HTTP/%d.%d\" %d %d\n"
             (first (:remote-addr request ))
             request-time-string
             (:request-method request)
-            ;; TODO: maybe change api of request-url to only take headers?
-            (request-url [request])
+            (request-url request)
             (first (:http-version request))
             (second (:http-version request))
             (:response-status request)
