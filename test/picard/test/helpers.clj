@@ -11,7 +11,7 @@
    :script-name ""
    :path-info "/foo.bar"
    :query-string "k=v"
-   :local-addr ["127.0.0.1" 1234]})
+   :remote-addr ["127.0.0.1" 1234]})
 
 (defn- mk-test-hdrs
   [& [hdrs]]
@@ -44,7 +44,7 @@
 ;; #request-url
 
 (deftest simple-request-url-port-80
-  (let [expected-url (URL. "http" "www.foo.com" 80 "/foo.bar?k=v")
+  (let [expected-url (URL. "http" "www.foo.com" "/foo.bar?k=v")
         hdrs (mk-test-hdrs)]
     (is (= (request-url hdrs) expected-url))))
 
@@ -59,14 +59,14 @@
     (is (= (request-url hdrs) expected-url))))
 
 (deftest appends-script-name-when-present
-  (let [expected-url (URL. "http" "www.foo.com" 80 "/foo/bar.baz?k=v")
+  (let [expected-url (URL. "http" "www.foo.com" "/foo/bar.baz?k=v")
         hdrs (mk-test-hdrs
              {:script-name "/foo"
               :path-info "/bar.baz"})]
     (is (= (request-url hdrs) expected-url))))
 
 (deftest doesnt-include-qmark-when-query-string-empty
-  (let [expected-url (URL. "http" "www.foo.com" 80 "/foo.bar")
+  (let [expected-url (URL. "http" "www.foo.com" "/foo.bar")
         hdrs1 (mk-test-hdrs {:query-string nil})
         hdrs2 (mk-test-hdrs {:query-string ""})]
     (is (= (request-url hdrs1) (request-url hdrs2) expected-url))))

@@ -50,7 +50,7 @@
   [hdrs]
   (let [[host port] (if-let [host-hdr (hdrs "host")]
                       (string/split #":" 2 host-hdr)
-                      (:local-addr hdrs))
+                      (:remote-addr hdrs))
         port (cond
               (nil? port) 80
               (number? port) port
@@ -61,7 +61,9 @@
         query-string (if-not (empty? query-string-hdr) (str "?" query-string-hdr) "")
         file (str script-name path-info query-string)]
     ;; TODO: work out http/https
-    (URL. "http" host port file)))
+    (if (= 80 port)
+      (URL. "http" host file)
+      (URL. "http" host port file))))
 
 (defn body-size
   ([body] (body-size :body body))

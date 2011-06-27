@@ -69,7 +69,8 @@
    :path-info          "/"
    :http-version       [1 1]
    :response-status    200
-   :response-body-size 5})
+   :response-body-size 5
+   "host"              "example.org"})
 
 (deftest logs-simple-exchanges
   (with-app (middleware/logging hello-world-app)
@@ -83,7 +84,8 @@
             (format-commons-logging
              (assoc default-request
                :request-method "POST"
-               :path-info      "/foo") (now))]))))
+               :path-info      "/foo"
+               "host"          "example.org") (now))]))))
 
 (deftest logs-the-response-status
   (with-app
@@ -100,7 +102,8 @@
            [(format-commons-logging
              (assoc default-request
                :response-status    302
-               :response-body-size 0) (now))]))))
+               :response-body-size 0
+               "host"              "example.org") (now))]))))
 
 (deftest logs-chunked-response
   (with-app
@@ -119,17 +122,19 @@
     (is (= (log-msgs)
            [(format-commons-logging
              (assoc default-request
-               :response-body-size 10) (now))]))))
+               :response-body-size 10
+               "host"              "example.org") (now))]))))
 
 (deftest tracks-the-remote-ip
   (with-app (middleware/logging hello-world-app)
-    (GET "/" {:remote-addr ["12.34.56.78" 1234]})
+    (GET "/" {:remote-addr ["12.34.56.78" 1234] "host" nil})
 
     (is (= 200 (last-response-status)))
     (is (= (log-msgs)
            [(format-commons-logging
              (assoc default-request
-               :remote-addr ["12.34.56.78" 1234]) (now))]))))
+               :remote-addr ["12.34.56.78" 1234]
+               "host"       nil) (now))]))))
 
 (defn- setup-logger
   [f]
