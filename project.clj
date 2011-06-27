@@ -18,4 +18,9 @@
 
   :test-selectors   {:focus      (fn [v] (:focus v))
                      :no-network (fn [v] (not (:network v)))
-                     :all        (fn [_] true)})
+                     :all        (fn [_] true)}
+
+  :repositories { "snapshots" "file:./build/snapshots"
+                  "releases"  "file:./build/releases" }
+
+)
