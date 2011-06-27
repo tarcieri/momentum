@@ -24,13 +24,7 @@
          (fn [evt val]
            (when (= :request evt)
              (let [hdrs (first val)]
-               (swap!
-                state
-                #(assoc %
-                   :remote-addr    (hdrs :remote-addr)
-                   :request-method (hdrs :request-method)
-                   :path-info      (hdrs :path-info)
-                   :http-version   (hdrs :http-version)))))
+               (swap! state #(merge hdrs %))))
            (next-up evt val))
 
          :downstream
