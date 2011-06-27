@@ -17,6 +17,28 @@
   [& [hdrs]]
   [(merge default-test-hdrs (or hdrs {})) nil])
 
+;; #request-scheme
+
+(deftest returns-http-by-default
+  (is (= "http" (request-scheme {}))))
+
+(deftest returns-https-when-server-says-so
+  (is (= "https" (request-scheme {:https "on"})))
+  (is (= "https" (request-scheme {:https "on" "x-forwarded-proto" "http"})))
+  (is (= "https" (request-scheme {:https "on" "x-forwarded-proto" "http,https"})))
+  (is (= "http" (request-scheme {:https "yes"}))))
+
+(deftest returns-https-when-forwarded-for-ssl
+  (is (= "https" (request-scheme {"x-forwarded-ssl" "on"})))
+  (is (= "http"  (request-scheme {"x-forwarded-ssl" "yes"}))))
+
+(deftest returns-the-first-value-of-http-forwarded-proto
+  (is (= "https" (request-scheme {"x-forwarded-proto" "https"})))
+  (is (= "http"  (request-scheme {"x-forwarded-proto" "http, https"})))
+  (is (= "https" (request-scheme {"x-forwarded-proto" "https, http"}))))
+
+;; #request-url
+
 (deftest simple-request-url-port-80
   (let [expected-url (URL. "http" "www.foo.com" 80 "/foo.bar?k=v")
         req (mk-test-request)]

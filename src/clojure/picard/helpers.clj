@@ -25,6 +25,27 @@
 (defn response-headers [[_ headers]] headers)
 (defn response-body    [[_ _ body]]  body)
 
+(defn request-scheme
+  [hdrs]
+  (cond
+   (= (hdrs :https) "on")
+   "https"
+
+   (= (hdrs "x-forwarded-ssl") "on")
+   "https"
+
+   (hdrs "x-forwarded-proto")
+   (-> (string/split #"\s*,\s*" 2 (hdrs "x-forwarded-proto"))
+       first
+       string/lower-case)
+
+   :else
+   "http"))
+
+(defn request-ssl?
+  [hdrs]
+  (= "https" (request-scheme hdrs)))
+
 (defn request-url
   [[hdrs _]]
   (let [[host port] (if-let [host-hdr (hdrs "host")]
