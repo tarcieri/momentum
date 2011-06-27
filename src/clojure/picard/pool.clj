@@ -48,7 +48,7 @@
                :state {"total-connections" total
                        "hosts" (str/join ", " (take 100 (keys by-addrs)))
                        (str "connections for " addr) (by-addrs addr)}})
-       (throw (Exception. "Reached maximum connections for " addr)))
+       (throw (Exception. (str "Reached maximum connections for " addr))))
 
      [(inc total) (assoc by-addrs addr (inc (by-addrs addr 0)))])))
 
