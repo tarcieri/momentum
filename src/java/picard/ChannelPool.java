@@ -30,6 +30,8 @@ public class ChannelPool {
         }
     }
 
+    static final String POOL_PURGER = "poolPurger";
+
     final int expiration;
     boolean shuttingDown;
     Node head;
@@ -65,7 +67,12 @@ public class ChannelPool {
                 }
 
                 if (channel.isOpen()) {
-                    channel.getPipeline().remove("poolPurger");
+                    ChannelPipeline pipeline = channel.getPipeline();
+
+                    if (pipeline.get(POOL_PURGER) != null) {
+                        pipeline.remove(POOL_PURGER);
+                    }
+
                     return channel;
                 }
             }
@@ -88,7 +95,12 @@ public class ChannelPool {
         node.timeout = timer.newTimeout(new TimerTask() {
             public void run(Timeout timeout) {
                 synchronized (ChannelPool.this) {
-                    channel.getPipeline().remove("poolPurger");
+                    ChannelPipeline pipeline = channel.getPipeline();
+
+                    if (pipeline.get(POOL_PURGER) != null) {
+                        channel.getPipeline().remove("poolPurger");
+                    }
+
                     ChannelPool.this.expireNode(node);
                 }
             }
