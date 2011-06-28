@@ -139,6 +139,40 @@
        "HTTP/1.1 200 OK\r\n"
        "transfer-encoding: chunked\r\n\r\n")))
 
+(defcoretest no-content-response-but-with-content
+  (fn [dn]
+    (defstream
+      (request [[hdrs]]
+        (try
+          (dn :response [204 {"content-length" "5"} "Hello"])
+          (catch Exception _
+            (dn :response [200 {"content-length" "4"} "ZOMG"]))))))
+
+  (http-write "GET / HTTP/1.1\r\n"
+              "Connection: close\r\n\r\n")
+
+  (is (received-response
+       "HTTP/1.1 200 OK\r\n"
+       "content-length: 4\r\n\r\n"
+       "ZOMG")))
+
+(defcoretest not-modified-response-but-with-content
+  (fn [dn]
+    (defstream
+      (request [[hdrs]]
+        (try
+          (dn :response [304 {"content-length" "5"} "Hello"])
+          (catch Exception _
+            (dn :response [200 {"content-length" "4"} "ZOMG"]))))))
+
+  (http-write "GET / HTTP/1.1\r\n"
+              "Connection: close\r\n\r\n")
+
+  (is (received-response
+       "HTTP/1.1 200 OK\r\n"
+       "content-length: 4\r\n\r\n"
+       "ZOMG")))
+
 (defcoretest simple-http-1-0-request
   :hello-world
   (http-write "GET / HTTP/1.0\r\n\r\n")

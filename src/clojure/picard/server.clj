@@ -264,6 +264,12 @@
     (when (and (= 100 status) (not (awaiting-100-continue? current-state)))
       (throw (Exception. "Not expecting a 100 Continue response.")))
 
+    ;; 204 and 304 responses MUST NOT have a response body, so if we
+    ;; get one, throw an exception.
+    (when (and (or (= 204 status) (= 304 status))
+               (not (empty? body)))
+      (throw (Exception. (str status " responses must not include a body."))))
+
     (swap-then!
      state
      (fn [^State current-state]
