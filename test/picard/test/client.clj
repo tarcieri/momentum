@@ -420,7 +420,7 @@
     (is (no-msgs-for ch))
     (picard/shutdown-pool pool)))
 
-(defcoretest handling-100-continue-requests-and-responses
+(defcoretest ^{:focus true} handling-100-continue-requests-and-responses
   [ch1 ch2]
   (deftrackedapp [downstream]
     (fn [evt val]
@@ -433,7 +433,7 @@
 
   (let [downstream
         (client/request
-         ["Localhost" 4040]
+         ["localhost" 4040]
          [{:path-info       "/"
            :request-method  "POST"
            "content-length" "5"
