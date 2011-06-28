@@ -275,7 +275,8 @@
            :keepalive?     (and (.keepalive? current-state)
                                 (not= "close" (hdrs "connection"))
                                 (or (hdrs "content-length")
-                                    (= (hdrs "transfer-encoding") "chunked"))))))
+                                    (= (hdrs "transfer-encoding") "chunked")
+                                    (no-response-body? status))))))
 
      (fn [^State current-state]
        (if (.responded? current-state)

@@ -168,10 +168,10 @@
   (is (not-receiving-messages)))
 
 (defcoretest keepalive-requests
-  (deftrackedapp [upstream]
+  (deftrackedapp [dn]
     (fn [evt val]
       (when (= :request evt)
-        (upstream :response [200 {"content-length" "5"} "Hello"]))))
+        (dn :response [200 {"content-length" "5"} "Hello"]))))
 
   (http-write "GET / HTTP/1.1\r\n\r\n"
               "GET /foo HTTP/1.1\r\n\r\n"
@@ -196,6 +196,62 @@
        "HTTP/1.1 200 OK\r\n"
        "content-length: 5\r\n\r\n"
        "Hello")))
+
+(defcoretest keepalive-204-responses
+  (deftrackedapp [dn]
+    (fn [evt val]
+      (when (= :request evt)
+        (dn :response [204 {} nil]))))
+
+  (http-write "GET / HTTP/1.1\r\n\r\n")
+  (is (next-msgs :request :dont-care :done nil))
+  (is (receiving "HTTP/1.1 204 No Content\r\n\r\n"))
+
+  (http-write "POST /blah HTTP/1.1\r\n"
+              "Content-Length: 5\r\n\r\n"
+              "Hello")
+  (is (next-msgs :request [:dont-care "Hello"]
+                 :done    nil))
+  (is (receiving "HTTP/1.1 204 No Content\r\n\r\n"))
+
+  (http-write "GET /zomg HTTP/1.1\r\n"
+              "lulz: 4-the\r\n\r\n")
+  (is (next-msgs :request :dont-care :done nil))
+  (is (receiving "HTTP/1.1 204 No Content\r\n\r\n"))
+
+  (http-write "GET / HTTP/1.1\r\n"
+              "Connection: close\r\n\r\n")
+  (is (next-msgs :request :dont-care :done nil))
+  (is (received-response
+       "HTTP/1.1 204 No Content\r\n\r\n")))
+
+(defcoretest keepalive-304-responses
+  (deftrackedapp [dn]
+    (fn [evt val]
+      (when (= :request evt)
+        (dn :response [304 {} nil]))))
+
+  (http-write "GET / HTTP/1.1\r\n\r\n")
+  (is (next-msgs :request :dont-care :done nil))
+  (is (receiving "HTTP/1.1 304 Not Modified\r\n\r\n"))
+
+  (http-write "POST /blah HTTP/1.1\r\n"
+              "Content-Length: 5\r\n\r\n"
+              "Hello")
+  (is (next-msgs :request [:dont-care "Hello"]
+                 :done    nil))
+  (is (receiving "HTTP/1.1 304 Not Modified\r\n\r\n"))
+
+  (http-write "GET /zomg HTTP/1.1\r\n"
+              "lulz: 4-the\r\n\r\n")
+  (is (next-msgs :request :dont-care :done nil))
+  (is (receiving "HTTP/1.1 304 Not Modified\r\n\r\n"))
+
+  (http-write "GET / HTTP/1.1\r\n"
+              "Connection: close\r\n\r\n")
+  (is (next-msgs :request :dont-care :done nil))
+  (is (received-response
+       "HTTP/1.1 304 Not Modified\r\n\r\n")))
 
 (defcoretest returning-connection-close-terminates-connection
   (fn [downstream]

@@ -69,6 +69,12 @@
   []
   (.toString ^UUID (UUID/randomUUID)))
 
+(defn no-response-body?
+  [status]
+  (or (> 200 status)
+      (= 204 status)
+      (= 304 status)))
+
 (defn string->byte-buffer
   ([s] (string->byte-buffer s "UTF-8"))
   ([s charset]

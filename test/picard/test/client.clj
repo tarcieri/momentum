@@ -420,7 +420,7 @@
     (is (no-msgs-for ch))
     (picard/shutdown-pool pool)))
 
-(defcoretest ^{:focus true} handling-100-continue-requests-and-responses
+(defcoretest handling-100-continue-requests-and-responses
   [ch1 ch2]
   (deftrackedapp [downstream]
     (fn [evt val]
