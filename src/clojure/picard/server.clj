@@ -36,7 +36,6 @@
     [ch
      keepalive?
      chunked?
-     streaming? ;; TODO: remove this
      responded?
      expects-100? ;; TODO: remove this
      request-id
@@ -71,7 +70,6 @@
   (State. ch                  ;; Netty channel
           true                ;; Is the exchange keepalive?
           nil                 ;; Is the request chunked?
-          nil                 ;; Is the response streaming?
           nil                 ;; Has the response been sent?
           false               ;; Does the exchange expect an 100 Continue?
           nil                 ;; Request ID
@@ -266,7 +264,6 @@
            :bytes-to-send  bytes-to-send
            :bytes-expected bytes-expected
            :responded?     (not= :chunked body)
-           :streaming?     (= :chunked body)
            :chunked?       (= (hdrs "transfer-encoding") "chunked")
            :next-dn-fn     (when (= :chunked body) stream-or-finalize-response)
            :keepalive?     (and (.keepalive? current-state)
