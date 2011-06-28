@@ -598,20 +598,35 @@
   (deftrackedapp [downstream]
     (fn [evt val]
       (when (= :request evt)
-        (downstream :response [417 {"content-length" "0"}]))))
+        (let [[{request-method :request-method}] val]
+          (if (= "GET" request-method)
+            (downstream :response [200 {"content-length" "5"} "Hello"])
+            (downstream :response [417 {"content-length" "0"} ""]))))))
 
   (http-write "POST / HTTP/1.1\r\n"
               "Content-Length: 5\r\n"
-              "Connection: close\r\n"
               "Expect: 100-continue\r\n\r\n")
 
   (is (next-msgs
        :request [(includes-hdrs {"expect" "100-continue"}) :chunked]
        :done    nil))
 
-  (is (received-response
+  (is (receiving
        "HTTP/1.1 417 Expectation Failed\r\n"
        "content-length: 0\r\n\r\n"))
+
+  (http-write "Hello"
+              "GET / HTTP/1.1\r\n"
+              "Connection: close\r\n\r\n")
+
+  (is (next-msgs
+       :request [(includes-hdrs {:request-method "GET"}) nil]
+       :done    nil))
+
+  (is (received-response
+       "HTTP/1.1 200 OK\r\n"
+       "content-length: 5\r\n\r\n"
+       "Hello"))
 
   (is (not-receiving-messages)))
 
