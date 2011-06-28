@@ -36,6 +36,7 @@
     [ch
      keepalive?
      chunked?
+     head?
      responded?
      request-id
      next-up-fn
@@ -69,6 +70,7 @@
   (State. ch                  ;; Netty channel
           true                ;; Is the exchange keepalive?
           nil                 ;; Is the request chunked?
+          false               ;; Is this a HEAD request?
           nil                 ;; Has the response been sent?
           nil                 ;; Request ID
           nil                 ;; Next upstream event handler
@@ -93,7 +95,7 @@
 (defn- chunk-size
   [chunk]
   (cond
-   (or (= :chunked chunk) (nil? chunk))
+   (or (= :chunked chunk) (not chunk))
    0
 
    (instance? ChannelBuffer chunk)
@@ -245,9 +247,10 @@
 
   (let [[status hdrs body] val
         hdrs               (or hdrs {})
+        body               (and (not (.head? current-state)) body)
         bytes-expected     (content-length hdrs)
         bytes-to-send      (chunk-size body)
-        msg                (resp->netty-resp val)]
+        msg                (resp->netty-resp status hdrs body)]
 
     ;; 100 responses mean there will be other responses
     ;; following. When this is the final response header, track the
@@ -266,17 +269,18 @@
      (fn [^State current-state]
        (if (= 100 status)
          (assoc current-state :next-up-fn stream-request-body)
-         (assoc current-state
-           :bytes-to-send  bytes-to-send
-           :bytes-expected bytes-expected
-           :responded?     (not= :chunked body)
-           :chunked?       (= (hdrs "transfer-encoding") "chunked")
-           :next-dn-fn     (when (= :chunked body) stream-or-finalize-response)
-           :keepalive?     (and (.keepalive? current-state)
-                                (not= "close" (hdrs "connection"))
-                                (or (hdrs "content-length")
-                                    (= (hdrs "transfer-encoding") "chunked")
-                                    (no-response-body? status))))))
+         (let [responded? (or (.head? current-state) (not= :chunked body))]
+           (assoc current-state
+             :bytes-to-send  bytes-to-send
+             :bytes-expected bytes-expected
+             :responded?     responded?
+             :chunked?       (= (hdrs "transfer-encoding") "chunked")
+             :next-dn-fn     (when (not responded?) stream-or-finalize-response)
+             :keepalive?     (and (.keepalive? current-state)
+                                  (not= "close" (hdrs "connection"))
+                                  (or (hdrs "content-length")
+                                      (= (hdrs "transfer-encoding") "chunked")
+                                      (no-response-body? status)))))))
 
      (fn [^State current-state]
        (if (.responded? current-state)
@@ -382,6 +386,7 @@
             request       (netty-req->req netty-request ch request-id)
             keepalive?    (HttpHeaders/isKeepAlive netty-request)
             expects-100?  (HttpHeaders/is100ContinueExpected netty-request)
+            head?         (= HttpMethod/HEAD (.getMethod netty-request))
             chunked?      (.isChunked netty-request)
             next-up-fn    (cond
                            (not chunked?) waiting-for-response
@@ -393,6 +398,7 @@
          (fn [current-state]
            (assoc current-state
              :keepalive?   keepalive?
+             :head?        head?
              :request-id   request-id
              :next-up-fn   next-up-fn
              :upstream     upstream-fn))

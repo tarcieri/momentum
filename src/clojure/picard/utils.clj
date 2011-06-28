@@ -178,7 +178,7 @@
     method uri))
 
 (defn resp->netty-resp
-  [[status hdrs body]]
+  [status hdrs body]
   (returning [netty-resp ^HttpMessage (mk-netty-response status)]
              (netty-assoc-hdrs netty-resp hdrs)
              (when body

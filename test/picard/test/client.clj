@@ -28,7 +28,7 @@
   [ch1 ch2]
   :hello-world
 
-  (doseq [method ["GET" "POST" "PUT" "DELETE" "HEAD"]]
+  (doseq [method ["GET" "POST" "PUT" "DELETE"]]
     (client/request
      ["localhost" 4040]
      [{:path-info "/" :request-method method}]

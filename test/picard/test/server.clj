@@ -17,7 +17,7 @@
 
 (defcoretest simple-requests
   :hello-world
-  (doseq [method ["GET" "POST" "PUT" "DELETE" "HEAD"]]
+  (doseq [method ["GET" "POST" "PUT" "DELETE"]]
     (with-fresh-conn
       (http-write method " / HTTP/1.1\r\n"
                   "Connection: close\r\n\r\n")
@@ -93,6 +93,51 @@
        "content-length: 5\r\n"
        "connection: close\r\n\r\n"
        "Hello")))
+
+(defcoretest head-request-with-content-length
+  (fn [dn]
+    (defstream
+      (request [[hdrs]]
+        (when (= "HEAD" (hdrs :request-method))
+          (dn :response [200 {"content-length" "10"} nil])))))
+
+  (http-write "HEAD / HTTP/1.1\r\n"
+              "Connection: close\r\n\r\n")
+
+  (is (received-response
+       "HTTP/1.1 200 OK\r\n"
+       "content-length: 10\r\n\r\n")))
+
+(defcoretest head-request-with-content-length-and-response
+  (fn [dn]
+    (defstream
+      (request [[hdrs]]
+        (when (= "HEAD" (hdrs :request-method))
+          (dn :response [200 {"content-length" "10"} "HelloWorld"])))
+      (abort [err]
+        (.printStackTrace err))))
+
+  (http-write "HEAD / HTTP/1.1\r\n"
+              "Connection: close\r\n\r\n")
+
+  (is (received-response
+       "HTTP/1.1 200 OK\r\n"
+       "content-length: 10\r\n\r\n")))
+
+(defcoretest head-request-with-te-chunked-and-response-body
+  (fn [dn]
+    (defstream
+      (request [[hdrs]]
+        (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
+        (dn :body "Hello")
+        (dn :body nil))))
+
+  (http-write "HEAD / HTTP/1.1\r\n"
+              "Connection: close\r\n\r\n")
+
+  (is (received-response
+       "HTTP/1.1 200 OK\r\n"
+       "transfer-encoding: chunked\r\n\r\n")))
 
 (defcoretest simple-http-1-0-request
   :hello-world
@@ -196,6 +241,37 @@
        "HTTP/1.1 200 OK\r\n"
        "content-length: 5\r\n\r\n"
        "Hello")))
+
+(defcoretest keepalive-head-requests
+  (deftrackedapp [dn]
+    (defstream
+      (request [request]
+        (dn :response [200 {"content-type"   "text/plain"
+                            "content-length" "5"} "Hello"]))))
+
+  (http-write "HEAD / HTTP/1.1\r\n\r\n")
+  (is (next-msgs :request :dont-care :done nil))
+  (is (receiving "HTTP/1.1 200 OK\r\n"
+                 "content-type: text/plain\r\n"
+                 "content-length: 5\r\n\r\n"))
+
+  (http-write "HEAD / HTTP/1.1\r\n\r\n")
+  (is (next-msgs :request :dont-care :done nil))
+  (is (receiving "HTTP/1.1 200 OK\r\n"
+                 "content-type: text/plain\r\n"
+                 "content-length: 5\r\n\r\n"))
+
+  (http-write "HEAD / HTTP/1.1\r\n"
+              "content-type: text/plain\r\n"
+              "connection: close\r\n\r\n")
+  (is (next-msgs :request :dont-care :done nil))
+  (is (received-response
+       "HTTP/1.1 200 OK\r\n"
+       "content-type: text/plain\r\n"
+       "content-length: 5\r\n\r\n")))
+
+
+
 
 (defcoretest keepalive-204-responses
   (deftrackedapp [dn]
