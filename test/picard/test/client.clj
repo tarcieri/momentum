@@ -479,6 +479,8 @@
      :request-method "GET"}]
    (fn [_]
      (fn [evt val]
+       (when (= :abort evt)
+         (.printStackTrace val))
        (enqueue ch [evt val]))))
 
   (is (next-msgs-for
@@ -582,7 +584,7 @@
 
     (picard/shutdown-pool pool)))
 
-(defcoretest observing-max-per-address-connections
+(defcoretest ^{:network true} observing-max-per-address-connections
   [_ ch1 ch2 ch3]
   :slow-hello-world
 
@@ -598,9 +600,10 @@
            (enqueue ch [evt val])))))
 
     (client/request
-     ["127.0.0.1" 4040]
+     ["www.google.com" 80]
      [{:path-info "/"
        :request-method "GET"
+       "host" "www.google.com"
        "connection" "close"}]
      {:pool pool}
      (fn [_]

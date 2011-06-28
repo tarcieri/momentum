@@ -386,8 +386,8 @@
   ([[^ClientBootstrap bootstrap] addr local-addr callback]
      (on-complete
       (if local-addr
-        (.connect bootstrap (mk-socket-addr addr) (mk-socket-addr local-addr))
-        (.connect bootstrap (mk-socket-addr addr)))
+        (.connect bootstrap addr (mk-socket-addr local-addr))
+        (.connect bootstrap addr))
       (fn [^ChannelFuture future]
         (if (.isSuccess future)
           (callback (.getChannel future))
