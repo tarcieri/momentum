@@ -692,27 +692,6 @@
        "HTTP/1.1 204 No Content\r\n"
        "connection: close\r\n\r\n")))
 
-(defcoretest no-request-body-and-expects-100
-  (deftrackedapp [downstream]
-    (fn [evt val]
-      (when (= :request evt)
-        (downstream :response [100])
-        (downstream :response [204 {"connection" "close"}]))))
-
-  (http-write "POST / HTTP/1.1\r\n"
-              "Expect: 100-continue\r\n\r\n")
-
-  (is (next-msgs
-       :request [(includes-hdrs {"expect" "100-continue"}) nil]
-       :done    nil))
-
-  (is (received-response
-       "HTTP/1.1 100 Continue\r\n\r\n"
-       "HTTP/1.1 204 No Content\r\n"
-       "connection: close\r\n\r\n"))
-
-  (is (not-receiving-messages)))
-
 (defcoretest sending-100-continue-to-1-0-client
   [ch]
   (deftrackedapp [downstream]

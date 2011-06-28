@@ -37,7 +37,6 @@
      keepalive?
      chunked?
      responded?
-     expects-100? ;; TODO: remove this
      request-id
      next-up-fn
      next-dn-fn
@@ -71,7 +70,6 @@
           true                ;; Is the exchange keepalive?
           nil                 ;; Is the request chunked?
           nil                 ;; Has the response been sent?
-          false               ;; Does the exchange expect an 100 Continue?
           nil                 ;; Request ID
           nil                 ;; Next upstream event handler
           initialize-response ;; Next downstream event handler
@@ -104,13 +102,21 @@
    :else
    (count chunk)))
 
+(defmacro awaiting-100-continue?
+  [current-state]
+  `(= awaiting-100-continue (.next-up-fn ~current-state)))
+
+(defmacro awaiting-response?
+  [current-state]
+  `(= waiting-for-response (.next-up-fn ~current-state)))
+
 (defn- exchange-finished?
   [^State current-exchange]
   (or (nil? current-exchange)
       (.aborting? current-exchange)
       (and (.responded? current-exchange)
-           (or (= waiting-for-response (.next-up-fn current-exchange))
-               (= awaiting-100-continue (.next-up-fn current-exchange))))))
+           (or (awaiting-response? current-exchange)
+               (awaiting-100-continue? current-exchange)))))
 
 (defmacro exchange-in-progress?
   [current-exchange]
@@ -252,14 +258,14 @@
     ;; or transfer-encoding: chunked header, then the HTTP exchange
     ;; will be finalized by closing the connection.
 
-    (when (and (= 100 status) (not (.expects-100? current-state)))
+    (when (and (= 100 status) (not (awaiting-100-continue? current-state)))
       (throw (Exception. "Not expecting a 100 Continue response.")))
 
     (swap-then!
      state
      (fn [^State current-state]
        (if (= 100 status)
-         (assoc current-state :expects-100? false)
+         (assoc current-state :next-up-fn stream-request-body)
          (assoc current-state
            :bytes-to-send  bytes-to-send
            :bytes-expected bytes-expected
@@ -380,12 +386,12 @@
                            (not chunked?) waiting-for-response
                            expects-100?   awaiting-100-continue
                            :else          stream-request-body)]
+
         (swap-then!
          state
          (fn [current-state]
            (assoc current-state
              :keepalive?   keepalive?
-             :expects-100? expects-100?
              :request-id   request-id
              :next-up-fn   next-up-fn
              :upstream     upstream-fn))
