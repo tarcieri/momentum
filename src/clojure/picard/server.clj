@@ -280,6 +280,10 @@
              :bytes-to-send  bytes-to-send
              :bytes-expected bytes-expected
              :responded?     responded?
+             ;; TODO, this isn't exactly correct since 304 responses
+             ;; won't send the body, and we also need to handle the
+             ;; case of transfer-encoding: chunked w/ a single chunk
+             ;; passed with the response.
              :chunked?       (= (hdrs "transfer-encoding") "chunked")
              :next-dn-fn     (when (not responded?) stream-or-finalize-response)
              :keepalive?     (and (.keepalive? current-state)
