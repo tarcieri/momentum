@@ -304,9 +304,6 @@
        "content-type: text/plain\r\n"
        "content-length: 5\r\n\r\n")))
 
-
-
-
 (defcoretest keepalive-204-responses
   (deftrackedapp [dn]
     (fn [evt val]

@@ -272,6 +272,104 @@
   ;; 2 is to account for the connection test-helper makes
   (is (= 2 (count (netty-connect-evts)))))
 
+(defcoretest keepalive-head-requests
+  [_ ch]
+  (deftrackedapp [dn]
+    (defstream
+      (request [request]
+        (dn :response [200 {"content-length" "5"} nil]))))
+
+  (let [pool (picard/mk-pool {:keepalive 1})]
+    (dotimes [_ 3]
+      (client/request
+       ["localhost" 4040]
+       [{:path-info "/" :request-method "HEAD"}]
+       (fn [_] (fn [evt val] (enqueue ch [evt val]))))
+
+      (is (next-msgs-for
+           ch
+           :connected nil
+           :response  [200 {:http-version    [1 1]
+                            "content-length" "5"} nil]
+           :done nil))
+
+      (Thread/sleep 10))
+    (picard/shutdown-pool pool))
+
+  (is (= 2 (count (netty-connect-evts)))))
+
+(defcoretest keepalive-204-responses
+  [_ ch]
+  (deftrackedapp [dn]
+    (fn [evt val]
+      (when (= :request evt)
+        (dn :response [204 {} nil]))))
+
+  (let [pool (picard/mk-pool {:keepalive 1})]
+    (dotimes [_ 3]
+      (client/request
+       ["localhost" 4040]
+       [{:path-info "/" :request-method "GET"}]
+       (fn [_] (fn [evt val] (enqueue ch [evt val]))))
+
+      (is (next-msgs-for
+           ch
+           :connected nil
+           :response  [204 {:http-version [1 1]} nil]
+           :done      nil))
+
+      (Thread/sleep 10))
+    (picard/shutdown-pool pool)
+    (is (= 2 (count (netty-connect-evts))))))
+
+(defcoretest keepalive-304-responses
+  [_ ch]
+  (deftrackedapp [dn]
+    (fn [evt val]
+      (when (= :request evt)
+        (dn :response [304 {"content-length" "100000"} nil]))))
+
+  (let [pool (picard/mk-pool {:keepalive 1})]
+    (dotimes [_ 3]
+      (client/request
+       ["localhost" 4040]
+       [{:path-info "/" :request-method "GET"}]
+       (fn [_] (fn [evt val] (enqueue ch [evt val]))))
+
+      (is (next-msgs-for
+           ch
+           :connected nil
+           :response  [304 {:http-version [1 1]} nil]
+           :done      nil))
+
+      (Thread/sleep 10))
+    (picard/shutdown-pool pool)
+    (is (= 2 (count (netty-connect-evts))))))
+
+(defcoretest keepalive-304-responses-chunked
+  [_ ch]
+  (deftrackedapp [dn]
+    (fn [evt val]
+      (when (= :request evt)
+        (dn :response [304 {"transfer-encoding" "chunked"} nil]))))
+
+  (let [pool (picard/mk-pool {:keepalive 1})]
+    (dotimes [_ 3]
+      (client/request
+       ["localhost" 4040]
+       [{:path-info "/" :request-method "GET"}]
+       (fn [_] (fn [evt val] (enqueue ch [evt val]))))
+
+      (is (next-msgs-for
+           ch
+           :connected nil
+           :response  [304 {:http-version [1 1]} nil]
+           :done      nil))
+
+      (Thread/sleep 10))
+    (picard/shutdown-pool pool)
+    (is (= 2 (count (netty-connect-evts))))))
+
 (defcoretest issuing-pause-resume
   [_ ch2 ch3]
   (fn [downstream]
@@ -449,7 +547,7 @@
     (is (next-msgs-for
          ch2
          :connected nil
-         :response  [100 {:http-version [1 1]} ""]))
+         :response  [100 {:http-version [1 1]} nil]))
 
     (is (no-msgs-for ch1))
     (is (no-msgs-for ch2))

@@ -28,6 +28,7 @@
      ch
      keepalive?
      chunked?
+     head?
      chunk-trailer?
      expects-100?
      next-up-fn
@@ -211,7 +212,7 @@
             :keepalive? keepalive?
             :next-up-fn nil))))
      (fn [^State current-state]
-       (let [response (netty-resp->resp msg)]
+       (let [response (netty-resp->resp msg (.head? current-state))]
          (debug {:msg "Sending upstream" :event [:response response]
                  :state current-state})
          (upstream-fn :response response)
@@ -351,6 +352,7 @@
                     nil                ;; Netty channel
                     (keepalive? req)   ;; Is the exchange keepalive?
                     (= :chunked body)  ;; Is the request chunked?
+                    (= "HEAD" (hdrs :request-method))
                     (= (hdrs "transfer-encoding")
                        "chunked")
                     (= (hdrs "expect") ;; Does the request expect 100 continue?

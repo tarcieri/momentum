@@ -10,8 +10,7 @@
     Channel
     ChannelPipeline]
    [org.jboss.netty.handler.codec.http
-    HttpRequestEncoder
-    HttpResponseDecoder]
+    HttpClientCodec]
    java.net.InetSocketAddress))
 
 ;; TODO:
@@ -72,8 +71,7 @@
   [pool]
   (netty/create-pipeline
    :track-closes (connection-count-handler pool)
-   :decoder      (HttpResponseDecoder.)
-   :encoder      (HttpRequestEncoder.)))
+   :codec        (HttpClientCodec.)))
 
 (defn- add-handler
   [^Channel conn ^ChannelHandler handler]

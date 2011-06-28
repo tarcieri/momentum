@@ -140,12 +140,16 @@
       :else                   nil)]))
 
 (defn netty-resp->resp
-  [^HttpResponse resp]
-  [(.. resp getStatus getCode)
-   (netty-msg->hdrs resp)
-   (if (.isChunked resp)
-    :chunked
-    (.getContent resp))])
+  [^HttpResponse resp head?]
+  (let [status (.. resp getStatus getCode)
+        body   (when (not (or head?
+                              (> 200 status)
+                              (= 204 status)
+                              (= 304 status)))
+                 (if (.isChunked resp)
+                   :chunked
+                   (.getContent resp)))]
+    [status (netty-msg->hdrs resp) body]))
 
 (defn netty-msg->body
   [^HttpMessage msg]
