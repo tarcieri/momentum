@@ -226,23 +226,20 @@
         ;; handler, but throwing a lock here doesn't
         ;; bother me much.
         (locking list
-          (try
-            (let [ch ^Channel (.getChannel evt)]
-              (cond
-               (instance? MessageEvent evt)
-               (do
-                 (.add list evt)
-                 (purge-evt-buffer list ctx evt ch))
+          (let [ch ^Channel (.getChannel evt)]
+            (cond
+             (instance? MessageEvent evt)
+             (do
+               (.add list evt)
+               (purge-evt-buffer list ctx evt ch))
 
-               (and (instance? ChannelStateEvent evt)
-                    (= ChannelState/INTEREST_OPS
-                       (.getState ^ChannelStateEvent evt)))
-               (do (purge-evt-buffer list ctx evt ch)
-                   (.sendUpstream ctx evt))
-               :else
-               (.sendUpstream ctx evt)))
-            (catch Exception err
-              (.printStackTrace err))))))))
+             (and (instance? ChannelStateEvent evt)
+                  (= ChannelState/INTEREST_OPS
+                     (.getState ^ChannelStateEvent evt)))
+             (do (purge-evt-buffer list ctx evt ch)
+                 (.sendUpstream ctx evt))
+             :else
+             (.sendUpstream ctx evt))))))))
 
 (defn- ^ChannelPipelineFactory mk-pipeline-factory
   [^ChannelGroup channel-group pipeline-fn opts]
