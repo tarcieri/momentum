@@ -13,7 +13,7 @@
    [org.jboss.netty.handler.codec.http
     DefaultCookie]))
 
-(deftest ^{:focus true} simple-get-cookies-test
+(deftest simple-get-cookies-test
   (let [cookie-header-atom (atom nil)]
     (with-app
       (cookie/cookie
@@ -30,7 +30,7 @@
         (is (every? #(= (.getValue %) (get expected-cookies (.getName %))) actual-cookies))))))
 
 
-(deftest ^{:focus true} simple-set-cookie-test
+(deftest simple-set-cookie-test
   (with-app
     (cookie/cookie
      (fn [downstream]
@@ -41,7 +41,7 @@
     (GET "/foo")
     (is (includes? (last-response-headers) {"set-cookie" "foo=bar"}))))
 
-(deftest ^{:focus true} set-cookie-with-path-test
+(deftest set-cookie-with-path-test
   (with-app
     (cookie/cookie
      (fn [downstream]

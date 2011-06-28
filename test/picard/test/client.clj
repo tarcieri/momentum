@@ -284,6 +284,7 @@
       (client/request
        ["localhost" 4040]
        [{:path-info "/" :request-method "HEAD"}]
+       {:pool pool}
        (fn [_] (fn [evt val] (enqueue ch [evt val]))))
 
       (is (next-msgs-for
@@ -310,6 +311,7 @@
       (client/request
        ["localhost" 4040]
        [{:path-info "/" :request-method "GET"}]
+       {:pool pool}
        (fn [_] (fn [evt val] (enqueue ch [evt val]))))
 
       (is (next-msgs-for
@@ -334,36 +336,41 @@
       (client/request
        ["localhost" 4040]
        [{:path-info "/" :request-method "GET"}]
+       {:pool pool}
        (fn [_] (fn [evt val] (enqueue ch [evt val]))))
 
       (is (next-msgs-for
            ch
            :connected nil
-           :response  [304 {:http-version [1 1]} nil]
+           :response  [304 {"content-length" "100000"
+                            :http-version [1 1]} nil]
            :done      nil))
 
       (Thread/sleep 10))
     (picard/shutdown-pool pool)
     (is (= 2 (count (netty-connect-evts))))))
 
-(defcoretest keepalive-304-responses-chunked
+(defcoretest ^{:focus true} keepalive-304-responses-chunked
   [_ ch]
   (deftrackedapp [dn]
     (fn [evt val]
       (when (= :request evt)
-        (dn :response [304 {"transfer-encoding" "chunked"} nil]))))
+        (dn :response [304 {"content-type"      "text/plain"
+                            "transfer-encoding" "chunked"} nil]))))
 
   (let [pool (picard/mk-pool {:keepalive 1})]
-    (dotimes [_ 3]
+    (dotimes [_ 1]
       (client/request
        ["localhost" 4040]
        [{:path-info "/" :request-method "GET"}]
+       {:pool pool}
        (fn [_] (fn [evt val] (enqueue ch [evt val]))))
 
       (is (next-msgs-for
            ch
            :connected nil
-           :response  [304 {:http-version [1 1]} nil]
+           :response  [304 {"content-type" "text/plain"
+                            :http-version [1 1]} nil]
            :done      nil))
 
       (Thread/sleep 10))
