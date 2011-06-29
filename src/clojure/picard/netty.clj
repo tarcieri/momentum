@@ -326,7 +326,7 @@
    (opts :netty)))
 
 (defn- configure-bootstrap
-  [^Bootstrap bootstrap opt-merge-fn pipeline-fn options channel-group]
+  [^Bootstrap bootstrap opt-merge-fn pipeline-fn channel-group options]
   ;; First set the options for the bootstrapper based
   ;; on the supplied options and the option merger function
   (doseq [[k v] (opt-merge-fn options)]
@@ -351,7 +351,7 @@
   [pipeline-fn {host :host port :port :as options}]
   (let [bootstrap (mk-server-bootstrap (mk-thread-pool))
         ch-group  (DefaultChannelGroup.)]
-    (configure-bootstrap bootstrap merge-netty-server-opts pipeline-fn options ch-group)
+    (configure-bootstrap bootstrap merge-netty-server-opts pipeline-fn ch-group options)
     {::bootstrap      bootstrap
      ::server-channel (.bind bootstrap (mk-socket-addr [host port]))
      ::channel-group  ch-group}))
@@ -387,8 +387,8 @@
         bootstrap (mk-client-bootstrap (mk-thread-pool))
         ssl-bootstrap (mk-client-bootstrap (mk-thread-pool))
         ssl-pipeline-fn #(add-ssl-to-pipeline-fn pipeline-fn)]
-    (configure-bootstrap bootstrap merge-netty-client-opts pipeline-fn options ch-group)
-    (configure-bootstrap ssl-bootstrap merge-netty-client-opts ssl-pipeline-fn options ch-group)
+    (configure-bootstrap bootstrap merge-netty-client-opts pipeline-fn ch-group options)
+    (configure-bootstrap ssl-bootstrap merge-netty-client-opts ssl-pipeline-fn ch-group options)
     [bootstrap ssl-bootstrap ch-group]))
 
 (defn connect-client

@@ -3,7 +3,7 @@
    [javax.net.ssl
     SSLContext]))
 
-(defn mk-ssl-context
+(defn- mk-ssl-context
   []
   (let [context (SSLContext/getInstance "TLS")]
     (.init context nil nil nil)
