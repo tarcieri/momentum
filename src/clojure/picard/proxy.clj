@@ -15,12 +15,12 @@
   `(debug* :proxy ~@msgs))
 
 (defn- addr-from-req
-  [[{proxy-host :proxy-host host "host"}]]
+  [[{proxy-host :proxy-host host "host" :as hdrs}]]
   (if proxy-host
     proxy-host
     (let [[host ^String port] (-> host str/trim (str/split #":" 2))]
       (if (or (nil? port) (= "" port))
-        [host nil]
+        [host (if (request-ssl? hdrs) 443 80)]
         [host (try (Integer. port)
                    (catch NumberFormatException _))]))))
 
