@@ -1,7 +1,8 @@
 (ns picard.utils
   (:require
    [clojure.string :as str]
-   [clojure.contrib.logging :as log])
+   [clojure.contrib.logging :as log]
+   [picard.cookie :as cookie])
   (:import
    [java.nio
     ByteBuffer]
@@ -120,19 +121,21 @@
 (defn netty-req->hdrs
   [^HttpRequest req ^Channel ch request-id]
   (let [uri (URI. (.getUri req))]
-    (assoc (netty-msg->hdrs req)
-      :request-id     request-id
-      :request-method (.. req getMethod toString)
-      :path-info      (.getRawPath uri)
-      :query-string   (or (.getRawQuery uri) "")
-      :script-name    ""
-      :server-name    SERVER-NAME
-      :local-addr     (addr->ip (.getLocalAddress ch))
-      :remote-addr    (addr->ip (.getRemoteAddress ch)))))
+    (-> (netty-msg->hdrs req)
+        (assoc
+            :request-id     request-id
+            :request-method (.. req getMethod toString)
+            :path-info      (.getRawPath uri)
+            :query-string   (or (.getRawQuery uri) "")
+            :script-name    ""
+            :server-name    SERVER-NAME
+            :local-addr     (addr->ip (.getLocalAddress ch))
+            :remote-addr    (addr->ip (.getRemoteAddress ch))))))
 
 (defn netty-req->req
   [^HttpMessage req ^Channel ch request-id]
-  (let [hdrs (netty-req->hdrs req ch request-id)]
+  (let [hdrs (netty-req->hdrs req ch request-id)
+        hdrs (cookie/decode-cookies hdrs "cookie")]
     [hdrs
      (cond
       (.isChunked req)        :chunked
@@ -142,14 +145,16 @@
 (defn netty-resp->resp
   [^HttpResponse resp head?]
   (let [status (.. resp getStatus getCode)
-        body   (when (not (or head?
-                              (> 200 status)
-                              (= 204 status)
-                              (= 304 status)))
+        body   (when-not (or head?
+                             (> 200 status)
+                             (= 204 status)
+                             (= 304 status))
                  (if (.isChunked resp)
                    :chunked
-                   (.getContent resp)))]
-    [status (netty-msg->hdrs resp) body]))
+                   (.getContent resp)))
+        hdrs (netty-msg->hdrs resp)
+        hdrs (cookie/decode-cookies hdrs "set-cookie")]
+    [status hdrs body]))
 
 (defn netty-msg->body
   [^HttpMessage msg]
@@ -183,16 +188,18 @@
 
 (defn resp->netty-resp
   [status hdrs body]
-  (returning [netty-resp ^HttpMessage (mk-netty-response status)]
-             (netty-assoc-hdrs netty-resp hdrs)
-             (when body
-               (if (= :chunked body)
-                 (.setChunked netty-resp true)
-                 (.setContent netty-resp (*->channel-buffer body))))))
+  (let [hdrs (cookie/encode-cookies hdrs "set-cookie" true)]
+   (returning [netty-resp ^HttpMessage (mk-netty-response status)]
+              (netty-assoc-hdrs netty-resp hdrs)
+              (when body
+                (if (= :chunked body)
+                  (.setChunked netty-resp true)
+                  (.setContent netty-resp (*->channel-buffer body)))))))
 
 (defn req->netty-req
   [[hdrs body]]
-  (let [query-string (hdrs :query-string)
+  (let [hdrs (cookie/encode-cookies hdrs "cookie" false)
+        query-string (hdrs :query-string)
         path-info (hdrs :path-info)
         netty-req (mk-netty-req
                    (HttpMethod. (hdrs :request-method))
