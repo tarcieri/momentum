@@ -28,6 +28,9 @@
 (defn request-scheme
   [hdrs]
   (cond
+   (hdrs :picard.url-scheme)
+   (hdrs :picard.url-scheme)
+
    (= (hdrs :https) "on")
    "https"
 

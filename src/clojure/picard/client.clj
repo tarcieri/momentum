@@ -445,7 +445,8 @@
 
 ;; Alias so that the pool namespace doesn't have to be required as
 ;; well as the client namespace
-(def mk-pool pool/mk-pool)
+(def mk-pool       pool/mk-pool)
+(def shutdown-pool pool/shutdown)
 
 (def default-options
   {:pool      (pool/mk-pool)

@@ -135,8 +135,18 @@
   :slow-hello-world
   (let [pool (client/mk-pool {:max-connections-per-address 1})]
     (with-app (prox/mk-proxy {:pool pool})
-      (GET "/")
-      (GET "/")
+      (GET "/" {"host" "localhost:4040"})
+      (GET "/" {"host" "localhost:4040"})
 
       (is (= (last-response-status) 503))
-      (is (not (received-event? (fn [evt val] (= :abort evt))))))))
+      (is (not (received-event? (fn [evt val] (= :abort evt)))))
+      (client/shutdown-pool pool))))
+
+(defcoretest observes-scheme-option
+  :hello-world
+  (let [pool (client/mk-pool)]
+    (with-app (prox/mk-proxy {:pool pool :scheme "http"})
+      (GET "/" {:https "on" "host" "localhost:4040"})
+
+      (is (= (last-response-status) 200))
+      (client/shutdown-pool pool))))

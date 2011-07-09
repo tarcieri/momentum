@@ -43,13 +43,26 @@
            (= :pending current-state))))
 
 (defn- add-xff-header
-  [[hdrs body]]
+  [hdrs]
   (let [remote-ip (first (:remote-addr hdrs))]
-    [(assoc hdrs
-       "x-forwarded-for"
-       (if-let [current-xff (hdrs "x-forwarded-for")]
-         (str current-xff ", " remote-ip)
-         remote-ip)) body]))
+    (assoc hdrs
+      "x-forwarded-for"
+      (if-let [current-xff (hdrs "x-forwarded-for")]
+        (str current-xff ", " remote-ip)
+        remote-ip))))
+
+(defn- set-scheme
+  [hdrs opts]
+  (if-let [scheme (opts :scheme)]
+    (assoc hdrs :picard.url-scheme (opts :scheme))
+    hdrs))
+
+(defn- process-request
+  [[hdrs body] opts]
+  [(-> hdrs
+       add-xff-header
+       (set-scheme opts)
+       ) body])
 
 (defn- proxy-loop?
   [[{[remote-ip] :remote-addr xff-header "x-forwarded-for"}] {cycles :cycles}]
@@ -64,7 +77,7 @@
 (defn- initiate-request
   [state opts req downstream]
   (client/request
-   (addr-from-req req) (add-xff-header req) opts
+   (addr-from-req req) req opts
    (fn [client-dn]
      (fn [evt val]
        (debug {:msg "Client event"
@@ -91,7 +104,9 @@
         (reset! state :pending)
         (downstream :pause nil)))))
 
-(def default-options {:cycles 0})
+(def default-options
+  {:cycles 0
+   :scheme nil})
 
 (defn mk-proxy
   ([] (mk-proxy {}))
@@ -109,7 +124,10 @@
                    (debug {:msg   "In proxy loop"
                            :event [:request req]})
                    (downstream :response bad-gateway))
-                 (initiate-request state opts req downstream)))
+                 (initiate-request
+                  state opts
+                  (process-request req opts)
+                  downstream)))
              (done []) ;; We don't care about this
              ;; Handling all other events
              (else [evt val]

@@ -41,6 +41,13 @@
   (is (= "http"  (request-scheme {"x-forwarded-proto" "http, https"})))
   (is (= "https" (request-scheme {"x-forwarded-proto" "https, http"}))))
 
+(deftest picard.url-scheme-trumps-all
+  (is (= "https" (request-scheme {:picard.url-scheme "https"
+                                  "x-forwarded-proto" "http"})))
+  (is (= "http" (request-scheme {:picard.url-scheme "http"
+                                 :https "on"
+                                 "x-forwarded-proto" "https"}))))
+
 ;; #request-url
 
 (deftest simple-request-url-port-80
