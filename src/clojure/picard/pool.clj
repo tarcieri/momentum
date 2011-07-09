@@ -144,7 +144,8 @@
    not returned to the pool."
   [[state] ^Channel conn]
   (debug {:msg "Closing connection" :event conn})
-  (.close conn))
+  (when-not (.isOpen conn)
+    (.close conn)))
 
 (def default-options
   {:keepalive                   60
