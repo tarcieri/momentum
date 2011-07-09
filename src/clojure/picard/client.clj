@@ -375,7 +375,7 @@
      pool addr (netty-bridge state)
      ;; When a connection to the remote host has been established.
      (fn [^Channel ch-or-err fresh?]
-       (debug {:msg   (str "Checked out channel: " ch-or-err)
+       (debug {:msg   (str "Checked out channel: " ch-or-err " " fresh?)
                :event [:request request]})
        (if (instance? Exception ch-or-err)
          ;; Handle exceptions
