@@ -375,6 +375,8 @@
      pool addr (netty-bridge state)
      ;; When a connection to the remote host has been established.
      (fn [^Channel ch-or-err fresh?]
+       (debug {:msg   (str "Checked out channel: " ch-or-err)
+               :event [:request request]})
        (if (instance? Exception ch-or-err)
          ;; Handle exceptions
          (handle-err state ch-or-err current-state)
@@ -395,6 +397,9 @@
 
               ;; Otherwise, do stuff with it
               (let [write-future (.write ch-or-err (req->netty-req request))]
+                (debug {:msg   "Writing request to socket"
+                        :event [:request request]
+                        :state current-state})
                 ;; Start tracking timeouts for this exchange.
                 (bump-timeout state current-state)
 
@@ -419,6 +424,9 @@
                    ;; PS: If anybody knows how to test this code path, please
                    ;; let me know.
                    (when-not (.isSuccess future)
+                     (debug {:msg   "Request write failed"
+                             :event [:request request]
+                             :state @state})
                      (if fresh?
                        (handle-err state (.getCause future) current-state)
                        (do
@@ -447,6 +455,8 @@
   ([addr req accept-fn]
      (request addr req {} accept-fn))
   ([addr request opts accept-fn]
+     (debug {:msg   "Handling request"
+             :event [:request request]})
      ;; Create an atom that contains the state of the request
      (let [opts (merge default-options opts)]
       (let [[state downstream-fn] (mk-initial-state request accept-fn opts)]

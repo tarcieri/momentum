@@ -102,8 +102,13 @@
            (defstream
              ;; Handling the initial request
              (request [req]
+               (debug {:msg   "Receiving request"
+                       :event [:request req]})
                (if (proxy-loop? req opts)
-                 (downstream :response bad-gateway)
+                 (do
+                   (debug {:msg   "In proxy loop"
+                           :event [:request req]})
+                   (downstream :response bad-gateway))
                  (initiate-request state opts req downstream)))
              (done []) ;; We don't care about this
              ;; Handling all other events
