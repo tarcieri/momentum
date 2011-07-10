@@ -178,8 +178,13 @@
        first))
 
 (defn last-response-status  [] (when-let [r (last-response)] (first r)))
-(defn last-response-headers [] (when-let [r (last-response)] (second r)))
 (defn last-response-body    [] (when-let [r (last-response)] (nth r 2)))
+
+(defn last-response-headers
+  ([] (when-let [r (last-response)] (second r)))
+  ([key]
+     (when-let [hdrs (last-response-headers)]
+       (hdrs key))))
 
 (defn last-body-chunks
   []
