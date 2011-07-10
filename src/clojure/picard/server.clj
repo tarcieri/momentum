@@ -140,7 +140,9 @@
   (let [new-timeout
         (netty/on-timeout
          global-timer (* (:timeout (.options current-state)) 1000)
-         #(handle-err state (Exception. "HTTP exchange timed out") current-state))]
+         #(handle-err
+           state
+           (Exception. "Server HTTP exchange timed out") current-state))]
     (swap! state #(assoc % :timeout new-timeout))))
 
 (defn- clear-keepalive-timeout

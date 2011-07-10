@@ -1,8 +1,6 @@
 (ns picard.netty
   (:use
    [picard.utils])
-  (:require
-   [picard.ssl :as ssl])
   (:import
    [org.jboss.netty.bootstrap
     Bootstrap
@@ -38,8 +36,6 @@
     HashedWheelTimer
     Timeout
     TimerTask]
-   [org.jboss.netty.handler.ssl
-    SslHandler]
    [java.net
     InetSocketAddress]
    [java.util
@@ -372,35 +368,36 @@
      ::server-channel srv-ch
      ::channel-group  ch-group}))
 
-(def ssl-engine (ssl/mk-client-ssl-engine))
-
-(defn add-ssl-to-pipeline-fn
-  [f]
-  (let [pipeline (f)
-        ssl-handler (SslHandler. ssl-engine)]
-    (.addFirst pipeline "ssl-handler" ssl-handler)
-    pipeline))
-
 (defn mk-client-factory
-  [pipeline-fn options]
-  (let [ch-group (DefaultChannelGroup.)
-        bootstrap (mk-client-bootstrap (mk-thread-pool))
-        ssl-bootstrap (mk-client-bootstrap (mk-thread-pool))
-        ssl-pipeline-fn #(add-ssl-to-pipeline-fn pipeline-fn)]
-    (configure-bootstrap bootstrap merge-netty-client-opts pipeline-fn ch-group options)
-    (configure-bootstrap ssl-bootstrap merge-netty-client-opts ssl-pipeline-fn ch-group options)
+  [pipeline-fn ssl-pipeline-fn options]
+  (let [ch-group        (DefaultChannelGroup.)
+        thread-pool     (mk-thread-pool)
+        bootstrap       (mk-client-bootstrap thread-pool)
+        ssl-bootstrap   (mk-client-bootstrap thread-pool)]
+
+    ;; Configure the first bootstrap
+    (configure-bootstrap
+     bootstrap merge-netty-client-opts pipeline-fn ch-group options)
+    ;; Configure the second (SSL) bootstrap
+    (configure-bootstrap
+     ssl-bootstrap merge-netty-client-opts ssl-pipeline-fn ch-group options)
+    ;; And... scene
     [bootstrap ssl-bootstrap ch-group]))
 
 (defn connect-client
   ([factory addr ssl? callback]
      (connect-client factory addr ssl? nil callback))
-  ([[^ClientBootstrap bootstrap ^ClientBootstrap ssl-bootstrap] addr ssl? local-addr callback]
-     (let [bootstrap (if ssl? ssl-bootstrap bootstrap)]
-      (on-complete
-       (if local-addr
-         (.connect bootstrap addr (mk-socket-addr local-addr))
-         (.connect bootstrap addr))
-       (fn [^ChannelFuture future]
-         (if (.isSuccess future)
-           (callback (.getChannel future))
-           (callback (.getCause future))))))))
+  ([factory addr ssl? local-addr callback]
+     (let [[^ClientBootstrap bootstrap ^ClientBootstrap ssl-bootstrap] factory]
+       (let [bootstrap (if ssl? ssl-bootstrap bootstrap)
+             connect-future
+             (if local-addr
+               (.connect bootstrap addr (mk-socket-addr local-addr))
+               (.connect bootstrap addr))]
+
+         (on-complete
+          connect-future
+          (fn [^ChannelFuture future]
+            (if (.isSuccess future)
+              (callback (.getChannel future))
+              (callback (.getCause future)))))))))

@@ -95,7 +95,6 @@
        ;; The connection will either be closed or it will be moved
        ;; into the connection pool which has it's own keepalive
        ;; timeout, so clear any existing timeout for this connection.
-
        (if (and (.keepalive? current-state)
                 (not (.aborted? current-state)))
          (pool/checkin-conn (.pool current-state) (.ch current-state))

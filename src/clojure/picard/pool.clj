@@ -3,7 +3,8 @@
    [picard.utils :rename {debug debug*}])
   (:require
    [clojure.contrib.string :as str]
-   [picard.netty :as netty])
+   [picard.netty :as netty]
+   [picard.ssl :as ssl])
   (:import
    picard.ChannelPool
    [org.jboss.netty.channel
@@ -71,6 +72,13 @@
   [pool]
   (netty/create-pipeline
    :track-closes (connection-count-handler pool)
+   :codec        (HttpClientCodec.)))
+
+(defn- create-ssl-pipeline
+  [pool]
+  (netty/create-pipeline
+   :track-closes (connection-count-handler pool)
+   :ssl          (ssl/mk-client-handler)
    :codec        (HttpClientCodec.)))
 
 (defn- add-handler
@@ -161,7 +169,10 @@
            state   (atom [0 {}])]
        [state
         (ChannelPool. (options :keepalive) netty/global-timer)
-        (netty/mk-client-factory #(create-pipeline state) options)
+        (netty/mk-client-factory
+         #(create-pipeline state)
+         #(create-ssl-pipeline state)
+         options)
         options])))
 
 (defn shutdown
