@@ -129,21 +129,32 @@
   (throw (Exception. (str "Not expecting an HTTP request right now, "
                           "pipelining is not yet supported."))))
 
-(defn- clear-timeout
-  [state ^State current-state]
+;; A lock must be thrown around timeout handling because otherwise
+;; there could be a race condition where old timeouts are lost before
+;; new ones are set.
+;; TODO: Eventually we want to move the lock around the entire state change.
+(defn- clear-timeout*
+  [^State current-state]
   (when-let [old-timeout (.timeout current-state)]
     (netty/cancel-timeout old-timeout)))
 
+(defn- clear-timeout
+  [state]
+  (locking state
+    (clear-timeout* @state)))
+
 (defn- bump-timeout
-  [state ^State current-state]
-  (clear-timeout state current-state)
-  (let [new-timeout
-        (netty/on-timeout
-         global-timer (* (:timeout (.options current-state)) 1000)
-         #(handle-err
-           state
-           (Exception. "Server HTTP exchange timed out") current-state))]
-    (swap! state #(assoc % :timeout new-timeout))))
+  [state]
+  (locking state
+    (let [current-state ^State @state]
+      (clear-timeout* current-state)
+      (let [new-timeout
+            (netty/on-timeout
+             global-timer (* (:timeout (.options current-state)) 1000)
+             #(handle-err
+               state
+               (Exception. "Server HTTP exchange timed out") current-state))]
+        (swap! state #(assoc % :timeout new-timeout))))))
 
 (defn- clear-keepalive-timeout
   [keepalive-timeout-atom]
@@ -157,14 +168,15 @@
       (.ch current-state)
       (.options current-state)))
   ([keepalive-timeout-atom ^Channel ch options]
-     (clear-keepalive-timeout keepalive-timeout-atom)
-     (reset!
-      keepalive-timeout-atom
-      (netty/on-timeout
-       global-timer (* (:keepalive options) 1000)
-       (fn []
-         (debug {:msg "Connection reached max keepalive time." :event ch})
-         (.close ch))))))
+     (locking keepalive-timeout-atom
+       (clear-keepalive-timeout keepalive-timeout-atom)
+       (reset!
+        keepalive-timeout-atom
+        (netty/on-timeout
+         global-timer (* (:keepalive options) 1000)
+         (fn []
+           (debug {:msg "Connection reached max keepalive time." :event ch})
+           (.close ch)))))))
 
 (defn- write-msg
   [state ^State current-state msg]
@@ -196,7 +208,7 @@
         ;; Either the connection will be closed or a new timer will be
         ;; created. Either way, we don't want the existing activity
         ;; timer to trigger
-        (clear-timeout state current-state)
+        (clear-timeout state)
 
         (if (.keepalive? current-state)
           (do
@@ -310,7 +322,7 @@
        (let [channel ^Channel (.ch current-state)]
          ;; Clear any timeouts for the current connection since we're
          ;; about to close it
-         (clear-timeout state current-state)
+         (clear-timeout state)
          (clear-keepalive-timeout (.keepalive-timeout current-state))
 
          (if-let [last-write ^ChannelFuture (.last-write current-state)]
@@ -346,7 +358,7 @@
          (or (= evt :response) (= evt :body))
          (if (.upstream current-state)
            (when-let [next-dn-fn (.next-dn-fn current-state)]
-             (bump-timeout state current-state)
+             (bump-timeout state)
              (next-dn-fn state evt val current-state))
            (throw (Exception.
                    (str "Not callable until request is sent.\n"
@@ -391,7 +403,7 @@
 
     (reset! channel-state state)
     (clear-keepalive-timeout keepalive-timeout)
-    (bump-timeout state current-state)
+    (bump-timeout state)
 
     (try
       (let [upstream-fn   (app (mk-downstream-fn state))
@@ -451,7 +463,7 @@
    ;; to handle it.
    (instance? HttpChunk msg)
    (try
-     (bump-timeout state current-state)
+     (bump-timeout state)
      ((.next-up-fn current-state) state msg current-state)
      (catch Exception err
        (handle-err state err current-state)))

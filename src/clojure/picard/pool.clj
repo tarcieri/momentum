@@ -142,8 +142,9 @@
 
   (when (.isOpen conn)
     (debug
-     (apply pool-info "Returning connection to pool"
-            (.getRemoteAddress conn) @state))
+     (assoc (apply pool-info "Returning connection to pool"
+                   (.getRemoteAddress conn) @state)
+       :event conn))
     (.. conn getPipeline removeLast)
     (.checkin pool conn)))
 

@@ -55,26 +55,32 @@
   (= HttpResponseStatus/CONTINUE
      (.getStatus resp)))
 
-(defn- clear-timeout
+(defn- clear-timeout*
   [^State current-state]
   (when-let [old-timeout (.timeout current-state)]
     (netty/cancel-timeout old-timeout)))
 
+(defn- clear-timeout
+  [state]
+  (locking state (clear-timeout* @state)))
+
 (defn- bump-timeout
-  [state ^State current-state]
-  (clear-timeout current-state)
-  (let [new-timeout
-        (netty/on-timeout
-         netty/global-timer
-         (* ((.options current-state) :timeout) 1000)
-         #(handle-err
-           state
-           (Exception.
-            (str "Client timed out: " (System/identityHashCode (.timeout @state))))
-           @state))]
-    (debug {:msg   (str "Setting timer: " (System/identityHashCode new-timeout))
-            :state current-state})
-    (swap! state #(assoc % :timeout new-timeout))))
+  [state]
+  (locking state
+    (let [current-state ^State @state]
+      (clear-timeout* current-state)
+      (let [new-timeout
+            (netty/on-timeout
+             netty/global-timer
+             (* ((.options current-state) :timeout) 1000)
+             #(handle-err
+               state
+               (Exception.
+                (str "Client timed out: " (System/identityHashCode (.timeout @state))))
+               @state))]
+        (debug {:msg   (str "Setting timer: " (System/identityHashCode new-timeout))
+                :state current-state})
+        (swap! state #(assoc % :timeout new-timeout))))))
 
 (defn- request-complete
   [_ evt val _]
@@ -84,7 +90,7 @@
                             "  Value: " val)))))
 
 (defn- finalize-request
-  [^State current-state]
+  [state ^State current-state]
   (when (= request-complete (.next-dn-fn current-state))
     ;; Send an upstream message indicating that the exchange is complete
     (when-not (.aborted? current-state)
@@ -96,9 +102,14 @@
     ;; have been fully flushed to the socket.
     (netty/on-complete
      (.last-write current-state)
-     (fn [_]
+     (fn [future]
+       (debug (let [current-state @state]
+                {:msg   "Last write finished, cleaning up exchange"
+                 :event future
+                 :state current-state}))
+
        ;; Clear the timeout since there will be no other user code called
-       (clear-timeout current-state)
+       (clear-timeout state)
 
        ;; The connection will either be closed or it will be moved
        ;; into the connection pool which has it's own keepalive
@@ -150,7 +161,7 @@
             (assoc current-state
               :next-dn-fn response-pending
               :last-write (or last-write (.last-write current-state)))))
-         finalize-request))
+         #(finalize-request state %)))
       (let [last-write (.write ch (mk-netty-chunk val))]
         (swap!
          state
@@ -175,7 +186,7 @@
              (debug {:msg "Sending upstream" :event [:body nil]
                      :state current-state})
              (upstream-fn :body nil)
-             (finalize-request current-state))))
+             (finalize-request state current-state))))
       (do
         (debug {:msg "Sending upstream" :event [:body (.getContent msg)]
                 :state @state})
@@ -223,7 +234,7 @@
          (debug {:msg "Sending upstream" :event [:response response]
                  :state current-state})
          (upstream-fn :response response)
-         (finalize-request current-state))))))
+         (finalize-request state current-state))))))
 
 (defn- initial-write-succeeded
   [state ^State current-state]
@@ -246,7 +257,7 @@
       ;; the response to complete.
       :else
       (assoc current-state :next-dn-fn response-pending)))
-   finalize-request)
+   #(finalize-request state %))
   ;; Signal upstream that we are connected and ready to start handling
   ;; events.
   ((.upstream current-state) :connected nil))
@@ -279,7 +290,7 @@
        (try
          ((.upstream current-state) :abort err)
          (catch Exception _))
-       (finalize-request current-state)))))
+       (finalize-request state current-state)))))
 
 (defn- netty-bridge
   [state]
@@ -294,7 +305,7 @@
            (cond-let
             [msg (netty/message-event evt)]
             (try
-              (bump-timeout state current-state)
+              (bump-timeout state)
               ((.next-up-fn current-state) state msg current-state)
               (catch Exception err
                 (handle-err state err current-state)))
@@ -311,6 +322,8 @@
              (= ch-state ChannelState/INTEREST_OPS)
              (handle-ch-interest-change state current-state writable?))
 
+            ;; TODO: Bug - The write completion event might be for a
+            ;; write from the previous exchange.
             [_ (netty/write-completion-event evt)]
             (when (and (= write-pending (.next-dn-fn current-state))
                        (.. evt getFuture isSuccess))
@@ -345,7 +358,7 @@
 
            (= evt :body)
            (when-let [next-dn-fn (.next-dn-fn current-state)]
-             (bump-timeout state current-state)
+             (bump-timeout state)
              (next-dn-fn state evt val current-state))))))))
 
 (defn- mk-initial-state
@@ -400,7 +413,11 @@
               ;; is done. However, nothing was written to the socket
               ;; yet so we can return the connection to pool for
               ;; future use.
-              (pool/checkin-conn pool ch-or-err)
+              (do
+                (debug {:msg   "Exchange canceled before request written."
+                        :event ch-or-err
+                        :state current-state})
+                (pool/checkin-conn pool ch-or-err))
 
               ;; Otherwise, do stuff with it
               (let [write-future (.write ch-or-err (req->netty-req request))]
@@ -408,7 +425,7 @@
                         :event [:request request]
                         :state current-state})
                 ;; Start tracking timeouts for this exchange.
-                (bump-timeout state current-state)
+                (bump-timeout state)
 
                 ;; Save off the write future
                 (swap! state #(assoc % :last-write write-future))
@@ -417,6 +434,11 @@
                 (netty/on-complete
                  write-future
                  (fn [^ChannelFuture future]
+                   (debug
+                    (let [current-state @state]
+                      (debug {:msg   "Initial write finished"
+                              :event future
+                              :state current-state})))
                    ;; When the write is not successfull, then there is something
                    ;; wrong with the connection. If the connection is
                    ;; "fresh" then it was established for this request
@@ -439,7 +461,7 @@
                        (do
                          ;; Clear the timeout first since we're going
                          ;; to discard the connection in a minute.
-                         (clear-timeout current-state)
+                         (clear-timeout state)
                          ;; Cleanup the bogus connection to make sure
                          ;; we don't hit any max connections next time
                          ;; around.
