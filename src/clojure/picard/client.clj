@@ -20,6 +20,8 @@
     HttpResponseDecoder
     HttpResponseStatus
     HttpVersion]
+   [org.jboss.netty.handler.timeout
+    TimeoutException]
    [java.io
     IOException]))
 
@@ -62,7 +64,8 @@
 
 (defn- clear-timeout
   [state]
-  (locking state (clear-timeout* @state)))
+  (locking state
+    (clear-timeout* @state)))
 
 (defn- bump-timeout
   [state]
@@ -75,7 +78,7 @@
              (* ((.options current-state) :timeout) 1000)
              #(handle-err
                state
-               (Exception.
+               (TimeoutException.
                 (str "Client timed out: " (System/identityHashCode (.timeout @state))))
                @state))]
         (debug {:msg   (str "Setting timer: " (System/identityHashCode new-timeout))

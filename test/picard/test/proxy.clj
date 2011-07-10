@@ -142,6 +142,17 @@
       (is (not (received-event? (fn [evt val] (= :abort evt)))))
       (client/shutdown-pool pool))))
 
+(defcoretest returns-504-when-upstream-times-out
+  (fn [dn] (fn [_ _]))
+  (let [pool (client/mk-pool)]
+    (with-app (prox/mk-proxy {:timeout 1 :pool pool})
+      (GET "/" {"host" "localhost:4040"})
+
+      (Thread/sleep 800)
+      (is (= (last-response-status) 504))
+      (is (not (received-event? (fn [evt val] (= :abort evt)))))
+      (client/shutdown-pool pool))))
+
 (defcoretest observes-scheme-option
   :hello-world
   (let [pool (client/mk-pool)]

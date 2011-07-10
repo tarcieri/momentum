@@ -7,6 +7,7 @@
    [clojure.contrib.string]
    [picard.client  :as client])
   (:import
+   org.jboss.netty.handler.timeout.TimeoutException
    [java.net
     ConnectException]))
 
@@ -29,18 +30,20 @@
   (= body :chunked))
 
 (defn- bad-gateway?
-  [current-state evt val]
-  (and (= :abort evt)
-       (instance? ConnectException val)
-       (or (nil? current-state)
-           (= :pending current-state))))
+  [{responded? :responded?} val]
+  (and (instance? ConnectException val)
+       (not responded?)))
 
 (defn- service-unavailable?
-  [current-state evt val]
-  (and (= :abort evt)
-       (instance? picard.exceptions.PoolFullException val)
-       (or (nil? current-state)
-           (= :pending current-state))))
+  [{responded? :responded?} val]
+  (and (instance? picard.exceptions.PoolFullException val)
+       (not responded?)))
+
+(defn- gateway-timeout?
+  [{responded? :responded?} val]
+  (let [ret (and (instance? TimeoutException val)
+                 (not responded?))]
+    ret))
 
 (defn- add-xff-header
   [hdrs]
@@ -73,6 +76,7 @@
 
 (def bad-gateway         [502 {"content-length" "0"} nil])
 (def service-unavailable [503 {"content-length" "0"} nil])
+(def gateway-timeout     [504 {"content-length" "0"} nil])
 
 (defn- initiate-request
   [state opts req downstream]
@@ -82,26 +86,54 @@
      (fn [evt val]
        (debug {:msg "Client event"
                :event [evt val]})
-       (cond
-        (bad-gateway? @state evt val)
-        (downstream :response bad-gateway)
+       (try
+         (cond
+          (= :response evt)
+          (do
+            ;; Because, I think that there might be some crazy race
+            ;; condition where the response gets sent before :connected
+            ;; TODO: Make sure that this isn't the case.
+            (locking req
+              (when (= :pending (@state :upstream))
+                (downstream :resume nil))
+              (swap! state #(assoc % :upstream client-dn :responded? true)))
+            (downstream evt val))
 
-        (service-unavailable? @state evt val)
-        (downstream :response service-unavailable)
+          (= :body evt)
+          (downstream evt val)
 
-        (= :connected evt)
-        (locking req
-          (let [current-state @state]
-            (when (= :pending current-state)
+          (= :connected evt)
+          (locking req
+            (when (= :pending (@state :upstream))
               (downstream :resume nil))
-            (reset! state client-dn)))
+            (swap! state #(assoc % :upstream client-dn)))
 
-        (not= :done evt)
-        (downstream evt val)))))
+          (= :abort evt)
+          (do
+            (swap! state #(dissoc % :upstream))
+            (let [current-state @state]
+              (cond
+               (bad-gateway? current-state val)
+               (downstream :response bad-gateway)
+
+               (service-unavailable? current-state val)
+               (downstream :response service-unavailable)
+
+               (gateway-timeout? current-state val)
+               (downstream :response gateway-timeout)
+
+               :else
+               (downstream evt val))))
+
+          (not= :done evt)
+          (downstream evt val))
+         (catch Exception e
+           (.printStackTrace e))))))
+
   (when (chunked? req)
     (locking req
-      (when-not @state
-        (reset! state :pending)
+      (when-not (@state :upstream)
+        (swap! state #(assoc % :upstream :pending))
         (downstream :pause nil)))))
 
 (def default-options
@@ -113,7 +145,7 @@
   ([opts]
      (let [opts (merge default-options opts)]
        (fn [downstream]
-         (let [state (atom nil)]
+         (let [state (atom {})]
            (defstream
              ;; Handling the initial request
              (request [req]
@@ -131,7 +163,5 @@
              (done []) ;; We don't care about this
              ;; Handling all other events
              (else [evt val]
-               (if-let [upstream @state]
-                 (upstream evt val)
-                 (throw (Exception. (str "Not expecting events:\n"
-                                         [evt val])))))))))))
+               (when-let [upstream (@state :upstream)]
+                 (upstream evt val)))))))))
