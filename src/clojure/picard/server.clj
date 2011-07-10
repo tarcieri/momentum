@@ -301,24 +301,25 @@
 
 (defn- handle-err
   [state err ^State current-state]
-  (swap-then!
-   state
-   #(assoc % :aborting? true)
-   (fn [^State current-state]
-     (debug {:msg "Handling error" :event err :state current-state})
-     (let [channel ^Channel (.ch current-state)]
-       ;; Clear any timeouts for the current connection since we're
-       ;; about to close it
-       (clear-timeout state current-state)
-       (clear-keepalive-timeout (.keepalive-timeout current-state))
+  (when-not (.aborting? current-state)
+    (swap-then!
+     state
+     #(assoc % :aborting? true)
+     (fn [^State current-state]
+       (debug {:msg "Handling error" :event err :state current-state})
+       (let [channel ^Channel (.ch current-state)]
+         ;; Clear any timeouts for the current connection since we're
+         ;; about to close it
+         (clear-timeout state current-state)
+         (clear-keepalive-timeout (.keepalive-timeout current-state))
 
-       (if-let [last-write ^ChannelFuture (.last-write current-state)]
-         (.addListener last-write netty/close-channel-future-listener)
-         (when (.isOpen channel)
-           (.close channel)))
+         (if-let [last-write ^ChannelFuture (.last-write current-state)]
+           (.addListener last-write netty/close-channel-future-listener)
+           (when (.isOpen channel)
+             (.close channel)))
 
-       (try ((.upstream current-state) :abort err)
-            (catch Exception _ nil))))))
+         (try ((.upstream current-state) :abort err)
+              (catch Exception _ nil)))))))
 
 (defn- mk-downstream-fn
   [state]

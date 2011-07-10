@@ -63,10 +63,17 @@
 (defn- bump-timeout
   [state ^State current-state]
   (clear-timeout current-state)
-  (let [new-timeout (netty/on-timeout
-                     netty/global-timer
-                     (* ((.options current-state) :timeout) 1000)
-                     #(handle-err state (Exception. "Timed out") @state))]
+  (let [new-timeout
+        (netty/on-timeout
+         netty/global-timer
+         (* ((.options current-state) :timeout) 1000)
+         #(handle-err
+           state
+           (Exception.
+            (str "Client timed out: " (System/identityHashCode (.timeout @state))))
+           @state))]
+    (debug {:msg   (str "Setting timer: " (System/identityHashCode new-timeout))
+            :state current-state})
     (swap! state #(assoc % :timeout new-timeout))))
 
 (defn- request-complete
@@ -85,13 +92,14 @@
         (debug {:msg "Sending upstream" :event [:done nil] :state current-state})
         (upstream :done nil)))
 
-    ;; Clear the timeout since there will be no other user code called
-    (clear-timeout current-state)
     ;; Don't close the connection or reuse it until all pending writes
     ;; have been fully flushed to the socket.
     (netty/on-complete
      (.last-write current-state)
      (fn [_]
+       ;; Clear the timeout since there will be no other user code called
+       (clear-timeout current-state)
+
        ;; The connection will either be closed or it will be moved
        ;; into the connection pool which has it's own keepalive
        ;; timeout, so clear any existing timeout for this connection.
