@@ -106,22 +106,22 @@
     (netty/on-complete
      (.last-write current-state)
      (fn [future]
-       (debug (let [current-state @state]
-                {:msg   "Last write finished, cleaning up exchange"
+       (let [current-state ^State @state]
+         (debug {:msg   "Last write finished, cleaning up exchange"
                  :event future
-                 :state current-state}))
+                 :state current-state})
 
-       ;; Clear the timeout since there will be no other user code called
-       (clear-timeout state)
+         ;; Clear the timeout since there will be no other user code called
+         (clear-timeout state)
 
-       ;; The connection will either be closed or it will be moved
-       ;; into the connection pool which has it's own keepalive
-       ;; timeout, so clear any existing timeout for this connection.
-       (if (and (.keepalive? current-state)
-                (not (.aborted? current-state)))
-         (pool/checkin-conn (.pool current-state) (.ch current-state))
-         (when-let [ch (.ch current-state)]
-           (pool/close-conn (.pool current-state) ch)))))))
+         ;; The connection will either be closed or it will be moved
+         ;; into the connection pool which has it's own keepalive
+         ;; timeout, so clear any existing timeout for this connection.
+         (if (and (.keepalive? current-state)
+                  (not (.aborted? current-state)))
+           (pool/checkin-conn (.pool current-state) (.ch current-state))
+           (when-let [ch (.ch current-state)]
+             (pool/close-conn (.pool current-state) ch))))))))
 
 (defn- connection-pending
   [_ evt val _]
