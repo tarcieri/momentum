@@ -40,7 +40,6 @@
 
 (defn- gzip-entire-body
   [deflater crc body]
-  (println "GZIPPING ENTIRE BODY")
   (let [baos (ByteArrayOutputStream.)
         buf (byte-array 4092)
         bytes (body->byte-array body)]
@@ -64,19 +63,15 @@
           (do
             (.write baos (mk-trailer deflater crc))
             (.close baos)
-            (let [channel-buffer (ChannelBuffers/copiedBuffer (.toByteArray baos))]
-              channel-buffer)))))))
+            (ChannelBuffers/copiedBuffer (.toByteArray baos))))))))
 
 (defn- send-chunks
   [deflater downstream buf]
-  (println "GZIPPING CHUNKS")
   (let [buf-len (alength buf)]
     (loop []
       (let [compressed-bytes (.deflate deflater buf 0 buf-len)]
         (if-not (= 0 compressed-bytes)
           (let [channel-buffer (ChannelBuffers/copiedBuffer buf 0 compressed-bytes)]
-            (println "channel buffer: ")
-            (println (ChannelBuffers/hexDump channel-buffer))
             (downstream :body channel-buffer)
             (recur)))))))
 
@@ -104,8 +99,12 @@
       (downstream :body (ChannelBuffers/wrappedBuffer (mk-trailer deflater crc)))
       (downstream :body nil))))
 
-(def default-opts {:gzip-content-types #{"text/html"
-                                         "text/javascript"}})
+(def default-opts {:gzip-content-types #{"text/plain"
+                                         "text/html"
+                                         "text/xhtml"
+                                         "text/javascript"
+                                         "application/javascript"
+                                         "text/css"}})
 
 (defn encoder
   ([app] (encoder app default-opts))
@@ -134,15 +133,18 @@
              (.reset deflater)
 
              ;; send the resposne with appropriate headers
-             (let [content-type (string/trim (first (string/split #";" (or content-type-header ""))))
-                   gzip-content-type? (contains? (:gzip-content-types opts) content-type)]
+             (let [content-type-header (content-type hdrs)
+                   gzip-content-type? (contains? (:gzip-content-types opts) content-type-header)]
                (if-not (and gzip-content-type? (:accept-gzip? @state))
                  (downstream :response resp)
                  (let [hdrs (assoc hdrs "content-encoding" "gzip")]
                    (swap! state #(assoc % :gzip? true))
                    (if (= :chunked body)
-                     (downstream :response [status hdrs body])
-                     (downstream :response [status hdrs (gzip-entire-body deflater crc body)]))))))
+                     (let [hdrs (-> hdrs (assoc "transfer-encoding" "chunked") (dissoc "content-length"))]
+                       (downstream :response [status hdrs body]))
+                     (let [gzipped-body (gzip-entire-body deflater crc body)
+                           hdrs (assoc hdrs "content-length" (.readableBytes gzipped-body))]
+                       (downstream :response [status hdrs gzipped-body])))))))
 
            (body [chunk]
              (if-not (:gzip? @state)
