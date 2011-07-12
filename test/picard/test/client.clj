@@ -299,6 +299,38 @@
 
   (is (= 2 (count (netty-connect-evts)))))
 
+;; TODO: Should HEAD responses w/ TE chunked return an 0 content chunk?
+(defcoretest keepalive-head-requests-te-chunked
+  [_ ch]
+  (deftrackedapp [dn]
+    (defstream
+      (request [request]
+        (dn :response [200 {"transfer-encoding" "chunked"
+                            "foo"               "bar"} nil]))))
+
+  (let [pool (picard/mk-pool {:keepalive 1})]
+    (dotimes [i 3]
+      (client/request
+       ["localhost" 4040]
+       [{:path-info "/" :request-method "HEAD"}]
+       {:pool pool}
+       (fn [_] (fn [evt val]
+                (when (instance? Exception val)
+                  (.printStackTrace val))
+                (enqueue ch [evt val]))))
+
+      (is (next-msgs-for
+           ch
+           :connected nil
+           :response  [200 {:http-version [1 1]
+                            "foo"         "bar"} nil]
+           :done nil))
+
+      (Thread/sleep 10))
+    (picard/shutdown-pool pool))
+
+  (is (= 2 (count (netty-connect-evts)))))
+
 (defcoretest keepalive-204-responses
   [_ ch]
   (deftrackedapp [dn]
@@ -350,7 +382,7 @@
     (picard/shutdown-pool pool)
     (is (= 2 (count (netty-connect-evts))))))
 
-(defcoretest ^{:focus true} keepalive-304-responses-chunked
+(defcoretest keepalive-304-responses-chunked
   [_ ch]
   (deftrackedapp [dn]
     (fn [evt val]

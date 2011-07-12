@@ -132,8 +132,14 @@
         (dn :body "Hello")
         (dn :body nil))))
 
+  (http-write "HEAD / HTTP/1.1\r\n\r\n")
+
+  (is (receiving
+       "HTTP/1.1 200 OK\r\n"
+       "transfer-encoding: chunked\r\n\r\n"))
+
   (http-write "HEAD / HTTP/1.1\r\n"
-              "Connection: close\r\n\r\n")
+              "connection: close\r\n\r\n")
 
   (is (received-response
        "HTTP/1.1 200 OK\r\n"

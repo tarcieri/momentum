@@ -7,11 +7,10 @@
    [picard.ssl :as ssl])
   (:import
    picard.ChannelPool
+   picard.HttpClientCodec
    [org.jboss.netty.channel
     Channel
     ChannelPipeline]
-   [org.jboss.netty.handler.codec.http
-    HttpClientCodec]
    java.net.InetSocketAddress))
 
 ;; TODO:

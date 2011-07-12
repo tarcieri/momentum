@@ -214,7 +214,7 @@
 
           ;; If the response is chunked, then we need to
           ;; stream the body through
-          (.isChunked msg)
+          (and (not (.head? current-state)) (.isChunked msg))
           (assoc current-state
             :keepalive? keepalive?
             :next-up-fn stream-or-finalize-response)
@@ -301,7 +301,7 @@
     (netty/upstream-stage
      (fn [_ ^ChannelEvent evt]
        (let [current-state ^State @state]
-         (debug {:msg "Netty event"
+         (debug {:msg   "Netty event"
                  :event evt
                  :state current-state})
          (when-not (.aborted? current-state)
