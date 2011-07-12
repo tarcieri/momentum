@@ -19,11 +19,12 @@
   [[{proxy-host :proxy-host host "host" :as hdrs}]]
   (if proxy-host
     proxy-host
-    (let [[host ^String port] (-> host str/trim (str/split #":" 2))]
+    (let [[host ^String port] (-> host str/trim (str/split #":" 2))
+          ssl? (request-ssl? hdrs)]
       (if (or (nil? port) (= "" port))
-        [host (if (request-ssl? hdrs) 443 80)]
+        [host (if ssl? 443 80) ssl?]
         [host (try (Integer. port)
-                   (catch NumberFormatException _))]))))
+                   (catch NumberFormatException _)) ssl?]))))
 
 (defn- chunked?
   [[_ _ body]]
