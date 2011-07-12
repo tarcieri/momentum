@@ -232,7 +232,7 @@
 
   ;; Need to sleep a second since the response might not have been
   ;; returned yet
-  (Thread/sleep 10)
+  (Thread/sleep 100)
   (client/request
    ["localhost" 4040]
    [{:path-info "/" :request-method "GET"}]
@@ -246,7 +246,7 @@
                          "content-length" "5"} "Hello"]
        :done nil))
 
-  (Thread/sleep 10)
+  (Thread/sleep 100)
   (client/request
    ["localhost" 4040]
    [{:path-info          "/zomg"
@@ -294,7 +294,7 @@
                             "content-length" "5"} nil]
            :done nil))
 
-      (Thread/sleep 10))
+      (Thread/sleep 100))
     (picard/shutdown-pool pool))
 
   (is (= 2 (count (netty-connect-evts)))))
@@ -326,7 +326,7 @@
                             "foo"         "bar"} nil]
            :done nil))
 
-      (Thread/sleep 10))
+      (Thread/sleep 100))
     (picard/shutdown-pool pool))
 
   (is (= 2 (count (netty-connect-evts)))))
@@ -352,7 +352,7 @@
            :response  [204 {:http-version [1 1]} nil]
            :done      nil))
 
-      (Thread/sleep 10))
+      (Thread/sleep 100))
     (picard/shutdown-pool pool)
     (is (= 2 (count (netty-connect-evts))))))
 
@@ -378,7 +378,7 @@
                             :http-version [1 1]} nil]
            :done      nil))
 
-      (Thread/sleep 10))
+      (Thread/sleep 100))
     (picard/shutdown-pool pool)
     (is (= 2 (count (netty-connect-evts))))))
 
@@ -405,7 +405,7 @@
                             :http-version [1 1]} nil]
            :done      nil))
 
-      (Thread/sleep 10))
+      (Thread/sleep 100))
     (picard/shutdown-pool pool)
     (is (= 2 (count (netty-connect-evts))))))
 
