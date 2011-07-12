@@ -148,7 +148,7 @@
     (with-app (prox/mk-proxy {:timeout 1 :pool pool})
       (GET "/" {"host" "localhost:4040"})
 
-      (Thread/sleep 800)
+      (Thread/sleep 1200) ;; LOL, need to fix timeout crap
       (is (= (last-response-status) 504))
       (is (not (received-event? (fn [evt val] (= :abort evt)))))
       (client/shutdown-pool pool))))
