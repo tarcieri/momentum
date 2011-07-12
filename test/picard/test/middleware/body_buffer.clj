@@ -76,8 +76,9 @@
            [200 {} "YAY"]))))
 
 (deftest disabling-buffering-on-response
-  (with-app (middleware/body-buffer chunked-app
-                                    {:downstream false})
+  (with-app (middleware/body-buffer
+             chunked-app
+             {:downstream false})
     (GET "/")
 
     (is (= (last-response)
@@ -85,3 +86,25 @@
 
     (is (= (last-body-chunks)
            ["Hello" "World"]))))
+
+(deftest errors-out-when-hitting-maximum-response-body-size
+  (with-app
+    (middleware/body-buffer
+     chunked-app {:max-size 4})
+    (GET "/")
+    (is (= (last-response)
+           [500 {"content-length" "0"
+                 "x-picard-error-msg" "Response body too large"} nil]))))
+
+(deftest errors-out-when-hitting-maximum-request-body-size
+  (with-app
+    (middleware/body-buffer
+     hello-world-app {:max-size 4})
+    (let [upstream  (POST "/" :chunked)]
+      (upstream :body (to-channel-buffer "ZOMG"))
+      (upstream :body (to-channel-buffer "HI2U"))
+      (upstream :body nil))
+
+    (is (= (last-response)
+           [413 {"content-length" "0"
+                 "x-picard-error-msg" "Request body too large."} nil]))))
