@@ -38,7 +38,7 @@
 
 (defn- json-msg?
   [hdrs]
-  (contains? content-types (hdrs "content-type")))
+  (contains? content-types (content-type hdrs)))
 
 (defn- encoder
   [stream]

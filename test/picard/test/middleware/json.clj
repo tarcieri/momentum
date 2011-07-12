@@ -32,6 +32,18 @@
           {"content-type" "application/json"}
           "{\"hello\": 1}")
 
+    (is (= {"hello" 1} (last-response-headers :request-body)))
+
+    (POST "/simple-request"
+          {"content-type" "APPLICATION/JSON"}
+          "{\"hello\": 1}")
+
+    (is (= {"hello" 1} (last-response-headers :request-body)))
+
+    (POST "/simple-request"
+          {"content-type" "application/json; charset=utf-8"}
+          "{\"hello\": 1}")
+
     (is (= {"hello" 1} (last-response-headers :request-body)))))
 
 (deftest doesnt-decode-if-no-content-type

@@ -1,5 +1,5 @@
 (ns picard.helpers
-  (:require [clojure.contrib.string :as string])
+  (:require [clojure.contrib.string :as str])
   (:import
    [org.jboss.netty.buffer
     ChannelBuffer
@@ -54,9 +54,9 @@
    "https"
 
    (hdrs "x-forwarded-proto")
-   (-> (string/split #"\s*,\s*" 2 (hdrs "x-forwarded-proto"))
+   (-> (str/split #"\s*,\s*" 2 (hdrs "x-forwarded-proto"))
        first
-       string/lower-case)
+       str/lower-case)
 
    :else
    "http"))
@@ -68,7 +68,7 @@
 (defn request-url
   [hdrs]
   (let [[host port] (if-let [host-hdr (hdrs "host")]
-                      (string/split #":" 2 host-hdr)
+                      (str/split #":" 2 host-hdr)
                       (:remote-addr hdrs))
         port (cond
               (nil? port) 80
@@ -83,6 +83,11 @@
     (if (= 80 port)
       (URL. "http" host file)
       (URL. "http" host port file))))
+
+(defn content-type
+  [hdrs]
+  (when-let [content-type (re-find #"[^\s;]+" (hdrs "content-type" ""))]
+    (str/lower-case content-type)))
 
 (defn body-size
   ([body] (body-size :body body))
