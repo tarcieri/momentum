@@ -972,3 +972,23 @@
          :abort #(instance? Exception %)))
 
     (picard/shutdown-pool pool)))
+
+(defcoretest simple-request-methods
+  [ch1 ch2]
+  :hello-world
+
+  (client/GET
+   "http://localhost:4040" {"connection" "close"}
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch2 [evt val]))))
+
+  (is (next-msgs-for
+       ch1
+       :request [(includes-hdrs {:path-info      "/"
+                                 :request-method "GET"}) nil]))
+
+  (is (next-msgs-for
+       ch2
+       :connected nil
+       :response [200 (includes-hdrs {"content-type" "text/plain"}) "Hello"])))

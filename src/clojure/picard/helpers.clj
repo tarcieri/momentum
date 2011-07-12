@@ -12,7 +12,8 @@
    [java.util.concurrent
     TimeUnit]
    [java.net
-    URL]))
+    URL
+    URI]))
 
 ;; Conversions
 (defn to-channel-buffer
@@ -20,6 +21,21 @@
   (if (instance? ChannelBuffer str)
     str
     (ChannelBuffers/wrappedBuffer (.getBytes str))))
+
+(defn uri->request-headers
+  [^URI uri]
+  (let [host (.getHost uri)
+        port (.getPort uri)
+        path (.getPath uri)
+        host-and-port
+        (if (< port 0)
+          host (str host ":" port))]
+    ;; Make the headers for the specific URI
+    {:picard.url-scheme (.getScheme uri)
+     "host"             host-and-port
+     :http-version      [1 1]
+     :query-string      (or (.getQuery uri) "")
+     :path-info         (if (empty? path) "/" path)}))
 
 (defn response-status  [[status]]    status)
 (defn response-headers [[_ headers]] headers)

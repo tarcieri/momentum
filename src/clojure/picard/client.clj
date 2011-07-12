@@ -1,5 +1,7 @@
 (ns picard.client
-  (:use [picard.utils :rename {debug debug*}])
+  (:use
+   [picard.utils :rename {debug debug*}]
+   [picard.helpers])
   (:require
    [clojure.string :as str]
    [picard.netty   :as netty]
@@ -23,7 +25,9 @@
    [org.jboss.netty.handler.timeout
     TimeoutException]
    [java.io
-    IOException]))
+    IOException]
+   [java.net
+    URI]))
 
 (defrecord State
     [pool
@@ -495,3 +499,32 @@
       (let [[state downstream-fn] (mk-initial-state request accept-fn opts)]
         (initialize-request state addr request)
         downstream-fn))))
+
+(defn simple-request
+  [^String uri hdrs body accept-fn]
+  (let [uri          (URI. uri)
+        request-hdrs (merge (uri->request-headers uri) hdrs)
+        addr         [(or (.getHost uri) (hdrs "host"))
+                      (if (> (.getPort uri) 0) (.getPort uri))]]
+    (request addr [request-hdrs body] hdrs accept-fn)))
+
+(defmacro def-simple-request-for
+  [method]
+  `(defn ~method
+     ([uri# accept-fn#]
+        (~method uri# {} nil accept-fn#))
+     ([uri# hdrs-or-body# accept-fn#]
+        (if (map? hdrs-or-body#)
+          (~method uri# hdrs-or-body# "" accept-fn#)
+          (~method uri# {} hdrs-or-body# accept-fn#)))
+     ([uri# hdrs# body# accept-fn#]
+        (simple-request
+         uri# (assoc hdrs# :request-method ~(name method))
+         body# accept-fn#))))
+
+(def-simple-request-for HEAD)
+(def-simple-request-for GET)
+(def-simple-request-for POST)
+(def-simple-request-for PUT)
+(def-simple-request-for DELETE)
+
