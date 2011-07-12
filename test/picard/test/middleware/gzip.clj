@@ -42,7 +42,15 @@
     (GET "/" {"accept-encoding" "gzip"})
     (let [[_ _ body] (second (first (exchange-events (last-exchange))))]
       (is (= "hello world" (ungzip-body body)))
+      (is (= "gzip" ((last-response-headers) "content-encoding")))
       (is (= 200 (last-response-status))))))
+
+(deftest doesnt-gzip-without-header
+  (with-app (gzip/encoder simple-test-app)
+    (GET "/" {})
+    (is (not (= "gzip" ((last-response-headers) "content-encoding"))))
+    (is (= "hello world" (last-response-body)))
+    (is (= 200 (last-response-status)))))
 
 (defn- chunked-test-app
   [downstream]
@@ -79,3 +87,16 @@
                (.write baos2 buf 0 bytes-read)
                (recur))
              (is (= "hello world!\n" (String. (.toByteArray baos2)))))))))))
+
+(defn- nonsupported-content-type-app
+  [downstream]
+  (defstream
+    (request [req]
+      (downstream :response [200 {"content-type" "application/crazy""content-length" "11"} "hello world"]))))
+
+(deftest doesnt-gzip-without-appropriate-content-type
+  (with-app (gzip/encoder nonsupported-content-type-app)
+    (GET "/" {"accept-encoding" "gzip"})
+    (is (not (= "gzip" ((last-response-headers) "content-encoding"))))
+    (is (= "hello world" (last-response-body)))
+    (is (= 200 (last-response-status)))))
