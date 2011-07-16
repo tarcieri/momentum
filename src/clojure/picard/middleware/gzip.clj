@@ -123,7 +123,10 @@
                    accept-encodings (into #{} (string/split #"\s*,\s*" (string/trim accept-encoding-header)))
                    accept-gzip? (contains? accept-encodings "gzip")]
                (swap! state #(assoc % :accept-gzip? accept-gzip?))
-               (upstream :request req))))
+               (upstream :request req)))
+
+           (else [evt val]
+             (upstream evt val)))
 
          :downstream
          (defstream
@@ -149,4 +152,7 @@
            (body [chunk]
              (if-not (:gzip? @state)
                (downstream :body chunk)
-               (gzip-and-send state crc deflater downstream compressed-byte-buffer chunk))))))))
+               (gzip-and-send state crc deflater downstream compressed-byte-buffer chunk)))
+
+           (else [evt val]
+             (downstream evt val)))))))

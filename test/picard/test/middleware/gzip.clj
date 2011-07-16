@@ -56,7 +56,7 @@
   [downstream]
   (defstream
     (request [req]
-      (downstream :response [200 {"content-type" "text/html""content-length" "11"} :chunked])
+      (downstream :response [200 {"content-type" "text/html" "transfer-encoding" "chunked"} :chunked])
       (downstream :body "hello")
       (downstream :body " world")
       (downstream :body "!\n")
