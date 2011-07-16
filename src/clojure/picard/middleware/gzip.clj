@@ -16,6 +16,7 @@
     ChannelBuffers]))
 
 (def header-length (alength GzipUtils/header))
+(def trailer-length 8)
 
 (defn body->byte-array
   [body]
@@ -34,13 +35,15 @@
 
 (defn- mk-trailer
   [deflater crc]
-  (let [buf (byte-array 8)]
+  (let [buf (byte-array trailer-length)]
     (GzipUtils/writeTrailer deflater crc buf 0)
     buf))
 
 (defn- gzip-entire-body
-  [deflater crc body]
-  (let [baos (ByteArrayOutputStream.)
+  [body]
+  (let [deflater (Deflater. Deflater/DEFAULT_COMPRESSION true)
+        crc (CRC32.)
+        baos (ByteArrayOutputStream.)
         buf (byte-array 4092)
         bytes (body->byte-array body)]
     ;; write header
@@ -70,14 +73,14 @@
   (let [buf-len (alength buf)]
     (loop []
       (let [compressed-bytes (.deflate deflater buf 0 buf-len)]
-        (if-not (= 0 compressed-bytes)
+        (when-not (= 0 compressed-bytes)
           (let [channel-buffer (ChannelBuffers/copiedBuffer buf 0 compressed-bytes)]
             (downstream :body channel-buffer)
             (recur)))))))
 
-(defn- gzip-and-send
-  [state crc deflater downstream compressed-byte-buffer chunk]
-  (let [buffer-length (alength compressed-byte-buffer)
+(defn- gzip-and-send-chunk
+  [state downstream chunk deflater crc buf]
+  (let [buffer-length (alength buf)
         sent-header (:sent-header @state)]
     ;; update the crc and set the input
     (if (nil? chunk)
@@ -92,7 +95,7 @@
       (downstream :body (ChannelBuffers/wrappedBuffer GzipUtils/header)))
 
     ;; send the chunks
-    (send-chunks deflater downstream compressed-byte-buffer)
+    (send-chunks deflater downstream buf)
 
     ;; send the trailer if needed
     (when (nil? chunk)
@@ -109,50 +112,63 @@
 (defn encoder
   ([app] (encoder app default-opts))
   ([app opts]
-     (let [deflater (Deflater. Deflater/DEFAULT_COMPRESSION true)
-           crc (CRC32.)
-           compressed-byte-buffer (byte-array 4092)]
-       (defmiddleware
-         [state downstream upstream]
-         app
+     (defmiddleware
+       [state downstream upstream]
+       app
 
-         :upstream
-         (defstream
-           (request [[{accept-encoding-header "accept-encoding"} _ :as req]]
-             (let [accept-encoding-header (or accept-encoding-header "")
-                   accept-encodings (into #{} (string/split #"\s*,\s*" (string/trim accept-encoding-header)))
-                   accept-gzip? (contains? accept-encodings "gzip")]
-               (swap! state #(assoc % :accept-gzip? accept-gzip?))
-               (upstream :request req)))
+       :upstream
+       (defstream
+         (request [[{accept-encoding-header "accept-encoding"} _ :as req]]
+           ;; save off whether we accept gzip for this request and
+           ;; pass upstream
+           (let [accept-encoding-header (or accept-encoding-header "")
+                 accept-encodings (into #{} (string/split #"\s*,\s*" (string/trim accept-encoding-header)))
+                 accept-gzip? (contains? accept-encodings "gzip")]
+             (swap! state #(assoc % :accept-gzip? accept-gzip?))
+             (upstream :request req)))
 
-           (else [evt val]
-             (upstream evt val)))
+         ;; must pass all other events through, like pause/resume/abort
+         (else [evt val]
+           (upstream evt val)))
 
-         :downstream
-         (defstream
-           (response [[status {content-type-header "content-type" :as hdrs} body :as resp]]
-             ;; reset the checksum and the deflater
-             (.reset crc)
-             (.reset deflater)
+       :downstream
+       (defstream
+         (response [[status {content-type-header "content-type" :as hdrs} body :as resp]]
+           ;; send the resposne with appropriate headers
+           (let [content-type-header (content-type hdrs)
+                 gzip-content-type? (contains? (:gzip-content-types opts) content-type-header)]
+             (if-not (and gzip-content-type? (:accept-gzip? @state))
+               (downstream :response resp)
+               (let [hdrs (assoc hdrs "content-encoding" "gzip")]
+                 (if (= :chunked body)
+                   ;; chunked body, yank the content length header,
+                   ;; add the transfer encoding header, and set the
+                   ;; state so that chunks will gzip and allocate a
+                   ;; deflater, crc, and buffer for the exchange
+                   (let [hdrs (-> hdrs (assoc "transfer-encoding" "chunked") (dissoc "content-length"))]
+                     (swap! state #(assoc %
+                                     :gzip? true
+                                     :deflater (Deflater. Deflater/DEFAULT_COMPRESSION true)
+                                     :crc (CRC32.)
+                                     :buf (byte-array 4092)))
+                     (downstream :response [status hdrs body]))
 
-             ;; send the resposne with appropriate headers
-             (let [content-type-header (content-type hdrs)
-                   gzip-content-type? (contains? (:gzip-content-types opts) content-type-header)]
-               (if-not (and gzip-content-type? (:accept-gzip? @state))
-                 (downstream :response resp)
-                 (let [hdrs (assoc hdrs "content-encoding" "gzip")]
-                   (swap! state #(assoc % :gzip? true))
-                   (if (= :chunked body)
-                     (let [hdrs (-> hdrs (assoc "transfer-encoding" "chunked") (dissoc "content-length"))]
-                       (downstream :response [status hdrs body]))
-                     (let [gzipped-body (gzip-entire-body deflater crc body)
-                           hdrs (assoc hdrs "content-length" (.readableBytes gzipped-body))]
-                       (downstream :response [status hdrs gzipped-body])))))))
+                   ;; not chunked, gzip the whole thing and send it down
+                   (let [gzipped-body (gzip-entire-body body)
+                         hdrs (assoc hdrs "content-length" (.readableBytes gzipped-body))]
+                     (downstream :response [status hdrs gzipped-body])))))))
 
-           (body [chunk]
-             (if-not (:gzip? @state)
-               (downstream :body chunk)
-               (gzip-and-send state crc deflater downstream compressed-byte-buffer chunk)))
+         (body [chunk]
+           (if-not (:gzip? @state)
+             ;; not gziping, send chunk as is
+             (downstream :body chunk)
 
-           (else [evt val]
-             (downstream evt val)))))))
+             ;; gzip and send appropriate chunks
+             (let [deflater (:deflater @state)
+                   crc (:crc @state)
+                   buf (:buf @state)]
+               (gzip-and-send-chunk state downstream chunk deflater crc buf))))
+
+         ;; must pass all other events through, like pause/resume/abort
+         (else [evt val]
+           (downstream evt val))))))
