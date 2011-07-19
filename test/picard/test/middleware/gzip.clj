@@ -40,7 +40,10 @@
 (deftest simple-gzip-test
   (with-app (gzip/encoder simple-test-app)
     (GET "/" {"accept-encoding" "gzip"})
-    (let [[_ _ body] (second (first (exchange-events (last-exchange))))]
+    (let [[_ _ body] (-> (last-exchange)
+                         exchange-events
+                         first
+                         second)]
       (is (= "hello world" (ungzip-body body)))
       (is (= "gzip" ((last-response-headers) "content-encoding")))
       (is (= 200 (last-response-status))))))
@@ -100,3 +103,47 @@
     (is (not (= "gzip" ((last-response-headers) "content-encoding"))))
     (is (= "hello world" (last-response-body)))
     (is (= 200 (last-response-status)))))
+
+(defn- content-length-chunked-test-app
+  [downstream]
+  (defstream
+    (request [req]
+      (downstream :response [200 {"content-type" "text/html"
+                                  "content-length" "13"} :chunked])
+      (downstream :body "hello")
+      (downstream :body " world")
+      (downstream :body "!\n")
+      (downstream :body nil))))
+
+(deftest content-length-chunked-test
+  (with-app (gzip/encoder content-length-chunked-test-app)
+    (GET "/" {"accept-encoding" "gzip"})
+    (let [[_ _ body] (-> (last-exchange)
+                         exchange-events
+                         first
+                         second)]
+      (is (= "hello world!\n" (ungzip-body body)))
+      (is (= "gzip" ((last-response-headers) "content-encoding")))
+      (is (= 200 (last-response-status))))))
+
+(deftest doesnt-buffer-if-content-length-too-large
+  (with-app (gzip/encoder content-length-chunked-test-app {:max-buffer-bytes 1})
+    (GET "/" {"accept-encoding" "gzip"})
+    (is (= 200 (last-response-status)))
+    (is (= :chunked (last-response-body)))))
+
+(defn- lies-about-content-length-app
+  [downstream]
+  (defstream
+    (request [req]
+      (downstream :response [200 {"content-type" "text/html"
+                                  "content-length" "5"} :chunked])
+      (downstream :body "hello")
+      (downstream :body " world")
+      (downstream :body "!\n")
+      (downstream :body nil))))
+
+(deftest ^{:focus true} blows-up-if-app-lies-about-content-length
+  (with-app (gzip/encoder lies-about-content-length-app {:max-buffer-bytes 10})
+    (GET "/" {"accept-encoding" "gzip"})
+    (is (= 500 (last-response-status)))))

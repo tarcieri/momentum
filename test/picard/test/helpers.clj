@@ -78,3 +78,21 @@
         hdrs2 (mk-test-hdrs {:query-string ""})]
     (is (= (request-url hdrs1) (request-url hdrs2) expected-url))))
 
+
+(deftest accept-encoding-helper-works
+  (let [hdrs1 {"accept-encoding" "gzip"}
+        hdrs2 {"accept-encoding" "gzip,deflate"}
+        hdrs3 {"accept-encoding" "deflate,gzip"}
+        hdrs4 {"accept-encoding" "   gzip,   deflate "}
+        hdrs5 {"accept-encoding" "gzip,deFlaTE"}]
+    (is (= #{"gzip"} (accept-encodings hdrs1)))
+    (is (= #{"gzip" "deflate"} (accept-encodings hdrs2)))
+    (is (= #{"gzip" "deflate"} (accept-encodings hdrs3)))
+    (is (= #{"gzip" "deflate"} (accept-encodings hdrs4)))
+    (is (= #{"gzip" "deflate"} (accept-encodings hdrs5)))))
+
+(deftest content-legnth-helper-works
+  (is (= 1337 (content-length {"content-length" "1337"})))
+  (is (= 1337 (content-length {"content-length" "  1337"})))
+  (is (= nil (content-length {"content-lengthaef" "1337"})))
+  (is (= nil (content-length {"content-length" "not a number lol!"}))))

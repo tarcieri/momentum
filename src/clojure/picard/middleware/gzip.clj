@@ -39,13 +39,12 @@
     (GzipUtils/writeTrailer deflater crc buf 0)
     buf))
 
-(defn- gzip-entire-body
-  [body]
+(defn- gzip-byte-array
+  [bytes]
   (let [deflater (Deflater. Deflater/DEFAULT_COMPRESSION true)
         crc (CRC32.)
         baos (ByteArrayOutputStream.)
-        buf (byte-array 4092)
-        bytes (body->byte-array body)]
+        buf (byte-array 4092)]
     ;; write header
     (.write baos GzipUtils/header)
 
@@ -67,6 +66,10 @@
             (.write baos (mk-trailer deflater crc))
             (.close baos)
             (ChannelBuffers/copiedBuffer (.toByteArray baos))))))))
+
+(defn- gzip-entire-body
+  [body]
+  (gzip-byte-array (body->byte-array body)))
 
 (defn- send-chunks
   [deflater downstream buf]
@@ -102,7 +105,97 @@
       (downstream :body (ChannelBuffers/wrappedBuffer (mk-trailer deflater crc)))
       (downstream :body nil))))
 
-(def default-opts {:gzip-content-types #{"text/plain"
+(defn- handle-request
+  ;; save off whether we accept gzip for this request and
+  ;; pass upstream
+  [state upstream [hdrs body :as req]]
+  (let [accept-gzip? (contains? (accept-encodings hdrs) "gzip")]
+    (swap! state #(assoc % :accept-gzip? accept-gzip?))
+    (upstream :request req)))
+
+(defn- handle-response
+  [opts state downstream [status hdrs body :as resp]]
+  (let [content-type-header (content-type hdrs)
+        gzip-content-type? (contains? (:gzip-content-types opts) content-type-header)]
+    (if-not (and gzip-content-type? (:accept-gzip? @state))
+      ;; don't gzip
+      (downstream :response resp)
+
+      ;; gzip
+      (let [hdrs (assoc hdrs "content-encoding" "gzip")
+            chunked? (= :chunked body)
+            content-bytes (content-length hdrs)]
+        (cond
+         ;; chunked, but a content-length is specified and it is an acceptable
+         ;; size to buffer this up and gzip it in one go
+         (and content-bytes (<= content-bytes (:max-buffer-bytes opts)) chunked?)
+         (swap! state #(assoc %
+                         :aborted? false
+                         :body-action :gzip-buffer
+                         :status status
+                         :hdrs hdrs
+                         :bytes-buffered 0
+                         :baos (ByteArrayOutputStream. content-bytes)))
+
+         ;; chunked body, yank the content length header,
+         ;; add the transfer encoding header, and set the
+         ;; state so that chunks will gzip and allocate a
+         ;; deflater, crc, and buffer for the exchange
+         chunked?
+         (let [hdrs (-> hdrs (assoc "transfer-encoding" "chunked") (dissoc "content-length"))]
+           (swap! state #(assoc %
+                           :body-action :gzip-stream
+                           :deflater (Deflater. Deflater/DEFAULT_COMPRESSION true)
+                           :crc (CRC32.)
+                           :buf (byte-array 4092)))
+           (downstream :response [status hdrs body]))
+
+         ;; not chunked, gzip the whole thing and send it down
+         :else
+         (let [gzipped-body (gzip-entire-body body)
+               hdrs (assoc hdrs "content-length" (.readableBytes gzipped-body))]
+           (downstream :response [status hdrs gzipped-body])))))))
+
+(def response-body-too-large-error
+  [500 {"content-length"     "0"
+        "x-picard-error-msg" "Response body too large"} nil])
+
+(defn- handle-chunk
+  [opts state downstream chunk]
+  (when-not (:aborted? @state)
+    (case
+     (:body-action @state)
+
+     :gzip-stream
+     (let [{deflater :deflater crc :crc buf :buf} @state]
+       (gzip-and-send-chunk state downstream chunk deflater crc buf))
+
+     :gzip-buffer
+     (if (nil? chunk)
+       ;; last chunk, we're all done, gzip it and send it down
+       (let [{baos :baos status :status hdrs :hdrs} @state
+             gzipped-body (gzip-byte-array (.toByteArray baos))
+             hdrs (assoc hdrs "content-length" (.readableBytes gzipped-body))]
+         (downstream :response [status hdrs gzipped-body]))
+
+       ;; valid chunk, check that we're within our size limit
+       ;; and buffer the bytes
+       (let [bytes (body->byte-array chunk)
+             {baos :baos bytes-buffered :bytes-buffered} @state
+             bytes-buffered (+ bytes-buffered (alength bytes))]
+         (if (> (:max-buffer-bytes opts) bytes-buffered)
+           (do
+             (swap! state #(assoc % :bytes-buffered bytes-buffered))
+             (.write baos bytes))
+           (do
+             (swap! state #(assoc % :aborted? true))
+             (downstream :response response-body-too-large-error)))))
+
+     ;; otherwise nothing
+     (downstream :body chunk))))
+
+(def default-opts {:max-buffer-bytes 8192
+                   :gzip-content-types #{"text/plain"
                                          "text/html"
                                          "text/xhtml"
                                          "text/javascript"
@@ -110,65 +203,18 @@
                                          "text/css"}})
 
 (defn encoder
-  ([app] (encoder app default-opts))
+  ([app] (encoder app {}))
   ([app opts]
-     (defmiddleware
-       [state downstream upstream]
-       app
-
-       :upstream
-       (defstream
-         (request [[{accept-encoding-header "accept-encoding"} _ :as req]]
-           ;; save off whether we accept gzip for this request and
-           ;; pass upstream
-           (let [accept-encoding-header (or accept-encoding-header "")
-                 accept-encodings (into #{} (string/split #"\s*,\s*" (string/trim accept-encoding-header)))
-                 accept-gzip? (contains? accept-encodings "gzip")]
-             (swap! state #(assoc % :accept-gzip? accept-gzip?))
-             (upstream :request req)))
-
-         ;; must pass all other events through, like pause/resume/abort
-         (else [evt val]
-           (upstream evt val)))
-
-       :downstream
-       (defstream
-         (response [[status {content-type-header "content-type" :as hdrs} body :as resp]]
-           ;; send the resposne with appropriate headers
-           (let [content-type-header (content-type hdrs)
-                 gzip-content-type? (contains? (:gzip-content-types opts) content-type-header)]
-             (if-not (and gzip-content-type? (:accept-gzip? @state))
-               (downstream :response resp)
-               (let [hdrs (assoc hdrs "content-encoding" "gzip")]
-                 (if (= :chunked body)
-                   ;; chunked body, yank the content length header,
-                   ;; add the transfer encoding header, and set the
-                   ;; state so that chunks will gzip and allocate a
-                   ;; deflater, crc, and buffer for the exchange
-                   (let [hdrs (-> hdrs (assoc "transfer-encoding" "chunked") (dissoc "content-length"))]
-                     (swap! state #(assoc %
-                                     :gzip? true
-                                     :deflater (Deflater. Deflater/DEFAULT_COMPRESSION true)
-                                     :crc (CRC32.)
-                                     :buf (byte-array 4092)))
-                     (downstream :response [status hdrs body]))
-
-                   ;; not chunked, gzip the whole thing and send it down
-                   (let [gzipped-body (gzip-entire-body body)
-                         hdrs (assoc hdrs "content-length" (.readableBytes gzipped-body))]
-                     (downstream :response [status hdrs gzipped-body])))))))
-
-         (body [chunk]
-           (if-not (:gzip? @state)
-             ;; not gziping, send chunk as is
-             (downstream :body chunk)
-
-             ;; gzip and send appropriate chunks
-             (let [deflater (:deflater @state)
-                   crc (:crc @state)
-                   buf (:buf @state)]
-               (gzip-and-send-chunk state downstream chunk deflater crc buf))))
-
-         ;; must pass all other events through, like pause/resume/abort
-         (else [evt val]
-           (downstream evt val))))))
+     (let [opts (merge default-opts opts)]
+      (defmiddleware
+        [state downstream upstream]
+        app
+        :upstream
+        (defstream
+          (request [req] (handle-request state upstream req))
+          (else [evt val] (upstream evt val)))
+        :downstream
+        (defstream
+          (response [resp] (handle-response opts state downstream resp))
+          (body [chunk] (handle-chunk opts state downstream chunk))
+          (else [evt val] (downstream evt val)))))))

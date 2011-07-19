@@ -89,6 +89,19 @@
   (when-let [content-type (re-find #"[^\s;]+" (hdrs "content-type" ""))]
     (str/lower-case content-type)))
 
+(defn content-length
+  [hdrs]
+  (if (hdrs "content-length")
+    (try (Integer/parseInt (str/trim (hdrs "content-length")))
+         (catch NumberFormatException _ nil))))
+
+(defn accept-encodings
+  [hdrs]
+  (let [accept-encoding (->> (hdrs "accept-encoding" "")
+                              (str/trim)
+                              (str/split #"\s*,\s*"))]
+   (into #{} (map str/lower-case accept-encoding))))
+
 (defn body-size
   ([body] (body-size :body body))
   ([type body]
