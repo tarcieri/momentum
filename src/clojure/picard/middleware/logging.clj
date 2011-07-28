@@ -24,7 +24,9 @@
          (fn [evt val]
            (when (= :request evt)
              (let [hdrs (first val)]
-               (swap! state #(merge hdrs %))))
+               (swap! state #(-> hdrs
+                                 (merge %)
+                                 (assoc :request-start-time (System/currentTimeMillis))))))
            (next-up evt val))
 
          :downstream
@@ -49,8 +51,22 @@
                (fn [info]
                  (assoc info
                    :response-body-size
-                   (+ (info :response-body-size) chunk-size))))))
+                   (+ (info :response-body-size) chunk-size)))))
+
+            (= :done evt)
+            (swap!
+             state
+             (fn [info]
+               (assoc info
+                 :response-time-ms
+                 (- (System/currentTimeMillis) )))))
+
            (next-dn evt val))
 
          :finalize
-         (fn [_] (.info logger @state))))))
+         (fn [_]
+           (let [current-state @state
+                 current-time (System/currentTimeMillis)
+                 response-time-ms (- current-time (:request-start-time current-state))]
+             (.info logger (assoc current-state :response-time-ms response-time-ms))))
+         ))))
