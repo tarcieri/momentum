@@ -33,13 +33,16 @@
          (fn [evt val]
            (cond
             (= :response evt)
-            (let [status (response-status val)
+            (let [[status hdrs body :as response] val
+                  status (response-status response)
+                  content-type (content-type hdrs)
                   chunk-size (body-size evt val)]
               (swap!
                state
                (fn [info]
                  (assoc info
                    :response-status status
+                   :content-type content-type
                    :response-body-size
                    (+ (info :response-body-size)
                       chunk-size)))))
