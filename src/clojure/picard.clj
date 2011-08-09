@@ -3,7 +3,6 @@
    [picard.utils]
    [picard.server]
    [picard.client]
-   [picard.pool]
    [picard.proxy]))
 
 (def VERSION        picard.utils/VERSION)
@@ -17,6 +16,6 @@
 (def POST           picard.client/POST)
 (def PUT            picard.client/PUT)
 (def DELETE         picard.client/DELETE)
+(def mk-pool        picard.client/mk-pool)
+(def shutdown-pool  picard.client/shutdown-pool)
 (def mk-proxy       picard.proxy/mk-proxy)
-(def mk-pool        picard.pool/mk-pool)
-(def shutdown-pool  picard.pool/shutdown)

@@ -161,9 +161,9 @@
    :max-connections-per-address 200
    :max-queued-connections      5000}) ;; Not implemented yet
 
-(defn mk-pool
+(defn pool
   ([]
-     (mk-pool {}))
+     (pool {}))
   ([options]
      (let [options (merge default-options options)
            state   (atom [0 {}])]

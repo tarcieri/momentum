@@ -505,15 +505,15 @@
                          (initialize-request state addr request)))))))))))))))
 
 ;; A global pool
-(def GLOBAL-POOL (pool/mk-pool))
+(def GLOBAL-POOL (pool/pool))
 
 ;; Alias so that the pool namespace doesn't have to be required as
 ;; well as the client namespace
-(def mk-pool       pool/mk-pool)
+(def mk-pool       pool/pool)
 (def shutdown-pool pool/shutdown)
 
 (def default-options
-  {:pool      (pool/mk-pool)
+  {:pool      (mk-pool)
    :timeout   60})
 
 (defn request
@@ -555,4 +555,3 @@
 (def-simple-request-for POST)
 (def-simple-request-for PUT)
 (def-simple-request-for DELETE)
-
