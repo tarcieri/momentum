@@ -277,12 +277,13 @@
     (when (and upstream-fn (not= (.isWritable ch) @writable?))
       (swap-then!
        writable? not
-       #(try
-          (debug {:msg "Sending upstream" :event [(if % :resume :pause)]
-                  :state %})
-          (upstream-fn (if % :resume :pause) nil)
-          (catch Exception err
-            (throw (Exception. "Not implemented yet"))))))))
+       (fn [currently-writable?]
+         (try
+           (debug {:msg "Sending upstream" :event [(if currently-writable? :resume :pause)]
+                   :state current-state})
+           (upstream-fn (if currently-writable? :resume :pause) nil)
+           (catch Exception err
+             (handle-err state err current-state))))))))
 
 (defn- handle-err
   [state err current-state]
