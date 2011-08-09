@@ -4,7 +4,7 @@
    [clojure.contrib.cond])
   (:require
    [clojure.string :as str]
-   [picard.netty :as netty])
+   [picard.net     :as netty])
   (:import
    [org.jboss.netty.buffer
     ChannelBuffer]

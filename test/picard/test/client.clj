@@ -6,7 +6,7 @@
    [picard.helpers])
   (:require
    [picard]
-   [picard.netty  :as netty]
+   [picard.net    :as netty]
    [picard.client :as client]
    [picard.server :as server]))
 

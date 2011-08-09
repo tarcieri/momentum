@@ -3,7 +3,7 @@
    [picard.utils :rename {debug debug*}])
   (:require
    [clojure.contrib.string :as str]
-   [picard.netty :as netty]
+   [picard.net :as netty]
    [picard.ssl :as ssl])
   (:import
    picard.ChannelPool

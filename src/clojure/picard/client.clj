@@ -4,7 +4,7 @@
    [picard.helpers])
   (:require
    [clojure.string :as str]
-   [picard.netty   :as netty]
+   [picard.net     :as netty]
    [picard.pool    :as pool])
   (:import
    [org.jboss.netty.channel

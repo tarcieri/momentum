@@ -1,4 +1,4 @@
-(ns picard.netty
+(ns picard.net
   (:use
    [picard.utils])
   (:import

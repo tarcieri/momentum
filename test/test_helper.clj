@@ -3,7 +3,7 @@
    [clojure.test]
    [lamina.core :exclude [timeout]])
   (:require
-   [picard.netty  :as netty]
+   [picard.net    :as netty]
    [picard.server :as server])
   (:import
    [org.jboss.netty.buffer
