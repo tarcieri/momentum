@@ -269,21 +269,36 @@
   ;; events.
   ((.upstream current-state) :connected nil))
 
+(def interest-ops
+  {Channel/OP_NONE :op-none
+   Channel/OP_READ :op-read
+   Channel/OP_WRITE :op-write
+   Channel/OP_READ_WRITE :op-read-write})
+
 (defn- handle-ch-interest-change
   [state ^State current-state writable?]
   (let [upstream-fn   (.upstream current-state)
         downstream-fn (.downstream current-state)
         ch            ^Channel (.ch current-state)]
-    (when (and upstream-fn (not= (.isWritable ch) @writable?))
-      (swap-then!
-       writable? not
-       (fn [currently-writable?]
-         (try
-           (debug {:msg "Sending upstream" :event [(if currently-writable? :resume :pause)]
-                   :state current-state})
-           (upstream-fn (if currently-writable? :resume :pause) nil)
-           (catch Exception err
-             (handle-err state err current-state))))))))
+    (debug {:msg "Interest Ops Changed"
+            :event [:interest-ops (interest-ops (.getInterestOps ch))]
+            :state current-state})
+
+    (send-off
+     writable?
+     (fn [was-writable?]
+       (let [is-writable? (.isWritable ch)
+             event (cond
+                    (and was-writable? (not is-writable?)) :pause
+                    (and (not was-writable?) is-writable?) :resume)]
+         (when (and upstream-fn event)
+           (try
+             (debug {:msg "Sending upstream" :event event
+                     :state current-state})
+             (upstream-fn event nil)
+             (catch Exception err
+               (handle-err state err current-state))))
+         is-writable?)))))
 
 (defn- handle-err
   [state err current-state]
@@ -302,7 +317,7 @@
 
 (defn- netty-bridge
   [state]
-  (let [writable? (atom true)]
+  (let [writable? (agent true)]
     (netty/upstream-stage
      (fn [_ ^ChannelEvent evt]
        (let [current-state ^State @state]

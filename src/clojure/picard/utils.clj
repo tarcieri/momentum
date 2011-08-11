@@ -31,11 +31,13 @@
 (def VERSION "0.0.1")
 (def SERVER-NAME (str "Picard " VERSION " - *FACEPALM*"))
 
+(def enable-debugging (System/getProperty "picard.enableDebugging"))
+
 (defmacro debug
   [cmpnt msg]
   (let [logger-name (str "picard.internal." (name cmpnt))]
-    (when (System/getProperty "picard.enableDebugging")
-      `(log/log :debug ~msg nil ~logger-name))))
+    `(when enable-debugging
+       (log/log :debug ~msg nil ~logger-name))))
 
 (defmacro returning
   [val & stmts]
