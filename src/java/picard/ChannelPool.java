@@ -7,6 +7,7 @@ import org.jboss.netty.channel.ChannelPipeline;
 import org.jboss.netty.channel.ChannelState;
 import org.jboss.netty.channel.ChannelStateEvent;
 import org.jboss.netty.channel.ChannelUpstreamHandler;
+import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.util.HashedWheelTimer;
 import org.jboss.netty.util.Timeout;
 import org.jboss.netty.util.TimerTask;
@@ -118,8 +119,14 @@ public class ChannelPool {
                             ChannelPool.this.expireNode(node);
                         }
                     }
+                } else if (e instanceof MessageEvent) {
+                    // Not expecting a message at this time
+                    synchronized (ChannelPool.this) {
+                        ChannelPool.this.expireNode(node);
+                    }
+                } else {
+                    ctx.sendUpstream(e);
                 }
-                ctx.sendUpstream(e);
             }
         });
 
