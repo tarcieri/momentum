@@ -7,6 +7,7 @@ import org.jboss.netty.channel.ChannelPipeline;
 import org.jboss.netty.channel.ChannelState;
 import org.jboss.netty.channel.ChannelStateEvent;
 import org.jboss.netty.channel.ChannelUpstreamHandler;
+import org.jboss.netty.channel.ExceptionEvent;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.util.HashedWheelTimer;
 import org.jboss.netty.util.Timeout;
@@ -110,22 +111,10 @@ public class ChannelPool {
         channel.getPipeline().addFirst("poolPurger", new ChannelUpstreamHandler() {
             public void handleUpstream(ChannelHandlerContext ctx,
                                        ChannelEvent e) throws Exception {
-                if (e instanceof ChannelStateEvent) {
-                    ChannelStateEvent evt = (ChannelStateEvent) e;
-                    if (evt.getState() == ChannelState.OPEN &&
-                        Boolean.FALSE.equals(evt.getValue())) {
-
-                        synchronized (ChannelPool.this) {
-                            ChannelPool.this.expireNode(node);
-                        }
-                    }
-                } else if (e instanceof MessageEvent) {
-                    // Not expecting a message at this time
+                if (isChannelClose(e) || isException(e) || isMessage(e)) {
                     synchronized (ChannelPool.this) {
                         ChannelPool.this.expireNode(node);
                     }
-                } else {
-                    ctx.sendUpstream(e);
                 }
             }
         });
@@ -239,5 +228,24 @@ public class ChannelPool {
 
     private InetSocketAddress addrFrom(Node node) {
         return addrFrom(node.channel);
+    }
+
+    private boolean isChannelClose(ChannelEvent e) {
+        if (!(e instanceof ChannelStateEvent)) {
+            return false;
+        }
+
+        ChannelStateEvent evt = (ChannelStateEvent) e;
+
+        return evt.getState() == ChannelState.OPEN &&
+            Boolean.FALSE.equals(evt.getValue());
+    }
+
+    private boolean isException(ChannelEvent e) {
+        return e instanceof ExceptionEvent;
+    }
+
+    private boolean isMessage(ChannelEvent e) {
+        return e instanceof MessageEvent;
     }
 }
