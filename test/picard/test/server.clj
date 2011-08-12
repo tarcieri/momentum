@@ -94,6 +94,18 @@
        "connection: close\r\n\r\n"
        "Hello")))
 
+(defcoretest honors-http-1-0-responses
+  (fn [dn]
+    (fn [evt val]
+      (when (= :request evt)
+        (dn :response [200 {:http-version [1 0]} "Hello"]))))
+
+  (http-write "GET / HTTP/1.1\r\n\r\n")
+
+  (is (received-response
+       "HTTP/1.0 200 OK\r\n\r\n"
+       "Hello")))
+
 (defcoretest head-request-with-content-length
   (fn [dn]
     (defstream

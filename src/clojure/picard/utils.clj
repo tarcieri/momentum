@@ -175,10 +175,15 @@
          (when-not (or (nil? v-or-vals) (= "" v-or-vals))
            (.addHeader msg (name k) (str v-or-vals))))))))
 
+(def http-version->netty-http-version
+  {[1 0] HttpVersion/HTTP_1_0
+   [1 1] HttpVersion/HTTP_1_1})
+
 (defn- mk-netty-response
-  [status]
-  (DefaultHttpResponse. HttpVersion/HTTP_1_1
-    (HttpResponseStatus/valueOf status)))
+  [status {http-version :http-version }]
+  (let [netty-http-version (http-version->netty-http-version http-version HttpVersion/HTTP_1_1)]
+   (DefaultHttpResponse. netty-http-version
+     (HttpResponseStatus/valueOf status))))
 
 (defn- ^HttpRequest mk-netty-req
   [method uri]
@@ -191,7 +196,7 @@
 (defn resp->netty-resp
   [status hdrs body]
   (let [hdrs (cookie/encode-cookies hdrs "set-cookie" true)]
-   (returning [netty-resp ^HttpMessage (mk-netty-response status)]
+   (returning [netty-resp ^HttpMessage (mk-netty-response status hdrs)]
               (netty-assoc-hdrs netty-resp hdrs)
               (when body
                 (if (= :chunked body)
