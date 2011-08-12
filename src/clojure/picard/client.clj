@@ -270,35 +270,45 @@
   ((.upstream current-state) :connected nil))
 
 (def interest-ops
-  {Channel/OP_NONE :op-none
-   Channel/OP_READ :op-read
-   Channel/OP_WRITE :op-write
+  {Channel/OP_NONE       :op-none
+   Channel/OP_READ       :op-read
+   Channel/OP_WRITE      :op-write
    Channel/OP_READ_WRITE :op-read-write})
 
 (defn- handle-ch-interest-change
-  [state ^State current-state writable?]
+  [state ^State current-state interest-ops-lock]
   (let [upstream-fn   (.upstream current-state)
-        downstream-fn (.downstream current-state)
         ch            ^Channel (.ch current-state)]
+
     (debug {:msg "Interest Ops Changed"
             :event [:interest-ops (interest-ops (.getInterestOps ch))]
             :state current-state})
 
-    (send-off
-     writable?
-     (fn [was-writable?]
-       (let [is-writable? (.isWritable ch)
-             event (cond
-                    (and was-writable? (not is-writable?)) :pause
-                    (and (not was-writable?) is-writable?) :resume)]
-         (when (and upstream-fn event)
-           (try
-             (debug {:msg "Sending upstream" :event event
-                     :state current-state})
-             (upstream-fn event nil)
-             (catch Exception err
-               (handle-err state err current-state))))
-         is-writable?)))))
+    ;; Gotta synchronize this shit
+    (swap-then!
+     interest-ops-lock
+     (fn [[writable? count]] [writable? (inc count)])
+     (fn [[writable? count]]
+       (when (= count 1)
+         (try
+           (loop [writable? writable?]
+             (when (and upstream-fn (not= (.isWritable ch) writable?))
+               (swap-then!
+                interest-ops-lock
+                (fn [[writable? count]] [(not writable?) count])
+                (fn [[writable? _]]
+                  (debug {:msg   "Sending upstream"
+                          :event [(if writable? :resume :pause)]
+                          :state current-state})
+                  (upstream-fn (if writable? :resume :pause) nil))))
+             (let [[writable? count]
+                   (swap!
+                    interest-ops-lock
+                    (fn [[writable? count]] [writable? (dec count)]))]
+               (when (< 0 count)
+                 (recur writable?))))
+           (catch Exception err
+             (handle-err state err @state))))))))
 
 (defn- handle-err
   [state err current-state]
@@ -317,7 +327,8 @@
 
 (defn- netty-bridge
   [state]
-  (let [writable? (agent true)]
+  ;; [ writable? count  ]
+  (let [interest-ops-lock (atom [true 0])]
     (netty/upstream-stage
      (fn [_ ^ChannelEvent evt]
        (let [current-state ^State @state]
@@ -343,7 +354,8 @@
                          current-state)
 
              (= ch-state ChannelState/INTEREST_OPS)
-             (handle-ch-interest-change state current-state writable?))
+             (do
+               (handle-ch-interest-change state current-state interest-ops-lock)))
 
             ;; TODO: Bug - The write completion event might be for a
             ;; write from the previous exchange.

@@ -47,7 +47,7 @@
      last-write
      options
      aborting?
-     writable?
+     interest-ops-lock
      timeout
      keepalive-timeout])
 
@@ -81,7 +81,7 @@
           nil                 ;; Last write to the channel
           options             ;; Server options
           false               ;; Are we aborting the exchange?
-          true                ;; Whether the upstream is writable
+          [true 0]            ;; Interest ops lock
           nil                 ;; Timeout reference
           keepalive-timeout)) ;; Channel keepalive timer atom
 
@@ -437,22 +437,57 @@
       (catch Exception err
         (handle-err state err current-state)))))
 
+(def interest-ops
+  {Channel/OP_NONE       :op-none
+   Channel/OP_READ       :op-read
+   Channel/OP_WRITE      :op-write
+   Channel/OP_READ_WRITE :op-read-write})
+
 (defn- handle-ch-interest-change
   [state ^State current-state]
-  (when-let [upstream (.upstream current-state)]
-    (when-not (= (.isWritable ^Channel (.ch current-state))
-                 (.writable? current-state))
+  (try
+    (let [upstream-fn (.upstream current-state)
+          ch          ^Channel (.ch current-state)]
+
+      (debug {:msg   "Interest Ops Changed"
+              :event [:interest-ops (interest-ops (.getInterestOps ch))]
+              :state current-state})
+
+      ;; Gotta synchronize this shit
       (swap-then!
        state
-       (fn [^State current-state]
-         (assoc current-state :writable? (not (.writable? current-state))))
-       (fn [^State current-state]
-         (try
-           (let [event (if (.writable? current-state) :resume :pause)]
-             (debug {:msg "Sending upstream" :event [event nil]})
-             (upstream event nil))
-           (catch Exception err
-             (handle-err state err current-state))))))))
+       (fn [current-state]
+         (let [[writable? count] (.interest-ops-lock current-state)]
+           (assoc current-state :interest-ops-lock [writable? (inc count)])))
+       (fn [current-state]
+         (let [[writable? count] (.interest-ops-lock current-state)]
+           ;; When count = 1, the lock has been acquired
+           (when (= count 1)
+             (loop [writable? writable?]
+               (when (and upstream-fn (not= (.isWritable ch) writable?))
+                 (swap-then!
+                  state
+                  (fn [current-state]
+                    (let [[writable? count] (.interest-ops-lock current-state)]
+                      (assoc current-state :interest-ops-lock [(not writable?) count])))
+                  (fn [current-state]
+                    (let [[writable?] (.interest-ops-lock current-state)]
+                      (debug {:msg   "Sending upstream"
+                              :event [(if writable? :resume :pause)]
+                              :state current-state})
+                      (upstream-fn (if writable? :resume :pause) nil)))))
+               (let [[writable? count]
+                     (.interest-ops-lock
+                      (swap!
+                       state
+                       (fn [current-state]
+                         (let [[writable? count] (.interest-ops-lock current-state)]
+                           (assoc current-state
+                             :interest-ops-lock [writable? (dec count)])))))]
+                 (when (< 0 count)
+                   (recur writable?)))))))))
+    (catch Exception err
+      (handle-err state err @state))))
 
 (defn- handle-netty-event
   [state evt msg ^State current-state]
