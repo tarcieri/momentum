@@ -89,6 +89,7 @@
   [[state ^ChannelPool conn-pool factory opts :as pool] addr handler callback]
   (let [[_ port ssl?] addr
         ssl? (if (nil? ssl?) (= 443 port) ssl?)
+        key  (if ssl? :ssl :default)
         addr (netty/mk-socket-addr addr)]
    ;; First, attempt to grab a hot connection out of the connection
    ;; pool for the requested socket address.
@@ -118,7 +119,7 @@
         ;; Alright, this is totally not valid since this can only be
         ;; called once per pool. Somehow, we need to bind the channel
         ;; pipeline to the state & addr
-        factory addr ssl? (opts :local-addr)
+        factory key addr
         (fn [conn-or-err]
           (if (instance? Exception conn-or-err)
             (do (debug {:msg "Failed to establish connection" :event conn-or-err})
@@ -170,8 +171,8 @@
        [state
         (ChannelPool. (options :keepalive) netty/global-timer)
         (netty/mk-client-factory
-         #(create-pipeline state)
-         #(create-ssl-pipeline state)
+         {:default #(create-pipeline state)
+          :ssl     #(create-ssl-pipeline state)}
          options)
         options])))
 

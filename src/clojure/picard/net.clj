@@ -1,5 +1,6 @@
 (ns picard.net
   (:use
+   [clojure.contrib.generic.functor :only [fmap]]
    [picard.utils])
   (:import
    [org.jboss.netty.bootstrap
@@ -368,36 +369,39 @@
      ::server-channel srv-ch
      ::channel-group  ch-group}))
 
-(defn mk-client-factory
-  [pipeline-fn ssl-pipeline-fn options]
-  (let [ch-group        (DefaultChannelGroup.)
-        thread-pool     (mk-thread-pool)
-        bootstrap       (mk-client-bootstrap thread-pool)
-        ssl-bootstrap   (mk-client-bootstrap thread-pool)]
+(defn- process-pipeline-fns
+  [fns]
+  (if (map? fns)
+    fns
+    {:default fns}))
 
-    ;; Configure the first bootstrap
+(defn- pipeline-fn->client-bootstrap
+  [pipeline-fn thread-pool ch-group opts]
+  (let [bootstrap (mk-client-bootstrap thread-pool)]
     (configure-bootstrap
-     bootstrap merge-netty-client-opts pipeline-fn ch-group options)
-    ;; Configure the second (SSL) bootstrap
-    (configure-bootstrap
-     ssl-bootstrap merge-netty-client-opts ssl-pipeline-fn ch-group options)
-    ;; And... scene
-    [bootstrap ssl-bootstrap ch-group]))
+     bootstrap merge-netty-client-opts pipeline-fn ch-group opts)
+    bootstrap))
+
+(defn mk-client-factory
+  [pipeline-fns opts]
+  (let [ch-group    (DefaultChannelGroup.)
+        thread-pool (mk-thread-pool)]
+
+    {:ch-group ch-group
+     :bootstraps
+     (fmap
+      #(pipeline-fn->client-bootstrap % thread-pool ch-group opts)
+      (process-pipeline-fns pipeline-fns))}))
 
 (defn connect-client
-  ([factory addr ssl? callback]
-     (connect-client factory addr ssl? nil callback))
-  ([factory addr ssl? local-addr callback]
-     (let [[^ClientBootstrap bootstrap ^ClientBootstrap ssl-bootstrap] factory]
-       (let [bootstrap (if ssl? ssl-bootstrap bootstrap)
-             connect-future
-             (if local-addr
-               (.connect bootstrap addr (mk-socket-addr local-addr))
-               (.connect bootstrap addr))]
-
-         (on-complete
-          connect-future
-          (fn [^ChannelFuture future]
-            (if (.isSuccess future)
-              (callback (.getChannel future))
-              (callback (.getCause future)))))))))
+  ([factory addr callback]
+     (connect-client factory :default addr callback))
+  ([{bootstraps :bootstraps} key addr callback]
+     (let [bootstrap ^ClientBootstrap (bootstraps key)
+           future    (.connect bootstrap addr)]
+       (on-complete
+        future
+        (fn [^ChannelFuture future]
+          (if (.isSuccess future)
+            (callback (.getChannel future))
+            (callback (.getCause future))))))))

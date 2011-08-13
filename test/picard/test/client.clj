@@ -643,25 +643,6 @@
 
   (is (no-msgs-for ch)))
 
-(defcoretest observes-local-addr-when-connecting
-  [_ ch]
-  nil
-
-  (client/request
-   ["www.google.com" 80]
-   [{:path-info      "/"
-     :request-method "GET"}]
-   {:pool (client/mk-pool {:local-addr ["127.0.0.1" 12345]})}
-   (fn [_]
-     (fn [evt val]
-       (enqueue ch [evt val]))))
-
-  (is (next-msgs-for
-       ch
-       :abort #{#(instance? Exception %)}))
-
-  (is (no-msgs-for ch)))
-
 (defcoretest observing-max-connections
   [_ ch1 ch2]
   :slow-hello-world
