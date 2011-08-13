@@ -672,6 +672,52 @@
       (finally
        (picard/shutdown-pool pool)))))
 
+(defcoretest pool-count-decrements-when-connections-expire
+  [_ ch1 ch2]
+  nil
+
+  (let [pipeline-fn
+        (fn [pipeline]
+          (.addAfter
+           pipeline "encoder" "hax"
+           (netty/upstream-stage
+            (fn [ch evt]
+              (when (netty/channel-connect-event? evt)
+                (future
+                  (Thread/sleep 300)
+                  (.close ch))))))
+          pipeline)
+
+        hello-world
+        (fn [dn]
+          (fn [evt val]
+            (when (= :request evt)
+              (dn :response [200 {"content-length" "5"} "Hello"]))))
+
+        server (server/start hello-world {:pipeline-fn pipeline-fn})
+        pool   (client/mk-pool {:max-connections 1 :keepalive 1})]
+    (try
+      (doseq [ch [ch1 ch2]]
+        (client/request
+         ["localhost" 4040]
+         [{:path-info      "/"
+           :request-method "GET"}]
+         {:pool pool}
+         (fn [_]
+           (fn [evt val]
+             (enqueue ch [evt val]))))
+
+        (is (next-msgs-for
+             ch
+             :connected nil
+             :response :dont-care
+             :done     nil))
+
+        (Thread/sleep 1000))
+      (finally
+       (picard/shutdown-pool pool)
+       (server/stop server)))))
+
 (defcoretest doesnt-double-increment-connection-counting
   [_ ch1 ch2 ch3]
   :slow-hello-world

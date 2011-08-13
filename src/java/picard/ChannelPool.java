@@ -96,25 +96,18 @@ public class ChannelPool {
         // following synchronized code takes less than a second to run.
         node.timeout = timer.newTimeout(new TimerTask() {
             public void run(Timeout timeout) {
-                synchronized (ChannelPool.this) {
-                    ChannelPipeline pipeline = channel.getPipeline();
-
-                    if (pipeline.get(POOL_PURGER) != null) {
-                        channel.getPipeline().remove("poolPurger");
-                    }
-
-                    ChannelPool.this.expireNode(node);
-                }
+                ChannelPool.this.expireNode(node);
             }
         }, expiration, TimeUnit.MILLISECONDS);
 
-        channel.getPipeline().addFirst("poolPurger", new ChannelUpstreamHandler() {
+        channel.getPipeline().addFirst(POOL_PURGER, new ChannelUpstreamHandler() {
             public void handleUpstream(ChannelHandlerContext ctx,
                                        ChannelEvent e) throws Exception {
-                if (isChannelClose(e) || isException(e) || isMessage(e)) {
-                    synchronized (ChannelPool.this) {
-                        ChannelPool.this.expireNode(node);
-                    }
+                if (isChannelClose(e)) {
+                    ChannelPool.this.expireNode(node);
+                    ctx.sendUpstream(e);
+                } else if (isChannelClose(e) || isException(e) || isMessage(e)) {
+                    ChannelPool.this.expireNode(node);
                 }
             }
         });
@@ -173,11 +166,17 @@ public class ChannelPool {
         return retval;
     }
 
-    private void expireNode(Node node) {
+    private synchronized void expireNode(Node node) {
         removeNode(node);
 
         if (node.channel == null) {
             return;
+        }
+
+        ChannelPipeline pipeline = node.channel.getPipeline();
+
+        if (pipeline.get(POOL_PURGER) != null) {
+            pipeline.remove(POOL_PURGER);
         }
 
         if (node.channel.isOpen()) {
