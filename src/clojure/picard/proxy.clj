@@ -65,8 +65,8 @@
   [[hdrs body] opts]
   [(-> hdrs
        add-xff-header
-       (set-scheme opts)
-       ) body])
+       (set-scheme opts))
+   body])
 
 (defn- proxy-loop?
   [[{[remote-ip] :remote-addr xff-header "x-forwarded-for"}] {cycles :cycles}]
@@ -85,52 +85,64 @@
    (addr-from-req req) req opts
    (fn [client-dn]
      (fn [evt val]
-       (debug {:msg "Client event"
-               :event [evt val]})
-       (try
-         (cond
-          (= :response evt)
-          (do
-            ;; Because, I think that there might be some crazy race
-            ;; condition where the response gets sent before :connected
-            ;; TODO: Make sure that this isn't the case.
-            (locking req
-              (when (= :pending (@state :upstream))
-                (downstream :resume nil))
-              (swap! state #(assoc % :upstream client-dn :responded? true)))
-            (downstream evt val))
+       (debug {:msg "Client event" :event [evt val]})
+       (cond
+        ;; connected, resume if we're paused
+        (= :connected evt)
+        (locking req
+          (let [pending (= :pending (@state :upstream))]
+            (swap! state #(assoc % :upstream client-dn))
+            (when pending (downstream :resume nil))))
 
-          (= :body evt)
-          (downstream evt val)
-
-          (= :connected evt)
+        ;; response, resume if we're paused
+        (= :response evt)
+        (do
+          ;; Because, I think that there might be some crazy race
+          ;; condition where the response gets sent before :connected
+          ;; TODO: Make sure that this isn't the case.
+          ;; TODO: the real issue here is that the client doesn't
+          ;; always send :connected
           (locking req
-            (when (= :pending (@state :upstream))
-              (downstream :resume nil))
-            (swap! state #(assoc % :upstream client-dn)))
+            (let [pending (= :pending (@state :upstream))]
+              (swap! state #(assoc % :upstream client-dn :responded? true))
+              (when pending (downstream :resume nil))))
 
-          (= :abort evt)
-          (do
-            (swap! state #(dissoc % :upstream))
-            (let [current-state @state]
-              (cond
-               (bad-gateway? current-state val)
-               (downstream :response bad-gateway)
-
-               (service-unavailable? current-state val)
-               (downstream :response service-unavailable)
-
-               (gateway-timeout? current-state val)
-               (downstream :response gateway-timeout)
-
-               :else
-               (downstream evt val))))
-
-          (not= :done evt)
+          ;; send the response back to the server socket
           (downstream evt val))
-         (catch Exception e
-           (.printStackTrace e))))))
 
+        ;; body, send downstream
+        (= :body evt)
+        (downstream evt val)
+
+        ;; abort
+        (= :abort evt)
+        (do
+          (swap! state #(dissoc % :upstream))
+          (let [current-state @state]
+            (cond
+             (bad-gateway? current-state val)
+             (downstream :response bad-gateway)
+
+             (service-unavailable? current-state val)
+             (downstream :response service-unavailable)
+
+             (gateway-timeout? current-state val)
+             (downstream :response gateway-timeout)
+
+             :else
+             (downstream evt val))))
+
+        ;; done (don't send)
+        (= :done evt)
+        nil
+
+        ;; all other events send downstream
+        :else
+        (downstream evt val)))))
+
+  ;; when the request is chunked, note that we're pending
+  ;; connection and pause the server while we wait for the client
+  ;; to connect
   (when (chunked? req)
     (locking req
       (when-not (@state :upstream)
@@ -148,21 +160,27 @@
        (fn [downstream]
          (let [state (atom {})]
            (defstream
+
              ;; Handling the initial request
              (request [req]
-               (debug {:msg   "Receiving request"
-                       :event [:request req]})
-               (if (proxy-loop? req opts)
+               (debug {:msg "Receiving request" :event [:request req]})
+
+               (if-not (proxy-loop? req opts)
+                 ;; not a proxy loop, initiate the request
+                 (let [req (process-request req opts)]
+                   (initiate-request state opts req downstream))
+
+                 ;; proxy loop, return bad gateway
                  (do
-                   (debug {:msg   "In proxy loop"
-                           :event [:request req]})
-                   (downstream :response bad-gateway))
-                 (initiate-request
-                  state opts
-                  (process-request req opts)
-                  downstream)))
-             (done []) ;; We don't care about this
-             ;; Handling all other events
+                   (debug {:msg   "In proxy loop" :event [:request req]})
+                   (downstream :response bad-gateway))))
+
+             ;; ignore :done events
+             (done [])
+
+             ;; all other events go upstream (client's downstream)
              (else [evt val]
-               (when-let [upstream (@state :upstream)]
-                 (upstream evt val)))))))))
+               (let [upstream (@state :upstream)]
+                 (if (and upstream (not= :pending upstream))
+                   (upstream evt val)
+                   (throw (Exception. (str "proxy is not expecting message, " [evt val]))))))))))))
