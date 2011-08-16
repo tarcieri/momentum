@@ -27,7 +27,7 @@
                    (catch NumberFormatException _)) ssl?]))))
 
 (defn- chunked?
-  [[_ _ body]]
+  [[_ body]]
   (= body :chunked))
 
 (defn- bad-gateway?

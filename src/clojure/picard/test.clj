@@ -199,7 +199,9 @@
 ;; Helpers
 (defn continue?
   [ex]
-  (let [[evt [status]] (first (exchange-events ex))]
+  (let [evts (exchange-events ex)
+        real-evts (filter (fn [[evt]] (and (not= :pause evt) (not= :resume evt))) evts)
+        [evt [status]] (first real-evts)]
     (and (= :response evt) (= 100 status))))
 
 (defn includes?
