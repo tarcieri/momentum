@@ -55,6 +55,18 @@
     (is (= "hello world" (last-response-body)))
     (is (= 200 (last-response-status)))))
 
+(defn- head-request-test-app
+  [downstream]
+  (defstream
+    (request [req]
+      (downstream :response [200 {"content-type" "text/html""content-length" "11"} nil]))))
+
+(deftest doesnt-explode-on-head-request
+  (with-app (gzip/encoder head-request-test-app)
+    (HEAD "/" {"accept-encoding" "gzip"})
+    (is (not (= "gzip" ((last-response-headers) "content-encoding"))))
+    (is (= 200 (last-response-status)))))
+
 (defn- chunked-test-app
   [downstream]
   (defstream

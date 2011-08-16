@@ -117,10 +117,7 @@
   [opts state downstream [status hdrs body :as resp]]
   (let [content-type-header (content-type hdrs)
         gzip-content-type? (contains? (:gzip-content-types opts) content-type-header)]
-    (if-not (and gzip-content-type? (:accept-gzip? @state))
-      ;; don't gzip
-      (downstream :response resp)
-
+    (if (and body gzip-content-type? (:accept-gzip? @state))
       ;; gzip
       (let [hdrs (assoc hdrs "content-encoding" "gzip")
             chunked? (= :chunked body)
@@ -154,7 +151,10 @@
          :else
          (let [gzipped-body (gzip-entire-body body)
                hdrs (assoc hdrs "content-length" (.readableBytes gzipped-body))]
-           (downstream :response [status hdrs gzipped-body])))))))
+           (downstream :response [status hdrs gzipped-body]))))
+
+      ;; don't gzip
+      (downstream :response resp))))
 
 (def response-body-too-large-error
   [500 {"content-length"     "0"
