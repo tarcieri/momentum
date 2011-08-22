@@ -17,17 +17,50 @@
    [org.jboss.netty.channel.group
     ChannelGroup]
    [org.jboss.netty.channel.socket.nio
-    NioServerSocketChannelFactory]))
+    NioServerSocketChannelFactory]
+   [java.util
+    LinkedList]))
 
 (defrecord State
     [ch
      upstream
      aborting?
-     last-write])
+     last-write
+     event-lock
+     event-queue])
 
 (defn- initial-state
-  [ch upstream]
-  (State. ch upstream false nil))
+  [ch]
+  (State. ch nil false nil (atom true) (LinkedList.)))
+
+(defn- try-acquire
+  [event-lock event-queue evt val]
+  (locking event-lock
+    (let [acquired? @event-lock]
+      (if acquired?
+        (reset! event-lock false)
+        (.add event-queue [evt val]))
+      acquired?)))
+
+(defn- poll-queue
+  [event-lock event-queue]
+  (locking event-lock
+    (let [next (.poll event-queue)]
+      (when-not next
+        (reset! event-lock true))
+      next)))
+
+(defn send-upstream
+  [current-state evt val]
+  (let [event-lock  (.event-lock current-state)
+        event-queue (.event-queue current-state)
+        acquired?   (try-acquire event-lock event-queue evt val)]
+    (when acquired?
+      (loop [evt evt val val]
+        (let [upstream (.upstream current-state)]
+          (upstream evt val))
+        (when-let [[evt val] (poll-queue event-lock event-queue)]
+          (recur evt val))))))
 
 (defn- close-channel
   [current-state]
@@ -38,6 +71,7 @@
        (when (.isOpen ch)
          (.close ch))))))
 
+;; TODO: figure out if this should use send-upstream
 (defn- handle-err
   [state err current-state]
   (let [aborting? (.aborting? current-state)
@@ -90,23 +124,22 @@
             (cond
              ;; Handle message events
              (message-event? evt)
-             (let [msg      (.getMessage ^MessageEvent evt)
-                   upstream (.upstream current-state)]
-               (upstream :message msg))
+             (let [msg (.getMessage ^MessageEvent evt)]
+               (send-upstream current-state :message msg))
 
              ;; The connection has been established. Bind the application function
              ;; with a downstream and set the initial state. The
              ;; downstream should not be invoked during the binding
              ;; phase, so an open event will be fired.
              (channel-open-event? evt)
-             (let [ch       (.getChannel evt)
-                   upstream (app (mk-downstream-fn state))]
-               (reset! state (initial-state ch upstream))
-               (upstream :open nil))
+             (let [ch (.getChannel evt)]
+               (reset! state (initial-state ch))
+               (let [upstream (app (mk-downstream-fn state))]
+                 (swap! state #(assoc % :upstream upstream))
+                 (send-upstream @state :open nil)))
 
              (channel-close-event? evt)
-             (let [upstream (.upstream current-state)]
-               (upstream :close nil))
+             (send-upstream current-state :close nil)
 
              (exception-event? evt)
              (handle-err state (.getCause evt) current-state))

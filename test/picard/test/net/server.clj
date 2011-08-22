@@ -48,7 +48,7 @@
        (enqueue ch1 [evt val])
        (when (= :open evt)
          (send-off (agent nil)
-           (Thread/sleep 50)
+           (Thread/sleep 30)
            (dn :message "Hello"))))))
 
   (close-socket)
@@ -58,4 +58,42 @@
        :close  nil
        :abort  #(instance? java.io.IOException %))))
 
+(defcoretest handling-exception-in-bind-function
+  [ch1]
+  (start
+   (fn [dn] (throw (Exception. "TROLLOLOL"))))
+
+  (Thread/sleep 30)
+  (is (not (open-socket?))))
+
+(defcoretest handling-exception-after-open-event
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :open evt)
+         (throw (Exception. "TROLLOLOL"))))))
+
+  (is (next-msgs
+       ch1
+       :open  nil
+       :abort #(instance? Exception %))))
+
+(defcoretest handling-exception-after-message-event
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :message evt)
+         (throw (Exception. "TROLLOLOL"))))))
+
+  (write-socket "Hello world")
+
+  (is (next-msgs
+       ch1
+       :open    nil
+       :message "Hello world"
+       :abort   #(instance? Exception %))))
 
