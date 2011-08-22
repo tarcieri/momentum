@@ -27,11 +27,30 @@
   (State. ch upstream false))
 
 (defn- handle-err
-  [state err])
+  [state err]
+  (throw (Exception. "Not implemented")))
 
 (defn- mk-downstream-fn
   [state]
-  (fn [evt val]))
+  (fn [evt val]
+    (let [current-state ^State @state]
+      (cond
+       (= :pause evt)
+       (throw (Exception. "Not implemented"))
+
+       (= :resume evt)
+       (throw (Exception. "Not implemented"))
+
+       (= :abort evt)
+       (handle-err state val)
+
+       (= :message evt)
+       (if-not (.upstream current-state)
+         (throw (Exception.
+                 (str "Not callable until request is sent.\n"
+                      "  Event: " evt "\n"
+                      "  Value: " val)))
+         (.write (.ch current-state) val))))))
 
 (defn- mk-upstream-handler
   [app opts]

@@ -10,7 +10,8 @@
    [java.net
     Socket]
    [java.util.concurrent
-    TimeoutException]))
+    TimeoutException
+    TimeUnit]))
 
 (declare ch1 ch2 ch3 ch4 sock in out server)
 

@@ -17,6 +17,7 @@
 
   (write-socket "Hello world")
   (is (next-msgs :message "Hello world"))
+  (is (receiving "Hello world"))
 
   (close-socket)
   (is (next-msgs :close nil)))
