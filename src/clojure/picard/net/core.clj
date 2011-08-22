@@ -4,8 +4,11 @@
     Channels
     ChannelEvent
     ChannelHandlerContext
+    ChannelState
     ChannelStateEvent
-    ChannelUpstreamHandler]
+    ChannelUpstreamHandler
+    ExceptionEvent
+    MessageEvent]
    [org.jboss.netty.channel.group
     ChannelGroup
     DefaultChannelGroup]
@@ -46,10 +49,19 @@
        (= ChannelState/OPEN (.getState evt))
        (not (.getValue evt))))
 
+(defn message-event?
+  [evt]
+  (instance? MessageEvent evt))
+
+(defn exception-event?
+  [evt]
+  (instance? ExceptionEvent evt))
+
+;; Some handlers
 (defn mk-channel-tracker
   [^ChannelGroup channel-group]
   (reify ChannelUpstreamHandler
-    (handleUpstream [_ ^ChannelHandlerContext ctx ^ChannelEvent evt]
+    (^void handleUpstream [_ ^ChannelHandlerContext ctx ^ChannelEvent evt]
       (when (channel-open-event? evt)
         (.add channel-group (.getChannel evt)))
       (.sendUpstream ctx evt))))
