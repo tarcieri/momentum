@@ -13,11 +13,29 @@
        (when (= :message evt)
          (dn :message val)))))
 
-  (is (next-msgs :open nil))
+  (is (next-msgs ch1 :open nil))
 
   (write-socket "Hello world")
-  (is (next-msgs :message "Hello world"))
+  (is (next-msgs ch1 :message "Hello world"))
   (is (receiving "Hello world"))
 
   (close-socket)
-  (is (next-msgs :close nil)))
+  (is (next-msgs ch1 :close nil)))
+
+(defcoretest writing-to-closed-socket
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :open evt)
+         (send-off (agent nil)
+           (Thread/sleep 50)
+           (dn :message "Hello"))))))
+
+  (close-socket)
+  (is (next-msgs
+       ch1
+       :open   nil
+       :close  nil
+       :abort  #(instance? java.io.IOException %))))

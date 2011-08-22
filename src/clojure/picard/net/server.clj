@@ -1,5 +1,7 @@
 (ns picard.net.server
   (:use
+   picard.core.deferred
+   picard.utils
    picard.net.core)
   (:import
    [org.jboss.netty.bootstrap
@@ -20,15 +22,32 @@
 (defrecord State
     [ch
      upstream
-     aborting?])
+     aborting?
+     last-write])
 
 (defn- initial-state
   [ch upstream]
-  (State. ch upstream false))
+  (State. ch upstream false nil))
 
 (defn- handle-err
-  [state err]
-  (throw (Exception. "Not implemented")))
+  [state err current-state]
+  (let [aborting? (.aborting? current-state)
+        upstream  (.upstream current-state)
+        ch        (.ch current-state)]
+    (when-not aborting?
+      (swap-then!
+       state
+       #(assoc % :aborting? true)
+       (fn [^State current-state]
+         (receive
+          (.last-write current-state)
+          (fn [_ _ _]
+            (when (.isOpen ch)
+              (.close ch))))
+
+         (when upstream
+           (try (upstream :abort err)
+                (catch Exception _))))))))
 
 (defn- mk-downstream-fn
   [state]
@@ -42,7 +61,7 @@
        (throw (Exception. "Not implemented"))
 
        (= :abort evt)
-       (handle-err state val)
+       (handle-err state val current-state)
 
        (= :message evt)
        (if-not (.upstream current-state)
@@ -50,7 +69,10 @@
                  (str "Not callable until request is sent.\n"
                       "  Event: " evt "\n"
                       "  Value: " val)))
-         (.write (.ch current-state) val))))))
+         (let [val        (to-channel-buffer val)
+               ch         (.ch current-state)
+               last-write (.write ch val)]
+           (swap! state #(assoc % :last-write last-write))))))))
 
 (defn- mk-upstream-handler
   [app opts]
@@ -58,38 +80,32 @@
     (reify ChannelUpstreamHandler
       (^void handleUpstream [_ ^ChannelHandlerContext ctx ^ChannelEvent evt]
         (let [current-state ^State @state]
-          (cond
-           ;; Handle message events
-           (message-event? evt)
-           (let [msg      (.getMessage ^MessageEvent evt)
-                 upstream (.upstream current-state)]
-             (try
-               (upstream :message msg)
-               (catch Exception err
-                 (handle-err state err))))
+          (try
+            (cond
+             ;; Handle message events
+             (message-event? evt)
+             (let [msg      (.getMessage ^MessageEvent evt)
+                   upstream (.upstream current-state)]
+               (upstream :message msg))
 
-           ;; The connection has been established. Bind the application function
-           ;; with a downstream and set the initial state. The
-           ;; downstream should not be invoked during the binding
-           ;; phase, so an open event will be fired.
-           (channel-open-event? evt)
-           (let [ch       (.getChannel evt)
-                 upstream (app (mk-downstream-fn state))]
-             (reset! state (initial-state ch upstream))
-             (try
-               (upstream :open nil)
-               (catch Exception err
-                 (handle-err state err))))
+             ;; The connection has been established. Bind the application function
+             ;; with a downstream and set the initial state. The
+             ;; downstream should not be invoked during the binding
+             ;; phase, so an open event will be fired.
+             (channel-open-event? evt)
+             (let [ch       (.getChannel evt)
+                   upstream (app (mk-downstream-fn state))]
+               (reset! state (initial-state ch upstream))
+               (upstream :open nil))
 
-           (channel-close-event? evt)
-           (let [upstream (.upstream current-state)]
-             (try
-               (upstream :close nil)
-               (catch Exception err
-                 (handle-err state err))))
+             (channel-close-event? evt)
+             (let [upstream (.upstream current-state)]
+               (upstream :close nil))
 
-           (exception-event? evt)
-           (handle-err state (.getCause evt))))))))
+             (exception-event? evt)
+             (handle-err state (.getCause evt) current-state))
+            (catch Exception err
+              (handle-err state err @state))))))))
 
 (defn- ^ChannelPipelineFactory mk-pipeline-factory
   [app channel-group opts]
