@@ -63,6 +63,13 @@
   []
   (.close sock))
 
+(defn open-socket?
+  []
+  (let [byte (.read in)]
+    (if (= 0 byte)
+      (recur)
+      (< 0 byte))))
+
 (defn read-socket
   ([] (read-socket in))
   ([in] (read-socket in 1000))

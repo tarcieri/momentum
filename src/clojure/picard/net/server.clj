@@ -29,22 +29,25 @@
   [ch upstream]
   (State. ch upstream false nil))
 
+(defn- close-channel
+  [current-state]
+  (let [ch (.ch current-state)]
+    (receive
+     (.last-write current-state)
+     (fn [_ _ _]
+       (when (.isOpen ch)
+         (.close ch))))))
+
 (defn- handle-err
   [state err current-state]
   (let [aborting? (.aborting? current-state)
-        upstream  (.upstream current-state)
-        ch        (.ch current-state)]
+        upstream  (.upstream current-state)]
     (when-not aborting?
       (swap-then!
        state
        #(assoc % :aborting? true)
        (fn [^State current-state]
-         (receive
-          (.last-write current-state)
-          (fn [_ _ _]
-            (when (.isOpen ch)
-              (.close ch))))
-
+         (close-channel current-state)
          (when upstream
            (try (upstream :abort err)
                 (catch Exception _))))))))
@@ -54,15 +57,6 @@
   (fn [evt val]
     (let [current-state ^State @state]
       (cond
-       (= :pause evt)
-       (throw (Exception. "Not implemented"))
-
-       (= :resume evt)
-       (throw (Exception. "Not implemented"))
-
-       (= :abort evt)
-       (handle-err state val current-state)
-
        (= :message evt)
        (if-not (.upstream current-state)
          (throw (Exception.
@@ -72,7 +66,19 @@
          (let [val        (to-channel-buffer val)
                ch         (.ch current-state)
                last-write (.write ch val)]
-           (swap! state #(assoc % :last-write last-write))))))))
+           (swap! state #(assoc % :last-write last-write))))
+
+       (= :close evt)
+       (close-channel current-state)
+
+       (= :pause evt)
+       (throw (Exception. "Not implemented"))
+
+       (= :resume evt)
+       (throw (Exception. "Not implemented"))
+
+       (= :abort evt)
+       (handle-err state val current-state)))))
 
 (defn- mk-upstream-handler
   [app opts]
