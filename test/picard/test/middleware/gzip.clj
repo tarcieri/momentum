@@ -155,7 +155,7 @@
       (downstream :body "!\n")
       (downstream :body nil))))
 
-(deftest ^{:focus true} blows-up-if-app-lies-about-content-length
+(deftest blows-up-if-app-lies-about-content-length
   (with-app (gzip/encoder lies-about-content-length-app {:max-buffer-bytes 10})
     (GET "/" {"accept-encoding" "gzip"})
     (is (= 500 (last-response-status)))))
