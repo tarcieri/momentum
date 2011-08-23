@@ -21,6 +21,8 @@
    [java.util
     LinkedList]))
 
+(declare handle-err)
+
 (defrecord State
     [ch
      upstream
@@ -33,13 +35,25 @@
   [ch]
   (State. ch nil false nil (atom true) (LinkedList.)))
 
+(defn- close-channel
+  [current-state]
+  (let [ch (.ch current-state)]
+    (receive
+     (.last-write current-state)
+     (fn [_ _ _]
+       (when (.isOpen ch)
+         (.close ch))))))
+
 (defn- try-acquire
   [event-lock event-queue evt val]
   (locking event-lock
     (let [acquired? @event-lock]
       (if acquired?
         (reset! event-lock false)
-        (.add event-queue [evt val]))
+        (do
+          (when (= :abort evt)
+            (.clear event-queue))
+          (.add event-queue [evt val])))
       acquired?)))
 
 (defn- poll-queue
@@ -50,41 +64,45 @@
         (reset! event-lock true))
       next)))
 
+(defn- abandon-lock
+  [event-lock]
+  (locking event-lock
+    (reset! event-lock true)))
+
 (defn send-upstream
-  [current-state evt val]
+  [state evt val current-state]
   (let [event-lock  (.event-lock current-state)
         event-queue (.event-queue current-state)
         acquired?   (try-acquire event-lock event-queue evt val)]
     (when acquired?
-      (loop [evt evt val val]
-        (let [upstream (.upstream current-state)]
-          (upstream evt val))
-        (when-let [[evt val] (poll-queue event-lock event-queue)]
-          (recur evt val))))))
+      (try
+        (loop [evt evt val val]
+          (let [upstream (.upstream current-state)]
+            (upstream evt val))
+          (when-let [[evt val] (poll-queue event-lock event-queue)]
+            (recur evt val)))
+        (catch Exception err
+          (handle-err state err @state true)
+          (abandon-lock event-lock))))))
 
-(defn- close-channel
-  [current-state]
-  (let [ch (.ch current-state)]
-    (receive
-     (.last-write current-state)
-     (fn [_ _ _]
-       (when (.isOpen ch)
-         (.close ch))))))
-
-;; TODO: figure out if this should use send-upstream
 (defn- handle-err
-  [state err current-state]
-  (let [aborting? (.aborting? current-state)
-        upstream  (.upstream current-state)]
-    (when-not aborting?
-      (swap-then!
-       state
-       #(assoc % :aborting? true)
-       (fn [^State current-state]
-         (close-channel current-state)
-         (when upstream
-           (try (upstream :abort err)
-                (catch Exception _))))))))
+  ([state err current-state]
+     (handle-err state err current-state false))
+  ([state err current-state locked?]
+     (let [aborting? (.aborting? current-state)
+           upstream  (.upstream current-state)]
+       (when-not aborting?
+         (swap-then!
+          state
+          #(assoc % :aborting? true)
+          (fn [^State current-state]
+            (close-channel current-state)
+            (when upstream
+              (try
+                (if locked?
+                  (upstream :abort err)
+                  (send-upstream state :abort err current-state))
+                (catch Exception _)))))))))
 
 (defn- mk-downstream-fn
   [state]
@@ -125,7 +143,7 @@
              ;; Handle message events
              (message-event? evt)
              (let [msg (.getMessage ^MessageEvent evt)]
-               (send-upstream current-state :message msg))
+               (send-upstream state :message msg current-state))
 
              ;; The connection has been established. Bind the application function
              ;; with a downstream and set the initial state. The
@@ -136,10 +154,10 @@
                (reset! state (initial-state ch))
                (let [upstream (app (mk-downstream-fn state))]
                  (swap! state #(assoc % :upstream upstream))
-                 (send-upstream @state :open nil)))
+                 (send-upstream state :open nil @state)))
 
              (channel-close-event? evt)
-             (send-upstream current-state :close nil)
+             (send-upstream state :close nil current-state)
 
              (exception-event? evt)
              (handle-err state (.getCause evt) current-state))

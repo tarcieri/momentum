@@ -97,3 +97,55 @@
        :message "Hello world"
        :abort   #(instance? Exception %))))
 
+(defcoretest abort-messages-get-prioritized-over-other-events
+  [ch1 ch2]
+  (start
+   (fn [dn]
+     (let [depth (atom 0)]
+       (fn [evt val]
+         (let [count (swap! depth inc)]
+           (enqueue ch1 [evt val])
+           (enqueue ch2 [:depth count])
+
+           (when (= :open evt)
+             (dn :close nil)
+             (dn :abort (Exception. "TROLLOLOL")))
+           (swap! depth dec))))))
+
+  (is (next-msgs
+       ch1
+       :open  nil
+       :abort #(instance? Exception %)))
+
+  (is (next-msgs
+       ch2
+       :depth 1
+       :depth 1)))
+
+(defcoretest thrown-exceptions-get-prioritized-over-other-events
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :message evt)
+         (dn :close)
+         (throw (Exception. "LULZ"))))))
+
+  (write-socket "Hello world")
+
+  (is (next-msgs
+       ch1
+       :open    nil
+       :message "Hello world"
+       :abort   #(instance? Exception %))))
+
+(defcoretest telling-the-application-to-chill-out
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]))))
+
+;; TODO: Tests for interest ops
+
+
