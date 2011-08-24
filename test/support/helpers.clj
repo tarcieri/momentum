@@ -19,30 +19,16 @@
 (def enqueue l/enqueue)
 (def receive l/receive)
 
-(defn connect
-  ([f] (connect f 4040))
-  ([f port]
-     (let [sock (Socket. "127.0.0.1" port)]
-       (let [in (.getInputStream sock) out (.getOutputStream sock)]
-         (try
-           (f sock in out)
-           (finally
-            (when-not (.isClosed sock)
-              (.close sock))))))))
-
-(defn running-app*
-  [server f]
-  (if server
-    (try
-      (connect
-       (fn [sock in out]
-         (binding [sock   sock
-                   in     in
-                   out    out
-                   server server]
-           (f))))
-      (finally (server/stop server)))
-    (f)))
+(defn with-core-test-context
+  [name start-server f]
+  (println name)
+  (let [server (start-server)]
+    (if server
+      (try
+        (binding [server server]
+          (f))
+        (finally (server/stop server)))
+      (f))))
 
 (defmacro defcoretest
   ([name start-server test] `(defcoretest ~name [] ~start-server ~test))
@@ -53,12 +39,30 @@
 
       :else
       `(deftest ~name
-         (println ~(str name))
          (binding [ch1 (channel) ch2 (channel) ch3 (channel) ch4 (channel)]
            (let [~bindings [ch1 ch2 ch3 ch4]]
-             (running-app*
-              ~start-server
-              (fn [] ~@body))))))))
+             (with-core-test-context
+               ~(str name)
+               (fn [] ~start-server)
+               (fn [] ~@body))))))))
+
+(defn socket-connect
+  ([f] (socket-connect f 4040))
+  ([f port]
+     (let [sock (Socket. "127.0.0.1" port)]
+       (let [in (.getInputStream sock) out (.getOutputStream sock)]
+         (try
+           (f sock in out)
+           (finally
+            (when-not (.isClosed sock)
+              (.close sock))))))))
+
+(defmacro with-socket
+  [& body]
+  `(socket-connect
+    (fn [sock# in# out#]
+      (binding [sock sock# in in# out out#]
+        ~@body))))
 
 (defn close-socket
   []
@@ -99,7 +103,7 @@
 
 (defn next-msg
   ([] (next-msg ch1))
-  ([ch] (l/wait-for-message ch 20000)))
+  ([ch] (l/wait-for-message ch 500)))
 
 (defn normalize
   [val]
