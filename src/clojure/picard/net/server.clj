@@ -15,14 +15,14 @@
     NioServerSocketChannelFactory]))
 
 (defn- ^ChannelPipelineFactory mk-pipeline-factory
-  [app channel-group opts]
-  (let [pipeline-fn (or (opts :pipeline-fn) (fn [p _] p))]
+  [channel-group app {pipeline-fn :pipeline-fn :as opts}]
+  (let [pipeline-fn (or pipeline-fn (fn [p _] p))]
       (reify ChannelPipelineFactory
         (getPipeline [_]
           (let [handler (mk-upstream-handler channel-group app opts)]
-           (doto (mk-pipeline)
-             (pipeline-fn opts)
-             (.addLast "handler" handler)))))))
+            (doto (mk-pipeline)
+              (pipeline-fn opts)
+              (.addLast "handler" handler)))))))
 
 (defn- ^ServerBootstrap mk-bootstrap
   [thread-pool]
@@ -75,7 +75,7 @@
        ;; Set the factory
        (.setPipelineFactory
         bootstrap
-        (mk-pipeline-factory app channel-group opts))
+        (mk-pipeline-factory channel-group app opts))
 
        {::bootstrap      bootstrap
         ::server-channel (.bind bootstrap socket-addr)

@@ -83,16 +83,16 @@
    (throw (Exception. (str "Cannot convert " obj " to a ChannelBuffer")))))
 
 ;; ==== Helper functions for tracking events
-(defn channel-open-event?
+(defn channel-connected-event?
   [^ChannelStateEvent evt]
   (and (instance? ChannelStateEvent evt)
-       (= ChannelState/OPEN (.getState evt))
+       (= ChannelState/CONNECTED (.getState evt))
        (.getValue evt)))
 
-(defn channel-close-event?
+(defn channel-disconnected-event?
   [^ChannelStateEvent evt]
   (and (instance? ChannelStateEvent evt)
-       (= ChannelState/OPEN (.getState evt))
+       (= ChannelState/CONNECTED (.getState evt))
        (not (.getValue evt))))
 
 (defn message-event?
@@ -262,7 +262,7 @@
              ;; with a downstream and set the initial state. The
              ;; downstream should not be invoked during the binding
              ;; phase, so an open event will be fired.
-             (channel-open-event? evt)
+             (channel-connected-event? evt)
              (let [ch (.getChannel evt)]
                ;; First, track the channel in the channel group
                (.add channel-group ch)
@@ -272,7 +272,7 @@
                  (swap! state #(assoc % :upstream upstream))
                  (send-upstream state :open nil @state)))
 
-             (channel-close-event? evt)
+             (channel-disconnected-event? evt)
              (send-upstream state :close nil current-state)
 
              (exception-event? evt)
