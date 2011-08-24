@@ -110,14 +110,6 @@
 
 ;; ==== Handlers
 
-(defn mk-channel-tracker
-  [^ChannelGroup channel-group]
-  (reify ChannelUpstreamHandler
-    (^void handleUpstream [_ ^ChannelHandlerContext ctx ^ChannelEvent evt]
-      (when (channel-open-event? evt)
-        (.add channel-group (.getChannel evt)))
-      (.sendUpstream ctx evt))))
-
 (defrecord State
     [ch
      upstream
@@ -251,7 +243,7 @@
        (handle-err state val current-state)))))
 
 (defn mk-upstream-handler
-  [app opts]
+  [^ChannelGroup channel-group app opts]
   (let [state (atom nil)]
     (reify ChannelUpstreamHandler
       (^void handleUpstream [_ ^ChannelHandlerContext ctx ^ChannelEvent evt]
@@ -272,6 +264,9 @@
              ;; phase, so an open event will be fired.
              (channel-open-event? evt)
              (let [ch (.getChannel evt)]
+               ;; First, track the channel in the channel group
+               (.add channel-group ch)
+               ;; Now initialize the state with the channel
                (reset! state (initial-state ch))
                (let [upstream (app (mk-downstream-fn state))]
                  (swap! state #(assoc % :upstream upstream))

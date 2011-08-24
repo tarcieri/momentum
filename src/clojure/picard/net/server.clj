@@ -16,16 +16,15 @@
 
 (defn- ^ChannelPipelineFactory mk-pipeline-factory
   [app channel-group opts]
-  (let [pipeline-fn     (or (opts :pipeline-fn) (fn [p _] p))
-        channel-tracker (mk-channel-tracker channel-group)]
+  (let [pipeline-fn (or (opts :pipeline-fn) (fn [p _] p))]
       (reify ChannelPipelineFactory
         (getPipeline [_]
-          (doto (mk-pipeline)
-            (pipeline-fn opts)
-            (.addFirst "channel-tracker" channel-tracker)
-            (.addLast "handler" (mk-upstream-handler app opts)))))))
+          (let [handler (mk-upstream-handler channel-group app opts)]
+           (doto (mk-pipeline)
+             (pipeline-fn opts)
+             (.addLast "handler" handler)))))))
 
-(defn- ^ServerBootstrap mk-server-bootstrap
+(defn- ^ServerBootstrap mk-bootstrap
   [thread-pool]
   (ServerBootstrap.
    (NioServerSocketChannelFactory.
@@ -65,7 +64,7 @@
   ([app] (start app {}))
   ([app {host :host port :port :as opts}]
      (let [thread-pool   (mk-thread-pool)
-           bootstrap     (mk-server-bootstrap thread-pool)
+           bootstrap     (mk-bootstrap thread-pool)
            channel-group (mk-channel-group)
            socket-addr   (mk-socket-addr [host (or port 4040)])]
 
