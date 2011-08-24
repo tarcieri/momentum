@@ -190,6 +190,68 @@
        :resume nil
        :close  nil)))
 
+(defcoretest raising-error-during-pause-event
+  [ch1]
+  (start
+   (fn [dn]
+     (let [latch (atom true)]
+       (fn [evt val]
+         (enqueue ch1 [evt val])
+         (when (= :open evt)
+           (future
+             (loop [continue? @latch]
+               (if continue?
+                 (do
+                   (dn :message "HAMMER TIME!")
+                   (recur @latch))))))
+         (when (= :pause evt)
+           (reset! latch false)
+           (throw (Exception. "TROLLOLOL")))))))
+
+  (Thread/sleep 100)
+  (drain-socket)
+
+  (is (not (open-socket?)))
+
+  (is (next-msgs
+       ch1
+       :open   nil
+       :pause  nil
+       :abort  #(instance? Exception %))))
+
+(defcoretest raising-error-during-resume-event
+  [ch1]
+  (start
+   (fn [dn]
+     (let [latch (atom true)]
+       (fn [evt val]
+         (enqueue ch1 [evt val])
+         (when (= :open evt)
+           (future
+             (loop [continue? @latch]
+               (if continue?
+                 (do
+                   (dn :message "HAMMER TIME!")
+                   (recur @latch))))))
+
+         (when (= :pause evt)
+           (reset! latch false))
+
+         (when (= :resume evt)
+           (throw (Exception. "TROLLOLOL")))))))
+
+  (Thread/sleep 100)
+  (drain-socket)
+
+  (is (not (open-socket?)))
+
+  (is (next-msgs
+       ch1
+       :open   nil
+       :pause  nil
+       :resume nil
+       :abort  #(instance? Exception %))))
+
 (defcoretest telling-the-server-to-chill-out
   [ch1 ch2]
   (start
@@ -222,3 +284,16 @@
        ch1
        :message "Goodbye world"
        :close   nil)))
+
+(defcoretest avoiding-abort-loops
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (dn :abort (Exception. "TROLLOLOL")))))
+
+  (is (next-msgs
+       ch1
+       :open  nil
+       :abort #(instance? Exception %))))
