@@ -27,13 +27,21 @@
     [ch
      upstream
      aborting?
+     writable?
      last-write
      event-lock
      event-queue])
 
 (defn- initial-state
   [ch]
-  (State. ch nil false nil (atom true) (LinkedList.)))
+  (State.
+   ch    ;; ch
+   nil   ;; upstream
+   false ;; aborting?
+   true  ;; writable?
+   nil   ;; last-write
+   (atom true)
+   (LinkedList.)))
 
 (defn- close-channel
   [current-state]
@@ -69,7 +77,16 @@
   (locking event-lock
     (reset! event-lock true)))
 
-(defn send-upstream
+(defn- handle-interest-ops
+  [state upstream]
+  (let [current-state @state
+        writable?     (.writable? current-state)
+        ch            (.ch current-state)]
+    (when (not= writable? (.isWritable ch))
+      (swap! state #(assoc % :writable? (not writable?)))
+      (upstream (if writable? :pause :resume) nil))))
+
+(defn- send-upstream
   [state evt val current-state]
   (let [event-lock  (.event-lock current-state)
         event-queue (.event-queue current-state)
@@ -78,7 +95,9 @@
       (try
         (loop [evt evt val val]
           (let [upstream (.upstream current-state)]
-            (upstream evt val))
+            (if (= :interest-ops evt)
+              (handle-interest-ops state upstream)
+              (upstream evt val)))
           (when-let [[evt val] (poll-queue event-lock event-queue)]
             (recur evt val)))
         (catch Exception err
@@ -124,10 +143,12 @@
        (close-channel current-state)
 
        (= :pause evt)
-       (throw (Exception. "Not implemented"))
+       (when (.upstream current-state)
+         (.setReadable (.ch current-state) false))
 
        (= :resume evt)
-       (throw (Exception. "Not implemented"))
+       (when (.upstream current-state)
+         (.setReadable (.ch current-state) true))
 
        (= :abort evt)
        (handle-err state val current-state)))))
@@ -144,6 +165,9 @@
              (message-event? evt)
              (let [msg (.getMessage ^MessageEvent evt)]
                (send-upstream state :message msg current-state))
+
+             (interest-changed-event? evt)
+             (send-upstream state :interest-ops nil current-state)
 
              ;; The connection has been established. Bind the application function
              ;; with a downstream and set the initial state. The

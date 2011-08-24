@@ -22,6 +22,26 @@
   (close-socket)
   (is (next-msgs ch1 :close nil)))
 
+(defcoretest sending-multiple-packets
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val]))))
+
+  (write-socket "Hello world")
+  (flush-socket)
+  (Thread/sleep 50)
+  (write-socket "Goodbye world")
+  (close-socket)
+
+  (is (next-msgs
+       ch1
+       :open    nil
+       :message "Hello world"
+       :message "Goodbye world"
+       :close   nil)))
+
 (defcoretest sending-close-event-closes-connection
   [ch1]
   (start
@@ -144,7 +164,61 @@
   [ch1]
   (start
    (fn [dn]
-     (fn [evt val]))))
+     (let [latch (atom true)]
+       (fn [evt val]
+         (enqueue ch1 [evt val])
+         (when (= :open evt)
+           (future
+             (loop [continue? @latch]
+               (if continue?
+                 (do
+                   (dn :message "HAMMER TIME!")
+                   (recur @latch))
+                 (do
+                   (Thread/sleep 100)
+                   (dn :close nil))))))
+         (when (= :pause evt)
+           (reset! latch false))))))
+
+  (Thread/sleep 100)
+  (drain-socket)
+
+  (is (next-msgs
+       ch1
+       :open   nil
+       :pause  nil
+       :resume nil
+       :close  nil)))
+
+(defcoretest telling-the-server-to-chill-out
+  [ch1 ch2]
+  (start
+   (fn [dn]
+     (receive ch2 (fn [_] (dn :resume nil)))
+     (let [latch (atom true)]
+       (fn [evt val]
+         (enqueue ch1 [evt val])
+         (when (and (= :message evt) @latch)
+           (dn :pause nil)
+           (reset! latch false))))))
+
+  (write-socket "Hello world")
+  (flush-socket)
+  (Thread/sleep 50)
+  (write-socket "Goodbye world")
+  (close-socket)
+
+  (is (next-msgs
+       ch1
+       :open    nil
+       :message "Hello world"))
+
+  (enqueue ch2 :resume)
+
+  (is (next-msgs
+       ch1
+       :message "Goodbye world"
+       :close   nil)))
 
 ;; TODO: Tests for interest ops
 

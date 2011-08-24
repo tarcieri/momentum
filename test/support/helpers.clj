@@ -17,6 +17,7 @@
 
 (def channel l/channel)
 (def enqueue l/enqueue)
+(def receive l/receive)
 
 (defn connect
   ([f] (connect f 4040))
@@ -79,6 +80,16 @@
         (if (<= 0 byte)
           (cons byte (read-socket in))
           [])))))
+
+(defn flush-socket
+  []
+  (.flush out))
+
+(defn drain-socket
+  []
+  (loop []
+    (when (<= 0 (.read in))
+      (recur))))
 
 (defn write-socket
   [& strs]

@@ -96,6 +96,11 @@
   [evt]
   (instance? MessageEvent evt))
 
+(defn interest-changed-event?
+  [^ChannelStateEvent evt]
+  (and (instance? ChannelStateEvent evt)
+       (= ChannelState/INTEREST_OPS (.getState evt))))
+
 (defn exception-event?
   [evt]
   (instance? ExceptionEvent evt))
