@@ -197,14 +197,17 @@
      (receive ch2 (fn [_] (dn :resume nil)))
      (let [latch (atom true)]
        (fn [evt val]
-         (enqueue ch1 [evt val])
+         (when-not (#{:pause :resume} evt)
+           (enqueue ch1 [evt val]))
          (when (and (= :message evt) @latch)
            (dn :pause nil)
            (reset! latch false))))))
 
   (write-socket "Hello world")
   (flush-socket)
+
   (Thread/sleep 50)
+
   (write-socket "Goodbye world")
   (close-socket)
 
@@ -219,7 +222,3 @@
        ch1
        :message "Goodbye world"
        :close   nil)))
-
-;; TODO: Tests for interest ops
-
-
