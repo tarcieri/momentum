@@ -70,8 +70,7 @@
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :open evt)
-         (send-off
-          (agent nil)
+         (future
           (Thread/sleep 30)
           (dn :message "Hello"))))))
 
@@ -210,7 +209,7 @@
            (reset! latch false))))))
 
   (with-socket
-    (Thread/sleep 100)
+    (Thread/sleep 400)
     (drain-socket)
 
     (is (next-msgs
@@ -230,10 +229,9 @@
          (when (= :open evt)
            (future
              (loop [continue? @latch]
-               (if continue?
-                 (do
-                   (dn :message "HAMMER TIME!")
-                   (recur @latch))))))
+               (when continue?
+                 (dn :message "HAMMER TIME!")
+                 (recur @latch)))))
          (when (= :pause evt)
            (reset! latch false)
            (throw (Exception. "TROLLOLOL")))))))

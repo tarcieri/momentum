@@ -197,9 +197,9 @@
   ([state err current-state]
      (handle-err state err current-state false))
   ([state err current-state locked?]
-     (let [aborting? (.aborting? current-state)
-           upstream  (.upstream current-state)]
-       (when-not aborting?
+     (when (and current-state
+                (not (.aborting? current-state)))
+       (let [upstream  (.upstream current-state)]
          (swap-then!
           state
           #(assoc % :aborting? true)

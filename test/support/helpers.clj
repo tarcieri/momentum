@@ -161,7 +161,7 @@
   [msg chs]
   (let [chs (zipmap (map #(str %) chs) chs)]
     `(let [ch# (l/poll ~chs 50)]
-       (if-let [received# (l/read-channel ch#)]
+       (if-let [received# (l/wait-for-message ch#)]
          (do
            (println "GOT: " received#)
            (do-report {:type :fail :message ~msg

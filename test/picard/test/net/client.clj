@@ -60,10 +60,9 @@
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :open evt)
-         (send-off
-          (agent nil)
-          (Thread/sleep 30)
-          (dn :message "Hello")))))
+         (future
+           (Thread/sleep 60)
+           (dn :message "Hello")))))
    {:host "localhost" :port 4040})
 
   (is (next-msgs
@@ -193,7 +192,8 @@
          (dn :message "Hello world"))
        (when (= :message evt)
          (dn :close nil)
-         (throw (Exception. "TROLLOLOL"))))))
+         (throw (Exception. "TROLLOLOL")))))
+   {:host "localhost" :port 4040})
 
   (is (next-msgs
        ch1
@@ -201,14 +201,18 @@
        :message "Hello world"
        :close   nil)))
 
-(defcoretest telling-the-application-to-chill-out
+(defn- start-black-hole-server
   [ch1 ch2]
   (server/start
    (fn [dn]
      (receive ch2 (fn [_] (dn :resume nil)))
      (fn [evt val]
        (when (= :open evt)
-         (dn :pause nil)))))
+         (dn :pause nil))))))
+
+(defcoretest telling-the-application-to-chill-out
+  [ch1 ch2]
+  (start-black-hole-server ch1 ch2)
 
   (connect
    (fn [dn]
@@ -241,3 +245,31 @@
        ch1
        :resume nil
        :close  nil)))
+
+(defcoretest raising-error-during-pause-event
+  [ch1 ch2]
+  (start-black-hole-server ch1 ch2)
+
+  (connect
+   (fn [dn]
+     (let [latch (atom true)]
+       (fn [evt val]
+         (enqueue ch1 [evt val])
+
+         (when (= :open evt)
+           (future
+             (loop [continue? @latch]
+               (when continue?
+                 (dn :message "HAMMER TIME!")
+                 (recur @latch)))))
+
+         (when (= :pause evt)
+           (reset! latch false)
+           (throw (Exception. "TROLLOLOL"))))))
+   {:host "localhost" :port 4040})
+
+  (is (next-msgs
+       ch1
+       :open   nil
+       :pause  nil
+       :abort #(instance? Exception %))))
