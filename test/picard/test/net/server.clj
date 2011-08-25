@@ -70,9 +70,10 @@
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :open evt)
-         (send-off (agent nil)
-           (Thread/sleep 30)
-           (dn :message "Hello"))))))
+         (send-off
+          (agent nil)
+          (Thread/sleep 30)
+          (dn :message "Hello"))))))
 
   (with-socket
     (close-socket)
@@ -123,6 +124,25 @@
          :open    nil
          :message "Hello world"
          :abort   #(instance? Exception %)))))
+
+(defcoretest handling-exception-after-abort-event
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (#{:open :abort} evt)
+         (throw (Exception. "TROLLOLOL"))))))
+
+  (with-socket
+    (write-socket "Hello world")
+
+    (is (next-msgs
+         ch1
+         :open  nil
+         :abort #(instance? Exception %)))
+
+    (is (no-msgs ch1))))
 
 (defcoretest abort-messages-get-prioritized-over-other-events
   [ch1 ch2]
