@@ -328,4 +328,6 @@
     (is (next-msgs
          ch1
          :open  nil
-         :abort #(instance? Exception %)))))
+         :abort #(instance? Exception %)))
+
+    (is (no-msgs ch1))))

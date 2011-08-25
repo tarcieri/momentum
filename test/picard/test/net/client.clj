@@ -273,3 +273,97 @@
        :open   nil
        :pause  nil
        :abort #(instance? Exception %))))
+
+(defcoretest raising-error-during-resume-event
+  [ch1 ch2]
+  (start-black-hole-server ch1 ch2)
+
+  (connect
+   (fn [dn]
+     (let [latch (atom true)]
+       (fn [evt val]
+         (enqueue ch1 [evt val])
+         (cond
+          (= :open evt)
+          (future
+            (loop [continue? @latch]
+              (when continue?
+                (dn :message "HAMMER TIME!")
+                (recur @latch))))
+
+          (= :pause evt)
+          (reset! latch false)
+
+          (= :resume evt)
+          (throw (Exception. "TROLLOLOL"))))))
+   {:host "localhost" :port 4040})
+
+  (is (next-msgs
+       ch1
+       :open   nil
+       :pause  nil))
+
+  (enqueue ch2 :resume)
+
+  (is (next-msgs
+       ch1
+       :resume nil
+       :abort  #(instance? Exception %))))
+
+(defcoretest telling-the-server-to-chill-out
+  [ch1 ch2 ch3]
+  (server/start
+   (fn [dn]
+     (receive
+      ch2 (fn [_]
+            (dn :message "Goodbye world")
+            (dn :close nil)))
+     (fn [evt val]
+       (when (= :open evt)
+         (dn :message "Hello world")))))
+
+  (connect
+   (fn [dn]
+     (receive ch3 (fn [_] (dn :resume nil)))
+     (let [latch (atom true)]
+       (fn [evt val]
+         (when-not (#{:pause :resume} evt)
+           (enqueue ch1 [evt val]))
+
+         (when (and (= :message evt) @latch)
+           (dn :pause nil)
+           (reset! latch false)))))
+   {:host "localhost" :port 4040})
+
+  (is (next-msgs
+       ch1
+       :open    nil
+       :message "Hello world"))
+
+  (enqueue ch2 :message)
+
+  (is (no-msgs ch1))
+
+  (enqueue ch3 :resume)
+
+  (is (next-msgs
+       ch1
+       :message "Goodbye world")))
+
+(defcoretest avoiding-abort-loops
+  [ch1]
+  (start-echo-server)
+
+  (connect
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (dn :abort (Exception. "TROLLOLOL"))))
+   {:host "localhost" :port 4040})
+
+  (is (next-msgs
+       ch1
+       :open  nil
+       :abort #(instance? Exception %)))
+
+  (is (no-msgs ch1)))
