@@ -103,7 +103,7 @@
 
 (defn next-msg
   ([] (next-msg ch1))
-  ([ch] (l/wait-for-message ch 500)))
+  ([ch] (l/wait-for-message ch 2000)))
 
 (defn normalize
   [val]
@@ -158,22 +158,24 @@
                      :expected expected# :actual "<TIMEOUT>"})))))
 
 (defn- no-msgs-for
-  [ch msg]
-  `(do
-     (Thread/sleep 50)
-     (if (= 0 (count ~ch))
-       (do-report {:type :pass :message ~msg
-                   :expected nil :actual nil})
-       (do-report {:type :fail :message ~msg
-                   :expected nil :actual (next-msg ~ch)}))))
+  [msg chs]
+  (let [chs (zipmap (map #(str %) chs) chs)]
+    `(let [ch# (l/poll ~chs 50)]
+       (if-let [received# (l/read-channel ch#)]
+         (do
+           (println "GOT: " received#)
+           (do-report {:type :fail :message ~msg
+                       :expected [] :actual received#}))
+         (do-report {:type :pass :message ~msg
+                     :expected nil :actual nil})))))
 
 (defmethod assert-expr 'next-msgs [msg form]
   (let [[_ ch & stmts] form]
     (next-msgs-for ch msg stmts)))
 
 (defmethod assert-expr 'no-msgs [msg form]
-  (let [[_ ch] form]
-    (no-msgs-for ch msg)))
+  (let [[_ & args] form]
+    (no-msgs-for msg args)))
 
 (defmethod assert-expr 'receiving [msg form]
   (let [expected (rest form)]

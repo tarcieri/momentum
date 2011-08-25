@@ -177,7 +177,7 @@
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :message evt)
-         (dn :close)
+         (dn :close nil)
          (throw (Exception. "LULZ"))))))
 
   (with-socket
