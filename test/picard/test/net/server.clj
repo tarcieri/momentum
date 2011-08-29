@@ -331,3 +331,18 @@
          :abort #(instance? Exception %)))
 
     (is (no-msgs ch1))))
+
+(defcoretest throws-exception-when-receiving-unknown-event
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :open evt)
+         (dn :zomg 1)))))
+
+  (with-socket
+    (is (next-msgs
+         ch1
+         :open  nil
+         :abort #(instance? Exception %)))))

@@ -240,7 +240,10 @@
          (.setReadable (.ch current-state) true))
 
        (= :abort evt)
-       (handle-err state val current-state)))))
+       (handle-err state val current-state)
+
+       :else
+       (throw (Exception. "Unexpected event: " evt))))))
 
 (defn mk-upstream-handler
   [^ChannelGroup channel-group app opts]
