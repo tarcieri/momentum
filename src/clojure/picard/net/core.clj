@@ -1,6 +1,7 @@
 (ns picard.net.core
   (:use
    picard.core.deferred
+   picard.net.message
    picard.utils)
   (:import
    [org.jboss.netty.buffer
@@ -69,6 +70,14 @@
          (callback future (.isCompleteSuccess future) true))))))
 
 ;; ==== Conversions
+
+(extend-protocol NormalizeMessage
+  Object
+  (normalize [msg]
+    [:message msg])
+  nil
+  (normalize [msg]
+    [:message nil]))
 
 (defn to-channel-buffer
   [obj]
@@ -255,8 +264,8 @@
             (cond
              ;; Handle message events
              (message-event? evt)
-             (let [msg (.getMessage ^MessageEvent evt)]
-               (send-upstream state :message msg current-state))
+             (let [[evt val] (normalize (.getMessage ^MessageEvent evt))]
+               (send-upstream state evt val current-state))
 
              (interest-changed-event? evt)
              (send-upstream state :interest-ops nil current-state)

@@ -309,7 +309,7 @@
      (fn [^State current-state]
        (if (.responded? current-state)
          (finalize-exchange state current-state msg)
-         (write-msg state current-state msg))))))
+         (write-msg state next-up msg current-state))))))
 
 (defn- handle-err
   [state err ^State current-state]
