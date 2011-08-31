@@ -206,6 +206,7 @@
   ([state err current-state]
      (handle-err state err current-state false))
   ([state err current-state locked?]
+     (.printStackTrace err) ;; For debugging
      (when (and current-state
                 (not (.aborting? current-state)))
        (let [upstream  (.upstream current-state)]

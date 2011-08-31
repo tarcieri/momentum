@@ -1,12 +1,22 @@
 (ns picard.http.server
-  (:use picard.http.core))
+  (:use
+   picard.utils
+   picard.http.core)
+  (:require
+   [picard.net.server :as net])
+  (:import
+   [org.jboss.netty.handler.codec.http
+    HttpRequestDecoder
+    HttpResponseEncoder]))
 
 ;; TODO:
 ;; * Count the bytes in the request body
 
 (declare
  handle-request
+ stream-or-finalize-request
  handle-response
+ stream-or-finalize-response
  awaiting-100-continue
  waiting-for-response)
 
@@ -103,7 +113,7 @@
 
        (cond
         chunk    (downstream :message (chunk->netty-chunk chunk))
-        chunked? (downstream :message HttpChunk/LAST_CHUNK))
+        chunked? (downstream :message last-chunk))
 
        (maybe-close-connection current-state)))))
 
@@ -137,7 +147,7 @@
      state
      (fn [current-state]
        (if (= 100 status)
-         (assoc current-state :next-up-fn stream-request-body)
+         (assoc current-state :next-up-fn stream-or-finalize-request)
          (let [responded? (or (.head? current-state) (not= :chunked body))]
            (assoc current-state
              :bytes-to-send  bytes-to-send
@@ -166,17 +176,16 @@
   (throw (Exception. "Not expecting a message right now.")))
 
 (defn- stream-or-finalize-request
-  [state evt val current-state]
-  (let [chunk (normalize-chunk val)]
-    (if chunk
-      ((.upstream current-state) :body chunk)
-      (swap-then!
-       state
-       #(assoc % :next-up-fn waiting-for-response)
-       (fn [current-state]
-         (maybe-finalize-exchange current-state)
-         ((.upstream current-state) :body nil)
-         (maybe-close-connection current-state))))))
+  [state evt chunk current-state]
+  (if chunk
+    ((.upstream current-state) :body chunk)
+    (swap-then!
+     state
+     #(assoc % :next-up-fn waiting-for-response)
+     (fn [current-state]
+       (maybe-finalize-exchange current-state)
+       ((.upstream current-state) :body nil)
+       (maybe-close-connection current-state)))))
 
 (defn- awaiting-100-continue
   [state evt val current-state]
@@ -194,7 +203,7 @@
         next-up-fn   (cond
                       (not chunked?)  waiting-for-response
                       expects-100?    awaiting-100-continue
-                      :else           stream-request-body)]
+                      :else           stream-or-finalize-request)]
 
     (swap-then!
      state
@@ -208,17 +217,17 @@
        (maybe-close-connection current-state)))))
 
 (defn- mk-downstream-fn
-  [state]
+  [state dn]
   (fn [evt val]
     (if (#{:response :body} evt)
       (let [current-state @state]
         ((.next-dn-fn current-state) state evt val current-state))
-      (next-dn evt val))))
+      (dn evt val))))
 
 (defn- exchange
   [app dn conn]
   (let [state   (atom (initial-exchange-state conn dn))
-        next-up (app (mk-downstream-fn state))]
+        next-up (app (mk-downstream-fn state dn))]
     ;; Track the upstream
     (swap! state #(assoc % :upstream next-up))
 
@@ -258,10 +267,28 @@
 
            (= :close evt)
            (when next-up
-             (throw (IOException. "Connection reset by peer")))
+             (throw-connection-reset-by-peer))
 
            next-up
            (next-up evt val)
 
            (not (#{:open :close} evt))
-           (throw (Exception. "Not expecting a message right now."))))))))
+           (throw
+            (Exception.
+             (str "Not expecting a message right now: " [evt val])))))))))
+
+(defn- http-pipeline
+  [p _]
+  (doto p
+    (.addLast "encoder" (HttpResponseEncoder.))
+    (.addLast "decoder" (HttpRequestDecoder.))))
+
+(defn start
+  ([app] (start app {}))
+  ([app opts]
+     (let [opts (merge {:pipeline-fn http-pipeline} opts)]
+       (net/start (proto app) opts))))
+
+(defn stop
+  [server]
+  (net/stop server))

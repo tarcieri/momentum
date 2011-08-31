@@ -1,8 +1,8 @@
 (ns picard.http.core
   (:require
-   [clojure.string         :as str]
-   [picard.net.conversions :as conv]
-   [picard.net.message     :as msg])
+   [clojure.string          :as str]
+   [picard.core.conversions :as conv]
+   [picard.net.message      :as msg])
   (:import
    [org.jboss.netty.buffer
     ChannelBuffer]
@@ -16,12 +16,15 @@
     HttpRequest
     HttpResponse
     HttpResponseStatus
-    HttpVersion]))
+    HttpVersion]
+   [java.io
+    IOException]))
 
-(def http-1-0 [1 0])
-(def http-1-1 [1 1])
+(def http-1-0   [1 0])
+(def http-1-1   [1 1])
+(def last-chunk HttpChunk/LAST_CHUNK)
 
-(extend-protocol msg.NormalizeMessage
+(extend-protocol msg/NormalizeMessage
   HttpRequest
   (normalize [req]
     (throw (Exception. "Not implemented yet")))
@@ -120,3 +123,7 @@
 (defn chunk->netty-chunk
   [chunk]
   (DefaultHttpChunk. (conv/to-channel-buffer chunk)))
+
+(defn throw-connection-reset-by-peer
+  []
+  (throw (IOException. "Connection reset by peer")))
