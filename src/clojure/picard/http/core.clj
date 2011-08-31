@@ -1,8 +1,7 @@
 (ns picard.http.core
   (:require
-   [clojure.string          :as str]
-   [picard.core.conversions :as conv]
-   [picard.net.message      :as msg])
+   [clojure.string     :as str]
+   [picard.net.message :as msg])
   (:import
    [org.jboss.netty.buffer
     ChannelBuffer]
@@ -18,35 +17,17 @@
     HttpResponseStatus
     HttpVersion]
    [java.io
-    IOException]))
+    IOException]
+   [java.net
+    URI]))
 
 (def http-1-0   [1 0])
 (def http-1-1   [1 1])
 (def last-chunk HttpChunk/LAST_CHUNK)
 
-(extend-protocol msg/NormalizeMessage
-  HttpRequest
-  (normalize [req]
-    (throw (Exception. "Not implemented yet")))
-  HttpChunk
-  (normalize [chunk]
-    [:body (when-not (.isLast chunk) (.getContent chunk))])
-  clojure.lang.PersistentVector
-  (normalize [msg]
-    msg))
-
-(defprotocol ChunkSize
-  (chunk-size [chunk]))
-
-(extend-protocol ChunkSize
-  clojure.lang.Keyword
-  (chunk-size [_] 0)
-  nil
-  (chunk-size [_] 0)
-  ChannelBuffer
-  (chunk-size [c] (.readableBytes c))
-  Object
-  (chunk-size [c] (count c)))
+(defn throw-connection-reset-by-peer
+  []
+  (throw (IOException. "Connection reset by peer")))
 
 (defn content-length
   [hdrs]
@@ -101,7 +82,7 @@
   [^HttpMessage msg body]
   (if (= :chunked body)
     (.setChunked msg true)
-    (.setContent (conv/to-channel-buffer body))))
+    (.setContent msg (msg/to-channel-buffer body))))
 
 (def netty-versions
   {[1 0] HttpVersion/HTTP_1_0
@@ -122,8 +103,69 @@
 
 (defn chunk->netty-chunk
   [chunk]
-  (DefaultHttpChunk. (conv/to-channel-buffer chunk)))
+  (DefaultHttpChunk. (msg/to-channel-buffer chunk)))
 
-(defn throw-connection-reset-by-peer
-  []
-  (throw (IOException. "Connection reset by peer")))
+(defn- netty-message->version
+  [msg]
+  (let [version (.getProtocolVersion msg)]
+    [(.getMajorVersion version) (.getMinorVersion version)]))
+
+(defn- merge-header
+  [hdrs [k v]]
+  (let [k (str/lower-case k)
+        existing (hdrs k)]
+    (assoc hdrs
+      k (cond
+         (nil? existing)
+         v
+
+         (string? existing)
+         [existing v]
+
+         :else
+         (conj existing v)))))
+
+(defn- netty-message->headers
+  [msg]
+  (-> (reduce merge-header {} (.getHeaders msg))
+      (assoc :http-version (netty-message->version msg))))
+
+(defn- netty-message->body
+  [msg]
+  (cond
+   (.isChunked msg)
+   :chunked
+
+   (.getHeader msg "Content-Length")
+   (.getContent msg)))
+
+(defn- netty-request->headers
+  [request]
+  (let [uri (URI. (.getUri request))]
+    (assoc (netty-message->headers request)
+      :request-method (.. request getMethod toString)
+      :path-info      (.getRawPath uri)
+      :query-string   (or (.getRawQuery uri) "")
+      :script-name    "")))
+
+(extend-protocol msg/DecodeMessage
+  HttpRequest
+  (decode [request]
+    [:request  [(netty-request->headers request) (netty-message->body request)]])
+
+  HttpChunk
+  (decode [chunk]
+    [:body (when-not (.isLast chunk) (.getContent chunk))]))
+
+(defprotocol ChunkSize
+  (chunk-size [chunk]))
+
+(extend-protocol ChunkSize
+  clojure.lang.Keyword
+  (chunk-size [_] 0)
+  nil
+  (chunk-size [_] 0)
+  ChannelBuffer
+  (chunk-size [c] (.readableBytes c))
+  Object
+  (chunk-size [c] (count c)))

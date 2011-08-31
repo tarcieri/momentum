@@ -3,6 +3,7 @@
    picard.utils
    picard.http.core)
   (:require
+   [picard.core.timer :as timer]
    [picard.net.server :as net])
   (:import
    [org.jboss.netty.handler.codec.http
@@ -20,8 +21,24 @@
  awaiting-100-continue
  waiting-for-response)
 
+(defprotocol Timeout
+  (get-timeout-ms [_])
+  (get-timeout [_])
+  (abort [_]))
+
 (defrecord ConnectionState
-    [upstream])
+    [upstream
+     downstream
+     timeout
+     opts]
+  Timeout
+  (get-timeout-ms [current-state]
+    (* (-> current-state .opts :keepalive)) 1000)
+  (get-timeout [current-state]
+    (.timeout current-state))
+  (abort [current-state]
+    (let [downstream (.downstream current-state)]
+      (downstream :abort (Exception. "HTTP exchange taking too long.")))))
 
 (defrecord ExchangeState
     [connection
@@ -32,10 +49,20 @@
      keepalive?
      chunked?
      head?
-     responded?])
+     responded?
+     timeout
+     opts]
+  Timeout
+  (get-timeout-ms [current-state]
+    (* (-> current-state .opts :timeout) 1000))
+  (get-timeout [current-state]
+    (.timeout current-state))
+  (abort [current-state]
+    (let [downstream (.downstream current-state)]
+      (downstream :abort (Exception. "Connection reached max keep alive time.")))))
 
 (defn- initial-exchange-state
-  [conn downstream]
+  [conn downstream opts]
   (ExchangeState.
    conn
    nil
@@ -45,7 +72,30 @@
    true
    false
    false
-   false))
+   false
+   nil
+   opts))
+
+;; Timeouts
+
+(defn- clear-timeout*
+  [current-state]
+  (when-let [timeout (get-timeout current-state)]
+    (timer/cancel timeout)))
+
+(defn- clear-timeout
+  [state current-state]
+  (locking state
+    (clear-timeout* current-state)
+    (swap! state #(assoc % :timeout nil))))
+
+(defn- bump-timeout
+  [state current-state]
+  (locking state
+    (clear-timeout* current-state)
+    (let [ms      (get-timeout-ms current-state)
+          timeout (timer/register ms #(abort current-state))]
+      (swap! state #(assoc % :timeout timeout)))))
 
 (defn- awaiting-100-continue?
   [current-state]
@@ -64,21 +114,25 @@
 (defn- maybe-finalize-exchange
   [current-state]
   (when (exchange-finished? current-state)
-    (let [conn     (.conn current-state)
+    (let [conn     (.connection current-state)
           upstream (.upstream current-state)]
 
       ;; The current exchange is complete, so remove it from
       ;; the connection state.
-      (swap! conn #(dissoc % :upstream))
+      (swap! conn #(assoc % :upstream nil))
 
       ;; Send an upstream event that indicates the HTTP exchange
       ;; is complete.
       (upstream :done nil))))
 
 (defn- maybe-close-connection
-  [current-state]
-  (when-not (.keepalive? current-state)
-    ((.downstream current-state) :close nil)))
+  [state current-state]
+  (when (exchange-finished? current-state)
+    (clear-timeout state current-state)
+    (if (.keepalive? current-state)
+      (let [conn (.connection current-state)]
+        (bump-timeout conn @conn))
+      ((.downstream current-state) :close nil))))
 
 (defn- stream-or-finalize-response
   [state evt chunk current-state]
@@ -115,7 +169,8 @@
         chunk    (downstream :message (chunk->netty-chunk chunk))
         chunked? (downstream :message last-chunk))
 
-       (maybe-close-connection current-state)))))
+       (when responded?
+         (maybe-close-connection state current-state))))))
 
 (defn- handle-response
   [state evt val current-state]
@@ -166,10 +221,13 @@
                                      (not (status-expects-body? status))))))))
      (fn [current-state]
        (let [downstream (.downstream current-state)
+             responded? (.responded? current-state)
              message    (response->netty-response status hdrs body)]
-         (maybe-finalize-exchange current-state)
+         (when responded?
+           (maybe-finalize-exchange current-state))
          (downstream :message message)
-         (maybe-close-connection current-state))))))
+         (when responded?
+           (maybe-close-connection state current-state)))))))
 
 (defn- waiting-for-response
   [_ _ _ _ _]
@@ -183,9 +241,13 @@
      state
      #(assoc % :next-up-fn waiting-for-response)
      (fn [current-state]
-       (maybe-finalize-exchange current-state)
-       ((.upstream current-state) :body nil)
-       (maybe-close-connection current-state)))))
+       (let [responded? (.responded? current-state)
+             upstream   (.upstream current-state)]
+         (when responded?
+           (maybe-finalize-exchange current-state))
+         (upstream :body nil)
+         (when responded?
+           (maybe-close-connection state current-state)))))))
 
 (defn- awaiting-100-continue
   [state evt val current-state]
@@ -198,7 +260,7 @@
   [state _ [hdrs body :as request] _]
   (let [keepalive?   (keepalive-request? request)
         expects-100? (expecting-100? request)
-        head?        (= "HEAD" (request :request-method))
+        head?        (= "HEAD" (hdrs :request-method))
         chunked?     (= :chunked body)
         next-up-fn   (cond
                       (not chunked?)  waiting-for-response
@@ -212,21 +274,35 @@
         :head?      head?
         :next-up-fn next-up-fn)
      (fn [current-state]
-       (maybe-finalize-exchange current-state)
-       ((.upstream current-state) :request request)
-       (maybe-close-connection current-state)))))
+       (let [upstream   (.upstream current-state)
+             responded? (.responded? current-state)]
+         (when responded?
+           (maybe-finalize-exchange current-state))
+         (upstream :request request)
+         (when responded?
+           (maybe-close-connection state current-state)))))))
 
 (defn- mk-downstream-fn
   [state dn]
   (fn [evt val]
-    (if (#{:response :body} evt)
-      (let [current-state @state]
-        ((.next-dn-fn current-state) state evt val current-state))
-      (dn evt val))))
+    (let [current-state @state]
+      (cond
+       (#{:response :body} evt)
+       (let [next-dn-fn (.next-dn-fn current-state)]
+         (bump-timeout state current-state)
+         (next-dn-fn state evt val current-state))
+
+       (#{:abort :close} evt)
+       (do
+         (clear-timeout state current-state)
+         (dn evt val))
+
+       :else
+       (dn evt val)))))
 
 (defn- exchange
-  [app dn conn]
-  (let [state   (atom (initial-exchange-state conn dn))
+  [app dn conn opts]
+  (let [state   (atom (initial-exchange-state conn dn opts))
         next-up (app (mk-downstream-fn state dn))]
     ;; Track the upstream
     (swap! state #(assoc % :upstream next-up))
@@ -235,10 +311,25 @@
     ;; related to the current HTTP exchange and will pass
     ;; on all other events.
     (fn [evt val]
-      (if (#{:request :body} evt)
-        (let [current-state @state]
-          ((.next-up-fn current-state) state evt val current-state))
-        (next-up evt val)))))
+      (let [current-state @state]
+       (cond
+        (#{:request :body} evt)
+        (let [next-up-fn (.next-up-fn current-state)]
+          (bump-timeout state current-state)
+          (next-up-fn state evt val current-state))
+
+        (= :close evt)
+        (do
+          (clear-timeout state current-state)
+          (throw-connection-reset-by-peer))
+
+        (= :abort evt)
+        (do
+          (clear-timeout state current-state)
+          (next-up evt val))
+
+        :else
+        (next-up evt val))))))
 
 (defn- throw-http-pipelining-exception
   []
@@ -248,9 +339,9 @@
          "pipelining is not yet supported."))))
 
 (defn proto
-  [app]
+  [app opts]
   (fn [dn]
-    (let [state (atom (ConnectionState. nil))]
+    (let [state (atom (ConnectionState. nil dn nil opts))]
       (fn [evt val]
         (let [current-state @state
               next-up (.upstream current-state)]
@@ -261,18 +352,22 @@
            (= :request evt)
            (if next-up
              (throw-http-pipelining-exception)
-             (let [next-up (exchange app dn state)]
-               (swap! state #(assoc % :upstream next-up))
-               (next-up evt val)))
-
-           (= :close evt)
-           (when next-up
-             (throw-connection-reset-by-peer))
+             (do
+               (clear-timeout state current-state)
+               (let [next-up (exchange app dn state opts)]
+                 (swap! state #(assoc % :upstream next-up))
+                 (next-up evt val))))
 
            next-up
            (next-up evt val)
 
-           (not (#{:open :close} evt))
+           (= :close evt)
+           (clear-timeout state current-state)
+
+           (= :open evt)
+           (bump-timeout state current-state)
+
+           (not (#{:pause :resume :abort} evt))
            (throw
             (Exception.
              (str "Not expecting a message right now: " [evt val])))))))))
@@ -283,11 +378,15 @@
     (.addLast "encoder" (HttpResponseEncoder.))
     (.addLast "decoder" (HttpRequestDecoder.))))
 
+(def default-options
+  {:keepalive 60
+   :timeout   5})
+
 (defn start
   ([app] (start app {}))
   ([app opts]
-     (let [opts (merge {:pipeline-fn http-pipeline} opts)]
-       (net/start (proto app) opts))))
+     (let [opts (merge default-options opts {:pipeline-fn http-pipeline})]
+       (net/start (proto app opts) opts))))
 
 (defn stop
   [server]

@@ -69,27 +69,6 @@
        (operationComplete [_ _]
          (callback future (.isCompleteSuccess future) true))))))
 
-;; ==== Conversions
-
-(extend-protocol NormalizeMessage
-  Object
-  (normalize [msg]
-    [:message msg])
-  nil
-  (normalize [msg]
-    [:message nil]))
-
-(defn to-channel-buffer
-  [obj]
-  (cond
-   (instance? ChannelBuffer obj)
-   obj
-
-   (instance? String obj)
-   (ChannelBuffers/wrappedBuffer (.getBytes ^String obj))
-
-   :else
-   (throw (Exception. (str "Cannot convert " obj " to a ChannelBuffer")))))
 
 ;; ==== Helper functions for tracking events
 (defn channel-connected-event?
@@ -233,7 +212,7 @@
                  (str "Not callable until request is sent.\n"
                       "  Event: " evt "\n"
                       "  Value: " val)))
-         (let [val        (to-channel-buffer val)
+         (let [val        (encode val)
                ch         (.ch current-state)
                last-write (.write ch val)]
            (swap! state #(assoc % :last-write last-write))))
@@ -265,7 +244,7 @@
             (cond
              ;; Handle message events
              (message-event? evt)
-             (let [[evt val] (normalize (.getMessage ^MessageEvent evt))]
+             (let [[evt val] (decode (.getMessage ^MessageEvent evt))]
                (send-upstream state evt val current-state))
 
              (interest-changed-event? evt)

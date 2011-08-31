@@ -1,4 +1,42 @@
-(ns picard.net.message)
+(ns picard.net.message
+  (:import
+   [org.jboss.netty.buffer
+    ChannelBuffer
+    ChannelBuffers]))
 
-(defprotocol NormalizeMessage
-  (normalize [msg]))
+(defprotocol DecodeMessage
+  (decode [msg]))
+
+(defprotocol EncodeMessage
+  (encode [msg]))
+
+(defprotocol Conversions
+  (to-channel-buffer [_]))
+
+(extend-protocol DecodeMessage
+  clojure.lang.PersistentVector
+  (decode [msg] msg)
+
+  Object
+  (decode [msg] [:message msg])
+
+  nil
+  (decode [_] [:message nil]))
+
+(extend-protocol EncodeMessage
+  String
+  (encode [msg] (to-channel-buffer msg))
+
+  Object
+  (encode [msg] msg)
+
+  nil
+  (encode [_] nil))
+
+(extend-protocol Conversions
+  ChannelBuffer
+  (to-channel-buffer [buf]
+    buf)
+  String
+  (to-channel-buffer [str]
+    (ChannelBuffers/wrappedBuffer (.getBytes str))))
