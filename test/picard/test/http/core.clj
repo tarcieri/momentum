@@ -35,7 +35,7 @@
   (is (not (expecting-100? [{:http-version [1 1] "expect" ""}])))
   (is (not (expecting-100? [{:http-version [1 1] "expect" "lulz"}]))))
 
-(deftest ^{:focus true} http-1-1-expecting-continue
+(deftest http-1-1-expecting-continue
   (is (expecting-100? [{:http-version [1 1] "expect" "continue"}]))
   (is (expecting-100? [{:http-version [1 1] "expect" "Continue"}]))
   (is (expecting-100? [{:http-version [1 1] "expect" "CONTINUE"}])))
