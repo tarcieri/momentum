@@ -120,6 +120,15 @@
 
 (declare handle-err)
 
+(defn- addr->ip
+  [addr]
+  [(.. addr getAddress getHostAddress) (.getPort addr)])
+
+(defn- channel-info
+  [ch]
+  {:local-addr  (addr->ip (.getLocalAddress ch))
+   :remote-addr (addr->ip (.getRemoteAddress ch))})
+
 (defn- close-channel
   [current-state]
   (let [ch (.ch current-state)]
@@ -185,7 +194,6 @@
   ([state err current-state]
      (handle-err state err current-state false))
   ([state err current-state locked?]
-     (.printStackTrace err) ;; For debugging
      (when (and current-state
                 (not (.aborting? current-state)))
        (let [upstream  (.upstream current-state)]
@@ -262,7 +270,7 @@
                (reset! state (initial-state ch))
                (let [upstream (app (mk-downstream-fn state))]
                  (swap! state #(assoc % :upstream upstream))
-                 (send-upstream state :open nil @state)))
+                 (send-upstream state :open (channel-info ch) @state)))
 
              (channel-disconnected-event? evt)
              (send-upstream state :close nil current-state)

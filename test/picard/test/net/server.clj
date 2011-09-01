@@ -4,6 +4,10 @@
    support.helpers
    picard.net.server))
 
+(def addr-info
+  {:local-addr  ["127.0.0.1" 4040]
+   :remote-addr ["127.0.0.1" :dont-care]})
+
 (defcoretest simple-echo-server
   [ch1]
   (start
@@ -14,7 +18,9 @@
          (dn :message val)))))
 
   (with-socket
-    (is (next-msgs ch1 :open nil))
+    (is (next-msgs
+         ch1
+         :open addr-info))
 
     (write-socket "Hello world")
     (is (next-msgs ch1 :message "Hello world"))
@@ -39,7 +45,7 @@
 
     (is (next-msgs
          ch1
-         :open    nil
+         :open    addr-info
          :message "Hello world"
          :message "Goodbye world"
          :close   nil))))
@@ -60,7 +66,7 @@
     (is (not (open-socket?)))
     (is (next-msgs
          ch1
-         :open nil
+         :open  addr-info
          :close nil))))
 
 (defcoretest writing-to-closed-socket
@@ -78,7 +84,7 @@
     (close-socket)
     (is (next-msgs
          ch1
-         :open   nil
+         :open   addr-info
          :close  nil
          :abort  #(instance? java.io.IOException %)))))
 
@@ -103,7 +109,7 @@
   (with-socket
     (is (next-msgs
          ch1
-         :open  nil
+         :open  addr-info
          :abort #(instance? Exception %)))))
 
 (defcoretest handling-exception-after-message-event
@@ -120,7 +126,7 @@
 
     (is (next-msgs
          ch1
-         :open    nil
+         :open    addr-info
          :message "Hello world"
          :abort   #(instance? Exception %)))))
 
@@ -138,7 +144,7 @@
 
     (is (next-msgs
          ch1
-         :open  nil
+         :open  addr-info
          :abort #(instance? Exception %)))
 
     (is (no-msgs ch1))))
@@ -161,7 +167,7 @@
   (with-socket
     (is (next-msgs
          ch1
-         :open  nil
+         :open  addr-info
          :abort #(instance? Exception %)))
 
     (is (next-msgs
@@ -184,7 +190,7 @@
 
     (is (next-msgs
          ch1
-         :open    nil
+         :open    addr-info
          :message "Hello world"
          :abort   #(instance? Exception %)))))
 
@@ -214,7 +220,7 @@
 
     (is (next-msgs
          ch1
-         :open   nil
+         :open   addr-info
          :pause  nil
          :resume nil
          :close  nil))))
@@ -244,7 +250,7 @@
 
     (is (next-msgs
          ch1
-         :open   nil
+         :open   addr-info
          :pause  nil
          :abort  #(instance? Exception %)))))
 
@@ -277,7 +283,7 @@
 
     (is (next-msgs
          ch1
-         :open   nil
+         :open   addr-info
          :pause  nil
          :resume nil
          :abort  #(instance? Exception %)))))
@@ -306,7 +312,7 @@
 
     (is (next-msgs
          ch1
-         :open    nil
+         :open    addr-info
          :message "Hello world"))
 
     (enqueue ch2 :resume)
@@ -327,7 +333,7 @@
   (with-socket
     (is (next-msgs
          ch1
-         :open  nil
+         :open  addr-info
          :abort #(instance? Exception %)))
 
     (is (no-msgs ch1))))
@@ -344,5 +350,5 @@
   (with-socket
     (is (next-msgs
          ch1
-         :open  nil
+         :open  addr-info
          :abort #(instance? Exception %)))))
