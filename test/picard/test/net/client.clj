@@ -16,7 +16,15 @@
           (when (= :message evt)
             (dn :message val)))))))
 
-(defcoretest simple-echo-client
+(def server-addr-info
+  {:local-addr  ["127.0.0.1" 4040]
+   :remote-addr ["127.0.0.1" :dont-care]})
+
+(def client-addr-info
+  {:local-addr  ["127.0.0.1" :dont-care]
+   :remote-addr ["127.0.0.1" 4040]})
+
+(defcoretest ^{:focus true} simple-echo-client
   [ch1 ch2 ch3]
   (start-echo-server ch1)
 
@@ -34,12 +42,12 @@
 
   (is (next-msgs
        ch1
-       :open    nil
+       :open    server-addr-info
        :message "Hello world"))
 
   (is (next-msgs
        ch2
-       :open    nil
+       :open    client-addr-info
        :message "Hello world"))
 
   (is (next-msgs ch1 :message "Goodbye world"))
@@ -67,7 +75,7 @@
 
   (is (next-msgs
        ch1
-       :open   nil
+       :open   client-addr-info
        :close  nil
        :abort  #(instance? java.io.IOException %))))
 
@@ -82,7 +90,7 @@
 
   (is (next-msgs
        ch1
-       :open  nil
+       :open  server-addr-info
        :close nil)))
 
 (defcoretest handling-exception-after-open-event
@@ -99,12 +107,12 @@
 
   (is (next-msgs
        ch1
-       :open  nil
+       :open  server-addr-info
        :close nil))
 
   (is (next-msgs
        ch2
-       :open  nil
+       :open  client-addr-info
        :abort #(instance? Exception %))))
 
 (defcoretest handling-exception-after-message-event
@@ -123,13 +131,13 @@
 
   (is (next-msgs
        ch1
-       :open    nil
+       :open    server-addr-info
        :message "Hello world"
        :close   nil))
 
   (is (next-msgs
        ch2
-       :open    nil
+       :open    client-addr-info
        :message "Hello world"
        :abort   #(instance? Exception %))))
 
@@ -165,12 +173,12 @@
 
   (is (next-msgs
        ch1
-       :open  nil
+       :open  server-addr-info
        :close nil))
 
   (is (next-msgs
        ch2
-       :open  nil
+       :open  client-addr-info
        :abort #(instance? Exception %)))
 
   (is (next-msgs
@@ -197,22 +205,22 @@
 
   (is (next-msgs
        ch1
-       :open    nil
+       :open    server-addr-info
        :message "Hello world"
        :close   nil)))
 
 (defn- start-black-hole-server
-  [ch1 ch2]
+  [ch]
   (server/start
    (fn [dn]
-     (receive ch2 (fn [_] (dn :resume nil)))
+     (receive ch (fn [_] (dn :resume nil)))
      (fn [evt val]
        (when (= :open evt)
          (dn :pause nil))))))
 
 (defcoretest telling-the-application-to-chill-out
   [ch1 ch2]
-  (start-black-hole-server ch1 ch2)
+  (start-black-hole-server ch2)
 
   (connect
    (fn [dn]
@@ -236,7 +244,7 @@
 
   (is (next-msgs
        ch1
-       :open   nil
+       :open   client-addr-info
        :pause  nil))
 
   (enqueue ch2 :resume)
@@ -248,7 +256,7 @@
 
 (defcoretest raising-error-during-pause-event
   [ch1 ch2]
-  (start-black-hole-server ch1 ch2)
+  (start-black-hole-server ch2)
 
   (connect
    (fn [dn]
@@ -270,13 +278,13 @@
 
   (is (next-msgs
        ch1
-       :open   nil
+       :open   client-addr-info
        :pause  nil
        :abort #(instance? Exception %))))
 
 (defcoretest raising-error-during-resume-event
   [ch1 ch2]
-  (start-black-hole-server ch1 ch2)
+  (start-black-hole-server ch2)
 
   (connect
    (fn [dn]
@@ -300,7 +308,7 @@
 
   (is (next-msgs
        ch1
-       :open   nil
+       :open   client-addr-info
        :pause  nil))
 
   (enqueue ch2 :resume)
@@ -337,7 +345,7 @@
 
   (is (next-msgs
        ch1
-       :open    nil
+       :open    client-addr-info
        :message "Hello world"))
 
   (enqueue ch2 :message)
@@ -363,7 +371,7 @@
 
   (is (next-msgs
        ch1
-       :open  nil
+       :open  client-addr-info
        :abort #(instance? Exception %)))
 
   (is (no-msgs ch1)))

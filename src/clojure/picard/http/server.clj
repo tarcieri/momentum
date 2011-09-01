@@ -291,7 +291,7 @@
              responded? (.responded? current-state)]
          (when responded?
            (maybe-finalize-exchange current-state))
-         (upstream :request request)
+         (upstream :request [hdrs body])
          (when responded?
            (maybe-close-connection state current-state)))))))
 

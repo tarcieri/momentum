@@ -25,9 +25,11 @@
 
       (is (next-msgs
            ch1
-           :request [{:script-name ""
-                      :path-info   "/"
-                      :query-string ""
+           :request [{:local-addr     ["127.0.0.1" 4040]
+                      :remote-addr    ["127.0.0.1" :dont-care]
+                      :script-name    ""
+                      :path-info      "/"
+                      :query-string   ""
                       :request-method method
                       :http-version   [1 1]} nil]
            :done nil))
@@ -52,7 +54,9 @@
 
     (is (next-msgs
          ch1
-         :request [{:script-name    ""
+         :request [{:local-addr     ["127.0.0.1" 4040]
+                    :remote-addr    ["127.0.0.1" :dont-care]
+                    :script-name    ""
                     :path-info      "/foo"
                     :query-string   "bar=baz"
                     :request-method "GET"
