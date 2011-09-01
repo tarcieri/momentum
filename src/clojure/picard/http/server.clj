@@ -29,6 +29,7 @@
 (defrecord ConnectionState
     [upstream
      downstream
+     address-info
      timeout
      opts]
   Timeout
@@ -42,6 +43,7 @@
 
 (defrecord ExchangeState
     [connection
+     address-info
      upstream
      downstream
      next-up-fn
@@ -61,10 +63,20 @@
     (let [downstream (.downstream current-state)]
       (downstream :abort (Exception. "Connection reached max keep alive time.")))))
 
+(defn- initial-connection-state
+  [dn opts]
+  (ConnectionState.
+   nil
+   dn
+   nil
+   nil
+   opts))
+
 (defn- initial-exchange-state
-  [conn downstream opts]
+  [conn downstream address-info opts]
   (ExchangeState.
    conn
+   address-info
    nil
    downstream
    handle-request
@@ -257,8 +269,9 @@
    #(stream-or-finalize-request state evt val %)))
 
 (defn- handle-request
-  [state _ [hdrs body :as request] _]
-  (let [keepalive?   (keepalive-request? request)
+  [state _ [hdrs body :as request] current-state]
+  (let [hdrs         (merge (.address-info current-state) hdrs)
+        keepalive?   (keepalive-request? request)
         expects-100? (expecting-100? request)
         head?        (= "HEAD" (hdrs :request-method))
         chunked?     (= :chunked body)
@@ -301,8 +314,8 @@
        (dn evt val)))))
 
 (defn- exchange
-  [app dn conn opts]
-  (let [state   (atom (initial-exchange-state conn dn opts))
+  [app dn conn address-info opts]
+  (let [state   (atom (initial-exchange-state conn dn address-info opts))
         next-up (app (mk-downstream-fn state dn))]
     ;; Track the upstream
     (swap! state #(assoc % :upstream next-up))
@@ -341,7 +354,7 @@
 (defn proto
   [app opts]
   (fn [dn]
-    (let [state (atom (ConnectionState. nil dn nil opts))]
+    (let [state (atom (initial-connection-state dn opts))]
       (fn [evt val]
         (let [current-state @state
               next-up (.upstream current-state)]
@@ -354,7 +367,8 @@
              (throw-http-pipelining-exception)
              (do
                (clear-timeout state current-state)
-               (let [next-up (exchange app dn state opts)]
+               (let [address-info (.address-info current-state)
+                     next-up      (exchange app dn state address-info opts)]
                  (swap! state #(assoc % :upstream next-up))
                  (next-up evt val))))
 
@@ -365,7 +379,9 @@
            (clear-timeout state current-state)
 
            (= :open evt)
-           (bump-timeout state current-state)
+           (do
+             (bump-timeout state current-state)
+             (swap! state #(assoc % :address-info val)))
 
            (not (#{:pause :resume :abort} evt))
            (throw
