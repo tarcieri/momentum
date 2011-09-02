@@ -53,10 +53,10 @@
    false
 
    (string? expect)
-   (= "continue" (str/lower-case expect))
+   (= "100-continue" (str/lower-case expect))
 
    (vector? expect)
-   (some #(= "continue" (str/lower-case %)) expect)
+   (some #(= "100-continue" (str/lower-case %)) expect)
 
    :else
    false))

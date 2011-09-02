@@ -708,3 +708,74 @@
          "HTTP/1.1 200 OK\r\n"
          "content-length: 5\r\n\r\n"
          "Hello"))))
+
+(defcoretest aborting-a-request
+  [ch1]
+  (start-hello-world-app ch1)
+
+  (with-socket
+    (write-socket "POST / HTTP/1.1\r\n"
+                  "Content-Length: 10000\r\n\r\n"
+                  "TROLLOLOLOLOLOLLLOLOLOLLOL")
+
+    (close-socket)
+
+    (is (next-msgs
+         ch1
+         :request [:dont-care :chunked]
+         :abort   #(instance? Exception %))))
+
+  (is (no-msgs ch1)))
+
+(defcoretest request-callback-happens-before-body-is-recieved
+  [ch1]
+  (start-hello-world-app ch1)
+
+  (with-socket
+    (write-socket "POST / HTTP/1.1\r\n"
+                  "Connection: close\r\n"
+                  "Content-Length: 10000\r\n\r\n")
+
+    (is (next-msgs
+         ch1
+         :request [#(includes-hdrs
+                     {"connection"     "close"
+                      "content-length" "10000"} %) :chunked]))
+
+    (is (no-msgs ch1))
+
+    (write-socket (apply str (for [x (range 10000)] "a")))))
+
+(defcoretest handling-100-continue-requests-with-100-response
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (cond
+        (= :request evt)
+        (dn :response [100])
+
+        (= [:body nil] [evt val])
+        (dn :response [200 {"content-length" "5"} "Hello"])))))
+
+  (with-socket
+    (write-socket "POST / HTTP/1.1\r\n"
+                  "Content-Length: 5\r\n"
+                  "Connection: close\r\n"
+                  "Expect: 100-continue\r\n\r\n")
+
+    (is (next-msgs
+         ch1
+         :request [#(includes-hdrs {"expect" "100-continue"} %) :chunked]))
+
+    (is (receiving "HTTP/1.1 100 Continue\r\n"))
+
+    (write-socket "Hello")
+
+    (is (next-msgs
+         ch1
+         :body "Hello"
+         :body nil
+         :done nil))))
+

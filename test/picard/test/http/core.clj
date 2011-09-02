@@ -28,7 +28,7 @@
   (is (not (expecting-100? [{:http-version [1 1]}]))))
 
 (deftest does-not-expect-100-when-version-not-1-1
-  (is (not (expecting-100? [{:http-version [1 0] "expect" "continue"}]))))
+  (is (not (expecting-100? [{:http-version [1 0] "expect" "100-continue"}]))))
 
 (deftest does-not-expect-100-when-the-header-is-not-continue
   (is (not (expecting-100? [{:http-version [1 1] "expect" nil}])))
@@ -36,10 +36,10 @@
   (is (not (expecting-100? [{:http-version [1 1] "expect" "lulz"}]))))
 
 (deftest http-1-1-expecting-continue
-  (is (expecting-100? [{:http-version [1 1] "expect" "continue"}]))
-  (is (expecting-100? [{:http-version [1 1] "expect" "Continue"}]))
-  (is (expecting-100? [{:http-version [1 1] "expect" "CONTINUE"}])))
+  (is (expecting-100? [{:http-version [1 1] "expect" "100-continue"}]))
+  (is (expecting-100? [{:http-version [1 1] "expect" "100-Continue"}]))
+  (is (expecting-100? [{:http-version [1 1] "expect" "100-CONTINUE"}])))
 
 (deftest http-1-1-expecting-continue-multiple-values
-  (is (expecting-100? [{:http-version [1 1] "expect" ["continue" "lulz"]}]))
-  (is (expecting-100? [{:http-version [1 1] "expect" ["Continue"]}])))
+  (is (expecting-100? [{:http-version [1 1] "expect" ["100-continue" "lulz"]}]))
+  (is (expecting-100? [{:http-version [1 1] "expect" ["100-Continue"]}])))

@@ -184,6 +184,7 @@
     (throw (Exception. "Expecting a :response event")))
 
   (let [[status hdrs body] val
+        hdrs           (or hdrs {})
         body           (and (not (.head? current-state)) body)
         bytes-expected (content-length hdrs)
         bytes-to-send  (chunk-size body)
@@ -196,6 +197,12 @@
     ;; complete unless the body is specifically chunked. If there is no
     ;; content-length or transfer-encoding: chunked header, then the HTTP
     ;; exchange will be finalized by closing the connection.
+    ;;
+    ;; TODO: This is actually a race condition since the client might
+    ;; start sending the request body before the 100 continue is
+    ;; sent. If that happens, the current state will NOT be
+    ;; awaiting-100-continue?. However, sending the 100 continue
+    ;; should not result in an exception.
     (when (and (= 100 status) (not (awaiting-100-continue? current-state)))
       (throw (Exception. "Not expecting a 100 Continue response.")))
 
