@@ -75,14 +75,17 @@
         (doseq [val v-or-vals]
           (when-not (empty? val)
             (.addHeader msg (name k) (str val))))
-        (when-not (empty? v-or-vals)
+        (when-not (or (nil? v-or-vals) (= "" v-or-vals))
           (.addHeader msg (name k) (str v-or-vals)))))))
 
 (defn- netty-set-content
   [^HttpMessage msg body]
-  (if (= :chunked body)
-    (.setChunked msg true)
-    (.setContent msg (msg/to-channel-buffer body))))
+  (cond
+   (= :chunked body)
+   (.setChunked msg true)
+
+   body
+   (.setContent msg (msg/to-channel-buffer body))))
 
 (def netty-versions
   {[1 0] HttpVersion/HTTP_1_0
@@ -167,5 +170,7 @@
   (chunk-size [_] 0)
   ChannelBuffer
   (chunk-size [c] (.readableBytes c))
+  Boolean
+  (chunk-size [c] 0)
   Object
   (chunk-size [c] (count c)))
