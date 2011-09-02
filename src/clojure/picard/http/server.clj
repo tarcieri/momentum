@@ -301,7 +301,7 @@
          ;; an exception. As it turns out, not many people (myself
          ;; included) handle HEAD requests correctly, so let's just
          ;; do it for them.
-         (when-not (and (= :body evt) (.head? current-state))
+         (when-not (and (= :body evt) (or (not val) (.head? current-state)))
            (throw (Exception. "Not currently expecting an event."))))
 
        (#{:abort :close} evt)
