@@ -75,6 +75,10 @@
       (recur)
       (< 0 byte))))
 
+(defn closed-socket?
+  []
+  (not (open-socket?)))
+
 (defn read-socket
   ([] (read-socket in))
   ([in] (read-socket in 1000))
@@ -140,6 +144,10 @@
    :else
    (or (= val val*)
        (and (fn? val) (val val*)))))
+
+(defn includes-hdrs
+  [a b]
+  (= a (select-keys b (keys a))))
 
 ;; === Matchers
 

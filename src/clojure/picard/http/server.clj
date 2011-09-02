@@ -301,9 +301,23 @@
     (let [current-state @state]
       (cond
        (#{:response :body} evt)
-       (let [next-dn-fn (.next-dn-fn current-state)]
-         (bump-timeout state current-state)
-         (next-dn-fn state evt val current-state))
+       (if-let [next-dn-fn (.next-dn-fn current-state)]
+         ;; If there is a next-dn-fn then the response is
+         ;; still in progress, so bump the timeout and
+         ;; process the event.
+         (do
+           (bump-timeout state current-state)
+           (next-dn-fn state evt val current-state))
+
+         ;; Otherwise, the response is completed. No further
+         ;; events are expected, so throw an exception. However,
+         ;; if this is a :body event and the request is a HEAD
+         ;; request, just discard the body instead of throwing
+         ;; an exception. As it turns out, not many people (myself
+         ;; included) handle HEAD requests correctly, so let's just
+         ;; do it for them.
+         (when-not (and (= :body evt) (.head? current-state))
+           (throw (Exception. "Not currently expecting an event."))))
 
        (#{:abort :close} evt)
        (do
