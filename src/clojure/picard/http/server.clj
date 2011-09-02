@@ -52,6 +52,8 @@
      chunked?
      head?
      responded?
+     bytes-expected
+     bytes-to-send
      timeout
      opts]
   Timeout
@@ -85,6 +87,8 @@
    false
    false
    false
+   nil
+   0
    nil
    opts))
 
@@ -123,28 +127,25 @@
        (or (awaiting-response? current-state)
            (awaiting-100-continue? current-state))))
 
-(defn- maybe-finalize-exchange
-  [current-state]
-  (when (exchange-finished? current-state)
-    (let [conn     (.connection current-state)
-          upstream (.upstream current-state)]
+(defmacro maybe-finalizing-exchange
+  [state current-state & stmts]
+  `(let [upstream#   (.upstream ~current-state)
+         conn#       (.connection ~current-state)
+         finished?#  (exchange-finished? ~current-state)]
+     ;; The current exchange is complete, so remove it from
+     ;; the connection state.
+     (when finished?#
+       (swap! conn# #(assoc % :upstream nil)))
 
-      ;; The current exchange is complete, so remove it from
-      ;; the connection state.
-      (swap! conn #(assoc % :upstream nil))
+     ;; Do what needs to happen
+     ~@stmts
 
-      ;; Send an upstream event that indicates the HTTP exchange
-      ;; is complete.
-      (upstream :done nil))))
-
-(defn- maybe-close-connection
-  [state current-state]
-  (when (exchange-finished? current-state)
-    (clear-timeout state current-state)
-    (if (.keepalive? current-state)
-      (let [conn (.connection current-state)]
-        (bump-timeout conn @conn))
-      ((.downstream current-state) :close nil))))
+     (when finished?#
+       (clear-timeout ~state ~current-state)
+       (upstream# :done nil)
+       (if (.keepalive? ~current-state)
+         (bump-timeout conn# @conn#)
+         ((.downstream ~current-state) :close nil)))))
 
 (defn- stream-or-finalize-response
   [state evt chunk current-state]
@@ -162,27 +163,20 @@
          (assoc current-state
            :bytes-to-send bytes-to-send
            :responded?    responded?
-           :next-dn-fn    (when-not responded? stream-or-finalize-request)))
+           :next-dn-fn    (when-not responded? stream-or-finalize-response)))
        ;; This is the final chunk
        ;; TODO: Check that the content-length is correct
        (assoc current-state
          :responded? true
          :next-dn-fn nil)))
    (fn [current-state]
-     (let [responded? (.responded? current-state)
-           chunked?   (.chunked? current-state)
+     (let [chunked?   (.chunked? current-state)
            downstream (.downstream current-state)]
-       ;; It only makes sense to check if the exchange needs to be finalized
-       ;; when the response is complete.
-       (when responded?
-         (maybe-finalize-exchange current-state))
-
-       (cond
-        chunk    (downstream :message (chunk->netty-chunk chunk))
-        chunked? (downstream :message last-chunk))
-
-       (when responded?
-         (maybe-close-connection state current-state))))))
+       (maybe-finalizing-exchange
+        state current-state
+        (cond
+         chunk    (downstream :message (chunk->netty-chunk chunk))
+         chunked? (downstream :message last-chunk)))))))
 
 (defn- handle-response
   [state evt val current-state]
@@ -233,13 +227,10 @@
                                      (not (status-expects-body? status))))))))
      (fn [current-state]
        (let [downstream (.downstream current-state)
-             responded? (.responded? current-state)
              message    (response->netty-response status hdrs body)]
-         (when responded?
-           (maybe-finalize-exchange current-state))
-         (downstream :message message)
-         (when responded?
-           (maybe-close-connection state current-state)))))))
+         (maybe-finalizing-exchange
+          state current-state
+          (downstream :message message)))))))
 
 (defn- waiting-for-response
   [_ _ _ _ _]
@@ -253,13 +244,10 @@
      state
      #(assoc % :next-up-fn waiting-for-response)
      (fn [current-state]
-       (let [responded? (.responded? current-state)
-             upstream   (.upstream current-state)]
-         (when responded?
-           (maybe-finalize-exchange current-state))
-         (upstream :body nil)
-         (when responded?
-           (maybe-close-connection state current-state)))))))
+       (let [upstream (.upstream current-state)]
+         (maybe-finalizing-exchange
+          state current-state
+          (upstream :body nil)))))))
 
 (defn- awaiting-100-continue
   [state evt val current-state]
@@ -287,13 +275,10 @@
         :head?      head?
         :next-up-fn next-up-fn)
      (fn [current-state]
-       (let [upstream   (.upstream current-state)
-             responded? (.responded? current-state)]
-         (when responded?
-           (maybe-finalize-exchange current-state))
-         (upstream :request [hdrs body])
-         (when responded?
-           (maybe-close-connection state current-state)))))))
+       (let [upstream (.upstream current-state)]
+         (maybe-finalizing-exchange
+          state current-state
+          (upstream :request [hdrs body])))))))
 
 (defn- mk-downstream-fn
   [state dn]
