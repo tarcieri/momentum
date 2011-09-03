@@ -1,14 +1,46 @@
-(ns picard.core.deferred)
+(ns picard.core.deferred
+  (:import
+   picard.core.DeferredState))
 
 (defprotocol DeferredValue
-  (receive [_ callback]))
+  (receive [_ callback])
+  (wait-for [_ ms]))
 
-(extend-type Object
-  DeferredValue
+(extend-protocol DeferredValue
+  DeferredState
+  (receive [dval callback]
+    (.registerReceiveCallback
+     dval callback
+     (fn [val]
+       (callback dval val true))))
+  (wait-for [dval ms]
+    (.await dval (long ms)))
+
+  Object
   (receive [o callback]
-    (callback o o true)))
+    (callback o o true))
+  (wait-for [_ _]
+    true)
 
-(extend-type nil
-  DeferredValue
+  nil
   (receive [_ callback]
-    (callback nil nil true)))
+    (callback nil nil true))
+  (wait-for [_ _]
+    true))
+
+(defprotocol DeferredRealizer
+  (put [_ v]))
+
+(extend-protocol DeferredRealizer
+  DeferredState
+  (put [dval val]
+    (.realize dval val)))
+
+(defn wait
+  ([dval] (wait dval 0))
+  ([dval ms]
+     (wait-for dval ms)))
+
+(defn deferred
+  []
+  (DeferredState.))
