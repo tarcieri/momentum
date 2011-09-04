@@ -34,12 +34,18 @@ public class DeferredState extends AFn {
         boolean done;
         Object  value;
 
+        // Even though it might make sense otherwise, there can only be a single
+        // receive callback per deferred value. This is because multiple receive
+        // callbacks don't make sense for channels and the abstraction between
+        // deferred values and channels needs to be as similar as possible. Also,
+        // it is easy to have a receive function send out the value to multiple
+        // other functions.
         if (callback == null) {
             throw new NullPointerException("Callback is null");
         }
 
         synchronized(this) {
-            done = this.done && err != null;
+            done = this.done && err == null;
 
             if (receiveCallback != null) {
                 throw new Exception("A receive callback has already been registered");
@@ -126,7 +132,7 @@ public class DeferredState extends AFn {
         }
 
         while (true) {
-            Catch curr = catchCallbacks.remove();
+            Catch curr = catchCallbacks.poll();
 
             if (curr == null) {
                 return;
@@ -142,6 +148,8 @@ public class DeferredState extends AFn {
                     synchronized(this) {
                         notifyAll();
                     }
+
+                    return;
                 }
             }
         }

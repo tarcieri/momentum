@@ -24,7 +24,7 @@
   {:local-addr  ["127.0.0.1" :dont-care]
    :remote-addr ["127.0.0.1" 4040]})
 
-(defcoretest ^{:focus true} simple-echo-client
+(defcoretest simple-echo-client
   [ch1 ch2 ch3]
   (start-echo-server ch1)
 

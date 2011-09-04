@@ -12,8 +12,8 @@
   DeferredState
   (receive [dval callback]
     (.registerReceiveCallback dval callback))
-
-  (catch [dval klass callback])
+  (catch [dval klass callback]
+      (.registerCatchCallback dval klass callback))
   (finally [dval callback])
   (wait-for [dval ms]
     (.await dval (long ms)))
@@ -44,8 +44,8 @@
   DeferredState
   (put [dval val]
     (.realize dval val))
-  (abort [dvak err]
-    (throw (Exception. "Not implemented"))))
+  (abort [dval err]
+    (.abort dval err)))
 
 (defn wait
   ([dval] (wait dval 0))

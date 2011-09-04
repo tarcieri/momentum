@@ -3,7 +3,7 @@
    clojure.test
    picard.core.deferred))
 
-;; Regular objects
+;; ==== Regular objects
 
 (deftest registering-callback-on-object
   (let [dval1 :hello
@@ -30,6 +30,8 @@
     (is (wait dval2))
     (is (nil? @res))))
 
+;; ==== Realizing deferred values
+
 (deftest successfully-realizing-a-deferred-value
   (let [dval (deferred)
         res  (atom nil)]
@@ -43,6 +45,64 @@
     (put dval :hello)
     (receive dval (fn [_ val _] (reset! res val)))
     (is (= :hello @res))))
+
+(deftest registering-nil-callback
+  (let [dval (deferred)]
+    (is (thrown? NullPointerException (receive dval nil)))))
+
+(deftest registering-receive-callback-twice
+  (let [dval (deferred)]
+    (receive dval (fn [& _]))
+    (is (thrown? Exception (receive dval (fn [& _]))))
+    (put dval :hello)
+    (is (thrown? Exception (receive dval (fn [& _]))))))
+
+;; ==== Aborting deferred values
+
+(deftest aborting-deferred-value-calls-catch-handler
+  (let [dval (deferred)
+        err  (Exception. "TROLLOLOL")
+        res  (atom nil)]
+    (catch dval Exception (fn [err] (reset! res err)))
+    (abort dval err)
+    (is (= err @res))))
+
+(deftest realized-deferred-values-cannot-be-aborted
+  (let [dval (deferred)]
+    (put dval :hello)
+    (is (thrown? Exception (abort dval (Exception. "TROLLOLOL"))))))
+
+(deftest aborted-deferred-values-cannot-be-realized
+  (let [dval (deferred)]
+    (abort dval (Exception.))
+    (is (thrown? Exception (put dval :hello)))))
+
+(deftest only-one-catch-statement-gets-called
+  (let [dval (deferred)
+        res1 (atom nil)
+        res2 (atom nil)]
+    (catch dval Exception #(reset! res1 %))
+    (catch dval Exception #(reset! res2 %))
+    (abort dval (Exception.))
+    (is (instance? Exception @res1))
+    (is (nil? @res2))))
+
+(deftest does-not-call-matching-catch-block-if-abort-already-handled
+  (let [dval (deferred)
+        res  (atom nil)]
+    (catch dval Exception (fn [& _]))
+    (abort dval (Exception.))
+    (catch dval Exception #(reset! res %))
+    (is (nil? @res))))
+
+(deftest skips-non-matching-catch-callbacks
+  (let [dval (deferred)
+        res  (atom nil)]
+    (catch dval NullPointerException (fn [_] (reset! res :fail)))
+    (catch dval Exception (fn [_] (reset! res :win)))
+    (abort dval (Exception.))))
+
+;; ==== Waiting on deferred values
 
 (deftest calling-wait
   (let [dval (deferred)
@@ -75,14 +135,7 @@
     ;; Timers aren't precise
     (is (< 19 @first @second 80))))
 
-;; There can only be 1 receive function.
-;;   this is because it doesn't make sense
-;;   to add additional receive functions on
-;;   channels once values have already passed
-;;   through.
 ;; Catching
-;; * Aborting materialized deferred value
-;; * Materializing aborted deferred value
 ;; * Only one catch block gets invoked
 ;; * On abort
 ;;   * Immedietly check all registered handlers.
