@@ -2,58 +2,88 @@ package picard.core;
 
 import clojure.lang.AFn;
 import clojure.lang.IFn;
+import java.util.LinkedList;
 
 public class DeferredState extends AFn {
     // Whether or not the future has been maaterialized
     boolean done;
 
+    // The exception that the deferred value was aborted with
+    Exception err;
+
+    // Has the exception already been handled
+    boolean handled;
+
     // The realized value
     Object value;
 
-    // The callback
-    IFn callback;
+    // The callbacks
+    IFn receiveCallback;
+    LinkedList<IFn> finallyCallbacks;
+    LinkedList<Catch> catchCallbacks;
 
     public DeferredState() {
-        done     = false;
-        value    = null;
-        callback = null;
+        done    = false;
+        handled = false;
+
+        finallyCallbacks = new LinkedList<IFn>();
+        catchCallbacks   = new LinkedList<Catch>();
     }
 
-    public boolean isDone() {
-        return done;
-    }
-
-    public Object getValue() {
-        return value;
-    }
-
-    public IFn getCallback() {
-        return callback;
-    }
-
-    public void setCallback(IFn callback) {
-        this.callback = callback;
-    }
-
-    public void registerReceiveCallback(IFn callback, IFn onRealized)
-        throws Exception {
-
+    public void registerReceiveCallback(IFn callback) throws Exception {
         boolean done;
-        Object  currentValue;
+        Object  value;
+
+        if (callback == null) {
+            throw new NullPointerException("Callback is null");
+        }
 
         synchronized(this) {
-            if (this.callback != null) {
-                throw new Exception("The value has already been realized");
+            done = this.done && err != null;
+
+            if (receiveCallback != null) {
+                throw new Exception("A receive callback has already been registered");
             }
 
-            this.callback = callback;
-            done          = this.done;
-            currentValue  = this.value;
+            receiveCallback = callback;
+            value = this.value;
         }
 
         if (done) {
-            onRealized.invoke(currentValue);
+            callback.invoke(this, value, true);
         }
+    }
+
+    public void registerCatchCallback(Class klass, IFn callback) throws Exception {
+        Catch catchStatement = null;
+
+        if (klass == null) {
+            throw new NullPointerException("Class is null");
+        } else if (callback == null) {
+            throw new NullPointerException("Callback is null");
+        }
+
+        synchronized(this) {
+            if (this.err != null) {
+                catchStatement = new Catch(klass, callback);
+
+                if (!handled && catchStatement.isMatch(this.err)) {
+                    handled = true;
+                } else {
+                    catchStatement = null;
+                }
+            } else {
+                catchCallbacks.add(new Catch(klass, callback));
+            }
+        }
+
+        if (catchStatement != null) {
+            catchStatement.invoke(this.err);
+        }
+    }
+
+    public void registerFinallyCallback(IFn callback) throws Exception {
+        throw new Exception("Not implemented");
     }
 
     public void realize(Object value) throws Exception {
@@ -64,17 +94,56 @@ public class DeferredState extends AFn {
                 throw new Exception("The value has already been realized");
             }
 
-            callback   = this.callback;
             this.done  = true;
             this.value = value;
+            callback   = receiveCallback;
         }
 
-        if (callback != null) {
-            callback.invoke(this, value, true);
+        try {
+            if (callback != null) {
+                callback.invoke(this, value, true);
+            }
+        }
+        finally {
+            synchronized(this) {
+                notifyAll();
+            }
+        }
+    }
+
+    public void abort(Exception err) throws Exception {
+        if (err == null) {
+            throw new NullPointerException("Exception cannot be null");
         }
 
         synchronized(this) {
-            notifyAll();
+            if (done || this.err != null) {
+                throw new Exception("The value has already been realized");
+            }
+
+            this.done = true;
+            this.err  = err;
+        }
+
+        while (true) {
+            Catch curr = catchCallbacks.remove();
+
+            if (curr == null) {
+                return;
+            }
+
+            if (curr.isMatch(err)) {
+                this.handled = true;
+
+                try {
+                    curr.invoke(err);
+                }
+                finally {
+                    synchronized(this) {
+                        notifyAll();
+                    }
+                }
+            }
         }
     }
 
@@ -96,6 +165,24 @@ public class DeferredState extends AFn {
             wait(timeout);
 
             return done;
+        }
+    }
+
+    private class Catch {
+        final Class klass;
+        final IFn   callback;
+
+        public Catch(Class klass, IFn callback) {
+            this.klass    = klass;
+            this.callback = callback;
+        }
+
+        public boolean isMatch(Exception err) {
+            return klass.isInstance(err);
+        }
+
+        public void invoke(Exception err) throws Exception {
+            callback.invoke(err);
         }
     }
 }

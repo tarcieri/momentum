@@ -74,3 +74,20 @@
                  (- (System/currentTimeMillis) now))]
     ;; Timers aren't precise
     (is (< 19 @first @second 80))))
+
+;; There can only be 1 receive function.
+;;   this is because it doesn't make sense
+;;   to add additional receive functions on
+;;   channels once values have already passed
+;;   through.
+;; Catching
+;; * Aborting materialized deferred value
+;; * Materializing aborted deferred value
+;; * Only one catch block gets invoked
+;; * On abort
+;;   * Immedietly check all registered handlers.
+;;   * Only a single handler gets invoked
+;;   * If no handler is invoked, do nothing.
+;;   * When matching handler registered, invoke
+;;   * When another matching handler registered, do nothing.
+;; * Finally callback gets called on success / abort
