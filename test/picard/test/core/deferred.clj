@@ -15,6 +15,21 @@
     (receive dval2 (fn [_ val _] (reset! res val)))
     (is (nil? @res))))
 
+(deftest catching-objects-does-nothing
+  (let [res (atom nil)]
+    (catch :hello Exception #(reset! res %))
+    (is (nil? @res))
+    (catch nil Exception #(reset! res %))
+    (is (nil? @res))))
+
+(deftest calling-finally-is-invoked
+  (let [res (atom nil)]
+    (finally :hello #(reset! res :one))
+    (is (= :one @res))
+
+    (finally nil #(reset! res :two))
+    (is (= :two @res))))
+
 (deftest waiting-for-objects
   (let [dval1 :hello
         dval2 nil
@@ -107,7 +122,6 @@
 (deftest calling-wait
   (let [dval (deferred)
         res  (atom nil)]
-
     (future
       (Thread/sleep 20)
       (put dval :hello))
@@ -116,12 +130,30 @@
     (is (wait dval))
     (is (= :hello @res))))
 
-(deftest calling-wait-when-already-realized
+(deftest calling-wait-then-aborted
   (let [dval (deferred)
         res  (atom nil)]
+    (future
+      (Thread/sleep 20)
+      (abort dval (Exception. "TROLLOLOL")))
+
+    (catch dval Exception #(reset! res %))
+    (is (wait dval))
+    (is (instance? Exception @res))))
+
+(deftest calling-wait-when-already-realized
+  (let [dval (deferred)
+        now  (System/currentTimeMillis)]
     (put dval :hello)
-    (receive dval (fn [_ val _] (reset! res val)))
-    (is (= true (wait dval)))))
+    (is (wait dval))
+    (is (> 2 (- (System/currentTimeMillis) now)))))
+
+(deftest calling-wait-when-already-aborted
+  (let [dval (deferred)
+        now  (System/currentTimeMillis)]
+    (abort dval (Exception.))
+    (is (wait dval))
+    (is (> 2 (- (System/currentTimeMillis) now)))))
 
 (deftest wait-call-times-out
   (let [dval   (deferred)
@@ -134,13 +166,3 @@
                  (- (System/currentTimeMillis) now))]
     ;; Timers aren't precise
     (is (< 19 @first @second 80))))
-
-;; Catching
-;; * Only one catch block gets invoked
-;; * On abort
-;;   * Immedietly check all registered handlers.
-;;   * Only a single handler gets invoked
-;;   * If no handler is invoked, do nothing.
-;;   * When matching handler registered, invoke
-;;   * When another matching handler registered, do nothing.
-;; * Finally callback gets called on success / abort
