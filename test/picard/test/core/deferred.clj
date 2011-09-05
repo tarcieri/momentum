@@ -117,6 +117,30 @@
     (catch dval Exception (fn [_] (reset! res :win)))
     (abort dval (Exception.))))
 
+;; ==== Finally statements
+
+(deftest finally-fn-gets-called-when-realized
+  (let [dval (deferred)
+        res  (atom nil)]
+    (finally dval #(reset! res :done))
+    (put dval :hello)
+    (is (= :done @res))))
+
+(deftest finally-fn-gets-called-when-aborted
+  (let [dval (deferred)
+        res  (atom nil)]
+    (finally dval #(reset! res :done))
+    (abort dval (Exception. "ZOMG"))
+    (is (= :done @res))))
+
+(deftest finally-fn-gets-called-before-catch
+  (let [dval (deferred)
+        res  (atom nil)]
+    (catch dval Exception #(reset! res %))
+    (finally dval #(swap! res (fn [v] (and v :done))))
+    (abort dval (Exception. "ZOMG"))
+    (is (= :done @res))))
+
 ;; ==== Waiting on deferred values
 
 (deftest calling-wait
@@ -166,3 +190,13 @@
                  (- (System/currentTimeMillis) now))]
     ;; Timers aren't precise
     (is (< 19 @first @second 80))))
+
+;; Exception propagation
+;; * Cannot register any finally callbacks once a catch-all callback
+;;   is registered.
+;; * Exception thrown in catch block gets bubled up
+;; * Exception thrown in catch block does not get caught
+;;   in next catch block
+;; * Exception thrown in finally gets bubbled up
+;; * Exceptions thrown in finally get priority over exceptions thrown
+;;   in catch

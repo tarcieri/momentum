@@ -5,6 +5,7 @@
 (defprotocol DeferredValue
   (receive [_ callback])
   (catch [_ klass callback])
+  (catch-all [_ callback])
   (finally [_ callback])
   (wait-for [_ ms]))
 
@@ -14,7 +15,10 @@
     (.registerReceiveCallback dval callback))
   (catch [dval klass callback]
       (.registerCatchCallback dval klass callback))
-  (finally [dval callback])
+  (catch-all [dval callback]
+    (.registerCatchAllCallback dval callback))
+  (finally [dval callback]
+    (.registerFinallyCallback dval callback))
   (wait-for [dval ms]
     (.await dval (long ms)))
 
@@ -22,6 +26,7 @@
   (receive [o callback]
     (callback o o true))
   (catch [_ _ _])
+  (catch-all [_ _])
   (finally [_ callback]
     (callback))
   (wait-for [_ _]
@@ -31,6 +36,7 @@
   (receive [_ callback]
     (callback nil nil true))
   (catch [_ _ _])
+  (catch-all [_ _])
   (finally [_ callback]
     (callback))
   (wait-for [_ _]

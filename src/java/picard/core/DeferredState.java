@@ -19,6 +19,7 @@ public class DeferredState extends AFn {
 
     // The callbacks
     IFn receiveCallback;
+    IFn catchAllCallback;
     LinkedList<IFn> finallyCallbacks;
     LinkedList<Catch> catchCallbacks;
 
@@ -32,7 +33,6 @@ public class DeferredState extends AFn {
 
     public void registerReceiveCallback(IFn callback) throws Exception {
         boolean done;
-        Object  value;
 
         // Even though it might make sense otherwise, there can only be a single
         // receive callback per deferred value. This is because multiple receive
@@ -52,7 +52,6 @@ public class DeferredState extends AFn {
             }
 
             receiveCallback = callback;
-            value = this.value;
         }
 
         if (done) {
@@ -88,8 +87,46 @@ public class DeferredState extends AFn {
         }
     }
 
+    public void registerCatchAllCallback(IFn callback) throws Exception {
+        if (callback == null) {
+            throw new NullPointerException("Callback is null");
+        }
+
+        boolean done;
+
+        synchronized(this) {
+            if (catchAllCallback != null) {
+                throw new Exception("A catch all callback has already been registered");
+            }
+
+            done = this.done && err != null;
+
+            catchAllCallback = callback;
+        }
+
+        if (done) {
+            callback.invoke(err);
+        }
+    }
+
     public void registerFinallyCallback(IFn callback) throws Exception {
-        throw new Exception("Not implemented");
+        if (callback == null) {
+            throw new NullPointerException("Callback is null");
+        }
+
+        boolean done;
+
+        synchronized(this) {
+            done = this.done;
+
+            if (!done) {
+                finallyCallbacks.add(callback);
+            }
+        }
+
+        if (done) {
+            callback.invoke();
+        }
     }
 
     public void realize(Object value) throws Exception {
@@ -111,6 +148,8 @@ public class DeferredState extends AFn {
             }
         }
         finally {
+            invokeFinallyCallbacks();
+
             synchronized(this) {
                 notifyAll();
             }
@@ -135,7 +174,7 @@ public class DeferredState extends AFn {
             Catch curr = catchCallbacks.poll();
 
             if (curr == null) {
-                return;
+                break;
             }
 
             if (curr.isMatch(err)) {
@@ -145,13 +184,15 @@ public class DeferredState extends AFn {
                     curr.invoke(err);
                 }
                 finally {
-                    synchronized(this) {
-                        notifyAll();
-                    }
-
-                    return;
+                    break;
                 }
             }
+        }
+
+        invokeFinallyCallbacks();
+
+        synchronized(this) {
+            notifyAll();
         }
     }
 
@@ -173,6 +214,24 @@ public class DeferredState extends AFn {
             wait(timeout);
 
             return done;
+        }
+    }
+
+    private void invokeFinallyCallbacks() {
+        while (true) {
+            IFn curr = finallyCallbacks.poll();
+
+            if (curr == null) {
+                return;
+            }
+
+            // TODO: Figure out how to handle exceptions
+            try {
+                curr.invoke();
+            }
+            catch (Exception e) {
+                // Just ignore for now
+            }
         }
     }
 
