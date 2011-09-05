@@ -26,6 +26,12 @@ public class DeferredState extends AFn {
         FAILED
     }
 
+    public static class CallbackRegistrationError extends RuntimeException {
+        public CallbackRegistrationError(String msg) {
+            super(msg);
+        }
+    }
+
     // What state are we currently in?
     State state;
 
@@ -38,12 +44,12 @@ public class DeferredState extends AFn {
     // The callbacks
     IFn receiveCallback;
     IFn catchAllCallback;
-    IFn finallyCallback;
-    final LinkedList<Catch> catchCallbacks;
+    IFn finalizeCallback;
+    final LinkedList<Rescue> rescueCallbacks;
 
     public DeferredState() {
-        state          = State.INITIALIZED;
-        catchCallbacks = new LinkedList<Catch>();
+        state           = State.INITIALIZED;
+        rescueCallbacks = new LinkedList<Rescue>();
     }
 
     public void registerReceiveCallback(IFn callback) throws Exception {
@@ -53,7 +59,7 @@ public class DeferredState extends AFn {
 
         synchronized(this) {
             if (receiveCallback != null) {
-                throw new Exception("A receive callback has already been registered");
+                throw new CallbackRegistrationError(alreadyRegistered("receive"));
             }
 
             receiveCallback = callback;
@@ -66,18 +72,22 @@ public class DeferredState extends AFn {
         invokeReceiveCallback();
     }
 
-    public void registerCatchCallback(Class klass, IFn callback) throws Exception {
+    public void registerRescueCallback(Class klass, IFn callback) throws Exception {
         if (klass == null) {
             throw new NullPointerException("Class is null");
         } else if (callback == null) {
             throw new NullPointerException("Callback is null");
         }
 
-        final Catch catchCallback = new Catch(klass, callback);
+        final Rescue rescueCallback = new Rescue(klass, callback);
 
         synchronized(this) {
             if (catchAllCallback != null) {
-                throw new Exception("A catch-all callback has already been registered");
+                throw new CallbackRegistrationError(alreadyRegistered("catch-all"));
+            }
+
+            if (finalizeCallback != null) {
+                throw new CallbackRegistrationError(alreadyRegistered("finalize"));
             }
 
             switch (state) {
@@ -91,13 +101,13 @@ public class DeferredState extends AFn {
 
             case INITIALIZED:
             case RECEIVING:
-                catchCallbacks.add(catchCallback);
+                rescueCallbacks.add(rescueCallback);
                 return;
 
             default:
                 // If the catch statement isn't a match, then just
                 // bail out right now.
-                if (!catchCallback.isMatch(err)) {
+                if (!rescueCallback.isMatch(err)) {
                     return;
                 }
 
@@ -105,24 +115,24 @@ public class DeferredState extends AFn {
             }
         }
 
-        invokeCatchCallback(catchCallback);
+        invokeRescueCallback(rescueCallback);
     }
 
-    public void registerFinallyCallback(IFn callback) throws Exception {
+    public void registerFinalizeCallback(IFn callback) throws Exception {
         if (callback == null) {
             throw new NullPointerException("Callback is null");
         }
 
         synchronized(this) {
-            if (finallyCallback != null) {
-                throw new Exception("A finally callback has already been registered");
+            if (finalizeCallback != null) {
+                throw new CallbackRegistrationError(alreadyRegistered("finalize"));
             }
 
             if (catchAllCallback != null) {
-                throw new Exception("A catch-all callback has already been registered");
+                throw new CallbackRegistrationError(alreadyRegistered("catch-all"));
             }
 
-            finallyCallback = callback;
+            finalizeCallback = callback;
 
             switch (state) {
             case INITIALIZED:
@@ -146,7 +156,7 @@ public class DeferredState extends AFn {
 
         synchronized(this) {
             if (catchAllCallback != null) {
-                throw new Exception("A catch-all callback has already been registered");
+                throw new CallbackRegistrationError(alreadyRegistered("catch-all"));
             }
 
             catchAllCallback = callback;
@@ -164,7 +174,7 @@ public class DeferredState extends AFn {
     public void realize(Object v) throws Exception {
         synchronized(this) {
             if (state != State.INITIALIZED) {
-                throw new Exception("The value has already been realized or aborted");
+                throw new RuntimeException("The value has already been realized or aborted");
             }
 
             value = v;
@@ -183,25 +193,25 @@ public class DeferredState extends AFn {
             throw new NullPointerException("Exception cannot be null");
         }
 
-        Catch catchCallback = null;
+        Rescue rescueCallback = null;
 
         synchronized(this) {
             // If an exception is thrown when invoking the realize
             // callback, then the abort method is called with internal
             // set to true.
             if ((internal && state != State.RECEIVING) || state != State.INITIALIZED) {
-                throw new Exception("The value has already been realized or aborted");
+                throw new RuntimeException("The value has already been realized or aborted");
             }
 
             err   = e;
             state = State.ABORTING;
 
-            Iterator<Catch> i = catchCallbacks.iterator();
+            Iterator<Rescue> i = rescueCallbacks.iterator();
 
             while (i.hasNext()) {
-                catchCallback = i.next();
+                rescueCallback = i.next();
 
-                if (catchCallback.isMatch(err)) {
+                if (rescueCallback.isMatch(err)) {
                     state = State.CAUGHT;
                     break;
                 }
@@ -212,7 +222,7 @@ public class DeferredState extends AFn {
             }
         }
 
-        invokeCatchCallback(catchCallback);
+        invokeRescueCallback(rescueCallback);
     }
 
     private void invokeReceiveCallback() throws Exception {
@@ -227,20 +237,20 @@ public class DeferredState extends AFn {
         synchronized(this) {
             state = State.SUCCEEDED;
 
-            if (finallyCallback == null) {
+            if (finalizeCallback == null) {
                 return;
-            }
+           }
         }
 
         invokeFinallyCallback();
     }
 
-    private void invokeCatchCallback(Catch callback) {
+    private void invokeRescueCallback(Rescue callback) {
         try {
             callback.invoke(err);
 
             synchronized(this) {
-                if (finallyCallback == null) {
+                if (finalizeCallback == null) {
                     return;
                 }
             }
@@ -252,7 +262,7 @@ public class DeferredState extends AFn {
             synchronized(this) {
                 err = e;
 
-                if (finallyCallback != null) {
+                if (finalizeCallback != null) {
                     state = State.FINALIZING;
                 }
                 else if (catchAllCallback != null) {
@@ -279,7 +289,7 @@ public class DeferredState extends AFn {
 
     private void invokeFinallyCallback() {
         try {
-            finallyCallback.invoke();
+            finalizeCallback.invoke();
         }
         catch (Exception e) {
             synchronized(this) {
@@ -324,6 +334,10 @@ public class DeferredState extends AFn {
         }
     }
 
+    private String alreadyRegistered(String name) {
+        return "A " + name + " callback has already been registered";
+    }
+
     public Object invoke(Object value) throws Exception {
         realize(value);
         return null;
@@ -345,11 +359,11 @@ public class DeferredState extends AFn {
         }
     }
 
-    private class Catch {
+    private class Rescue {
         final Class klass;
         final IFn   callback;
 
-        public Catch(Class klass, IFn callback) {
+        public Rescue(Class klass, IFn callback) {
             this.klass    = klass;
             this.callback = callback;
         }

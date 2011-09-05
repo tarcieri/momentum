@@ -3,44 +3,41 @@
    picard.core.DeferredState))
 
 (defprotocol DeferredValue
-  (receive [_ callback])
-  (catch [_ klass callback])
-  (catch-all [_ callback])
-  (finally [_ callback])
-  (wait-for [_ ms]))
+  (receive
+    [_ callback])
+  (rescue
+    [_ klass callback])
+  (finalize
+    [_ callback])
+  (catch-all
+    [_ callback]))
 
 (extend-protocol DeferredValue
   DeferredState
   (receive [dval callback]
     (.registerReceiveCallback dval callback))
-  (catch [dval klass callback]
-      (.registerCatchCallback dval klass callback))
+  (rescue [dval klass callback]
+    (.registerRescueCallback dval klass callback))
+  (finalize [dval callback]
+    (.registerFinalizeCallback dval callback))
   (catch-all [dval callback]
     (.registerCatchAllCallback dval callback))
-  (finally [dval callback]
-    (.registerFinallyCallback dval callback))
-  (wait-for [dval ms]
-    (.await dval (long ms)))
 
   Object
   (receive [o callback]
     (callback o o true))
-  (catch [_ _ _])
-  (catch-all [_ _])
-  (finally [_ callback]
+  (rescue [_ _ _])
+  (finalize [_ callback]
     (callback))
-  (wait-for [_ _]
-    true)
+  (catch-all [_ _])
 
   nil
   (receive [_ callback]
     (callback nil nil true))
-  (catch [_ _ _])
-  (catch-all [_ _])
-  (finally [_ callback]
+  (rescue [_ _ _])
+  (finalize [_ callback]
     (callback))
-  (wait-for [_ _]
-    true))
+  (catch-all [_ _]))
 
 (defprotocol DeferredRealizer
   (put [_ v])
@@ -55,8 +52,8 @@
 
 (defn wait
   ([dval] (wait dval 0))
-  ([dval ms]
-     (wait-for dval ms)))
+  ([^DeferredState dval ms]
+     (.await dval (long ms))))
 
 (defn deferred
   []

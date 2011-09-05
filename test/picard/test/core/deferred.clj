@@ -15,35 +15,20 @@
     (receive dval2 (fn [_ val _] (reset! res val)))
     (is (nil? @res))))
 
-(deftest catching-objects-does-nothing
+(deftest rescuing-objects-does-nothing
   (let [res (atom nil)]
-    (catch :hello Exception #(reset! res %))
+    (rescue :hello Exception #(reset! res %))
     (is (nil? @res))
-    (catch nil Exception #(reset! res %))
+    (rescue nil Exception #(reset! res %))
     (is (nil? @res))))
 
-(deftest calling-finally-is-invoked
+(deftest calling-finalize-is-invoked
   (let [res (atom nil)]
-    (finally :hello #(reset! res :one))
+    (finalize :hello #(reset! res :one))
     (is (= :one @res))
 
-    (finally nil #(reset! res :two))
+    (finalize nil #(reset! res :two))
     (is (= :two @res))))
-
-(deftest waiting-for-objects
-  (let [dval1 :hello
-        dval2 nil
-        res   (atom nil)]
-    ;; Le sigh, timing tests
-    (future
-      (Thread/sleep 10)
-      (reset! res :fail))
-
-    (is (wait dval1))
-    (is (nil? @res))
-
-    (is (wait dval2))
-    (is (nil? @res))))
 
 ;; ==== Realizing deferred values
 
@@ -74,11 +59,11 @@
 
 ;; ==== Aborting deferred values
 
-(deftest aborting-deferred-value-calls-catch-handler
+(deftest aborting-deferred-value-calls-rescue-handler
   (let [dval (deferred)
         err  (Exception. "TROLLOLOL")
         res  (atom nil)]
-    (catch dval Exception (fn [err] (reset! res err)))
+    (rescue dval Exception (fn [err] (reset! res err)))
     (abort dval err)
     (is (= err @res))))
 
@@ -92,64 +77,69 @@
     (abort dval (Exception.))
     (is (thrown? Exception (put dval :hello)))))
 
-(deftest only-one-catch-statement-gets-called
+(deftest only-one-rescue-statement-gets-called
   (let [dval (deferred)
         res1 (atom nil)
         res2 (atom nil)]
-    (catch dval Exception #(reset! res1 %))
-    (catch dval Exception #(reset! res2 %))
+    (rescue dval Exception #(reset! res1 %))
+    (rescue dval Exception #(reset! res2 %))
     (abort dval (Exception.))
     (is (instance? Exception @res1))
     (is (nil? @res2))))
 
-(deftest does-not-call-matching-catch-block-if-abort-already-handled
+(deftest does-not-call-matching-rescue-block-if-abort-already-handled
   (let [dval (deferred)
         res  (atom nil)]
-    (catch dval Exception (fn [& _]))
+    (rescue dval Exception (fn [& _]))
     (abort dval (Exception.))
-    (catch dval Exception #(reset! res %))
+    (rescue dval Exception #(reset! res %))
     (is (nil? @res))))
 
-(deftest skips-non-matching-catch-callbacks
+(deftest skips-non-matching-rescue-callbacks
   (let [dval (deferred)
         res  (atom nil)]
-    (catch dval NullPointerException (fn [_] (reset! res :fail)))
-    (catch dval Exception (fn [_] (reset! res :win)))
+    (rescue dval NullPointerException (fn [_] (reset! res :fail)))
+    (rescue dval Exception (fn [_] (reset! res :win)))
     (abort dval (Exception.))))
 
-;; ==== Finally statements
+;; ==== Finalize statements
 
-(deftest finally-fn-gets-called-when-realized
+(deftest finalize-fn-gets-called-when-realized
   (let [dval (deferred)
         res  (atom nil)]
     (receive dval (fn [_ val _] (reset! res val)))
-    (finally dval #(swap! res inc))
+    (finalize dval #(swap! res inc))
     (put dval 1)
     (is (= 2 @res))))
 
-(deftest finally-fn-doesnt-get-called-when-no-realize-fn-registered
+(deftest finalize-fn-doesnt-get-called-when-no-realize-fn-registered
   (let [dval (deferred)
         res  (atom nil)]
-    (finally dval #(reset! res :done))
+    (finalize dval #(reset! res :done))
     (put dval :hello)
     (is (nil? @res))))
 
-;; TODO: What happens when catch registered after finally?
+;; TODO: What happens when rescue registered after finalize?
 
-;; (deftest finally-fn-gets-called-when-aborted
+;; (deftest finalize-fn-gets-called-when-aborted
 ;;   (let [dval (deferred)
 ;;         res  (atom nil)]
-;;     (finally dval #(reset! res :done))
+;;     (finalize dval #(reset! res :done))
 ;;     (abort dval (Exception. "ZOMG"))
 ;;     (is (= :done @res))))
 
-(deftest finally-fn-gets-called-before-catch
+(deftest finalize-fn-gets-called-before-rescue
   (let [dval (deferred)
         res  (atom nil)]
-    (catch dval Exception #(reset! res %))
-    (finally dval #(swap! res (fn [v] (and v :done))))
+    (rescue dval Exception #(reset! res %))
+    (finalize dval #(swap! res (fn [v] (and v :done))))
     (abort dval (Exception. "ZOMG"))
     (is (= :done @res))))
+
+(deftest throws-when-rescue-registered-after-finalize
+  (let [dval (deferred)]
+    (finalize dval (fn []))
+    (is (thrown? Exception (rescue dval Exception identity)))))
 
 ;; ==== Waiting on deferred values
 
@@ -173,7 +163,7 @@
 ;;       (Thread/sleep 20)
 ;;       (abort dval (Exception. "TROLLOLOL")))
 
-;;     (catch dval Exception #(reset! res %))
+;;     (rescue dval Exception #(reset! res %))
 ;;     (is (wait dval))
 ;;     (is (instance? Exception @res))))
 
@@ -204,11 +194,11 @@
 ;;     (is (< 19 @first @second 80))))
 
 ;; Exception propagation
-;; * Cannot register any finally callbacks once a catch-all callback
+;; * Cannot register any finalize callbacks once a catch-all callback
 ;;   is registered.
 ;; * Exception thrown in catch block gets bubled up
 ;; * Exception thrown in catch block does not get caught
 ;;   in next catch block
-;; * Exception thrown in finally gets bubbled up
-;; * Exceptions thrown in finally get priority over exceptions thrown
+;; * Exception thrown in finalize gets bubbled up
+;; * Exceptions thrown in finalize get priority over exceptions thrown
 ;;   in catch
