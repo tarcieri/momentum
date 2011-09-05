@@ -15,29 +15,41 @@
 (extend-protocol DeferredValue
   DeferredState
   (receive [dval callback]
-    (.registerReceiveCallback dval callback))
+    (.registerReceiveCallback dval callback)
+    dval)
   (rescue [dval klass callback]
-    (.registerRescueCallback dval klass callback))
+    (.registerRescueCallback dval klass callback)
+    dval)
   (finalize [dval callback]
-    (.registerFinalizeCallback dval callback))
+    (.registerFinalizeCallback dval callback)
+    dval)
   (catch-all [dval callback]
-    (.registerCatchAllCallback dval callback))
+    (.registerCatchAllCallback dval callback)
+    dval)
 
   Object
   (receive [o callback]
-    (callback o o true))
-  (rescue [_ _ _])
-  (finalize [_ callback]
-    (callback))
-  (catch-all [_ _])
+    (callback o o true)
+    o)
+  (rescue [o _ _]
+    o)
+  (finalize [o callback]
+    (callback)
+    o)
+  (catch-all [o _]
+    o)
 
   nil
   (receive [_ callback]
-    (callback nil nil true))
-  (rescue [_ _ _])
+    (callback nil nil true)
+    nil)
+  (rescue [_ _ _]
+    nil)
   (finalize [_ callback]
-    (callback))
-  (catch-all [_ _]))
+    (callback)
+    nil)
+  (catch-all [_ _]
+    nil))
 
 (defprotocol DeferredRealizer
   (put [_ v])
@@ -46,9 +58,11 @@
 (extend-protocol DeferredRealizer
   DeferredState
   (put [dval val]
-    (.realize dval val))
+    (.realize dval val)
+    dval)
   (abort [dval err]
-    (.abort dval err false)))
+    (.abort dval err false)
+    dval))
 
 (defn wait
   ([dval] (wait dval 0))

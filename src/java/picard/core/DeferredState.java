@@ -193,13 +193,15 @@ public class DeferredState extends AFn {
             throw new NullPointerException("Exception cannot be null");
         }
 
+        State currentState;
         Rescue rescueCallback = null;
 
         synchronized(this) {
             // If an exception is thrown when invoking the realize
             // callback, then the abort method is called with internal
             // set to true.
-            if ((internal && state != State.RECEIVING) || state != State.INITIALIZED) {
+            if ((internal && state != State.RECEIVING) ||
+                (!internal && state != State.INITIALIZED)) {
                 throw new RuntimeException("The value has already been realized or aborted");
             }
 
@@ -217,12 +219,21 @@ public class DeferredState extends AFn {
                 }
             }
 
-            if (state != State.CAUGHT) {
+            if (state != State.CAUGHT && finalizeCallback != null) {
+                state = State.FINALIZING;
+            } else if (state != State.CAUGHT) {
                 return;
             }
+
+            currentState = state;
         }
 
-        invokeRescueCallback(rescueCallback);
+        if (currentState == State.CAUGHT) {
+            invokeRescueCallback(rescueCallback);
+        }
+        else {
+            invokeFinallyCallback();
+        }
     }
 
     private void invokeReceiveCallback() throws Exception {
