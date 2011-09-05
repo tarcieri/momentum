@@ -51,7 +51,7 @@
   (put [dval val]
     (.realize dval val))
   (abort [dval err]
-    (.abort dval err)))
+    (.abort dval err false)))
 
 (defn wait
   ([dval] (wait dval 0))

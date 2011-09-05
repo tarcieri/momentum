@@ -2,111 +2,110 @@ package picard.core;
 
 import clojure.lang.AFn;
 import clojure.lang.IFn;
+import java.util.Iterator;
 import java.util.LinkedList;
 
+// Even though it might make sense otherwise, there can only be a
+// single receive callback per deferred value. This is because
+// multiple receive callbacks don't make sense for channels and the
+// abstraction between deferred values and channels needs to be as
+// similar as possible. Also, it is easy to have a receive function
+// send out the value to multiple other functions.
+//
+// TODO: Currently, callbacks can be fired in parallel on different
+// threads. It probably makes sense to serialize them.
 public class DeferredState extends AFn {
-    // Whether or not the future has been maaterialized
-    boolean done;
+    public enum State {
+        INITIALIZED,
+        RECEIVING,
+        SUCCEEDED,
+        ABORTING,
+        CAUGHT,
+        FAILING,
+        FINALIZING,
+        FAILED
+    }
 
-    // The exception that the deferred value was aborted with
-    Exception err;
-
-    // Has the exception already been handled
-    boolean handled;
+    // What state are we currently in?
+    State state;
 
     // The realized value
     Object value;
 
+    // The exception that the deferred value was aborted with
+    Exception err;
+
     // The callbacks
     IFn receiveCallback;
     IFn catchAllCallback;
-    LinkedList<IFn> finallyCallbacks;
-    LinkedList<Catch> catchCallbacks;
+    IFn finallyCallback;
+    final LinkedList<Catch> catchCallbacks;
 
     public DeferredState() {
-        done    = false;
-        handled = false;
-
-        finallyCallbacks = new LinkedList<IFn>();
-        catchCallbacks   = new LinkedList<Catch>();
+        state          = State.INITIALIZED;
+        catchCallbacks = new LinkedList<Catch>();
     }
 
     public void registerReceiveCallback(IFn callback) throws Exception {
-        boolean done;
-
-        // Even though it might make sense otherwise, there can only be a single
-        // receive callback per deferred value. This is because multiple receive
-        // callbacks don't make sense for channels and the abstraction between
-        // deferred values and channels needs to be as similar as possible. Also,
-        // it is easy to have a receive function send out the value to multiple
-        // other functions.
         if (callback == null) {
             throw new NullPointerException("Callback is null");
         }
 
         synchronized(this) {
-            done = this.done && err == null;
-
             if (receiveCallback != null) {
                 throw new Exception("A receive callback has already been registered");
             }
 
             receiveCallback = callback;
+
+            if (state != State.RECEIVING) {
+                return;
+            }
         }
 
-        if (done) {
-            callback.invoke(this, value, true);
-        }
+        invokeReceiveCallback();
     }
 
     public void registerCatchCallback(Class klass, IFn callback) throws Exception {
-        Catch catchStatement = null;
-
         if (klass == null) {
             throw new NullPointerException("Class is null");
         } else if (callback == null) {
             throw new NullPointerException("Callback is null");
         }
 
-        synchronized(this) {
-            if (this.err != null) {
-                catchStatement = new Catch(klass, callback);
-
-                if (!handled && catchStatement.isMatch(this.err)) {
-                    handled = true;
-                } else {
-                    catchStatement = null;
-                }
-            } else {
-                catchCallbacks.add(new Catch(klass, callback));
-            }
-        }
-
-        if (catchStatement != null) {
-            catchStatement.invoke(this.err);
-        }
-    }
-
-    public void registerCatchAllCallback(IFn callback) throws Exception {
-        if (callback == null) {
-            throw new NullPointerException("Callback is null");
-        }
-
-        boolean done;
+        final Catch catchCallback = new Catch(klass, callback);
 
         synchronized(this) {
             if (catchAllCallback != null) {
-                throw new Exception("A catch all callback has already been registered");
+                throw new Exception("A catch-all callback has already been registered");
             }
 
-            done = this.done && err != null;
+            switch (state) {
+            case SUCCEEDED:
+            case CAUGHT:
+            case FAILING:
+            case FAILED:
+                // There is no need for any further catch statements,
+                // so just bail out now.
+                return;
 
-            catchAllCallback = callback;
+            case INITIALIZED:
+            case RECEIVING:
+                catchCallbacks.add(catchCallback);
+                return;
+
+            default:
+                // If the catch statement isn't a match, then just
+                // bail out right now.
+                if (!catchCallback.isMatch(err)) {
+                    return;
+                }
+
+                state = State.CAUGHT;
+            }
         }
 
-        if (done) {
-            callback.invoke(err);
-        }
+        invokeCatchCallback(catchCallback);
     }
 
     public void registerFinallyCallback(IFn callback) throws Exception {
@@ -114,85 +113,214 @@ public class DeferredState extends AFn {
             throw new NullPointerException("Callback is null");
         }
 
-        boolean done;
-
         synchronized(this) {
-            done = this.done;
+            if (finallyCallback != null) {
+                throw new Exception("A finally callback has already been registered");
+            }
 
-            if (!done) {
-                finallyCallbacks.add(callback);
+            if (catchAllCallback != null) {
+                throw new Exception("A catch-all callback has already been registered");
+            }
+
+            finallyCallback = callback;
+
+            switch (state) {
+            case INITIALIZED:
+            case RECEIVING:
+            case ABORTING:
+            case FAILED:
+                return;
+
+            case FAILING:
+                state = State.FINALIZING;
             }
         }
 
-        if (done) {
-            callback.invoke();
-        }
+        invokeFinallyCallback();
     }
 
-    public void realize(Object value) throws Exception {
-        IFn callback;
+    public void registerCatchAllCallback(IFn callback) throws Exception {
+        if (callback == null) {
+            throw new NullPointerException("Callback is null");
+        }
 
         synchronized(this) {
-            if (done) {
-                throw new Exception("The value has already been realized");
+            if (catchAllCallback != null) {
+                throw new Exception("A catch-all callback has already been registered");
             }
 
-            this.done  = true;
-            this.value = value;
-            callback   = receiveCallback;
+            catchAllCallback = callback;
+
+            if (state != State.FAILING) {
+                return;
+            }
+
+            state = State.FAILED;
         }
 
-        try {
-            if (callback != null) {
-                callback.invoke(this, value, true);
-            }
-        }
-        finally {
-            invokeFinallyCallbacks();
-
-            synchronized(this) {
-                notifyAll();
-            }
-        }
+        invokeCatchAllCallback();
     }
 
-    public void abort(Exception err) throws Exception {
-        if (err == null) {
+    public void realize(Object v) throws Exception {
+        synchronized(this) {
+            if (state != State.INITIALIZED) {
+                throw new Exception("The value has already been realized or aborted");
+            }
+
+            value = v;
+            state = State.RECEIVING;
+
+            if (receiveCallback == null) {
+                return;
+            }
+        }
+
+        invokeReceiveCallback();
+    }
+
+    public void abort(Exception e, boolean internal) throws Exception {
+        if (e == null) {
             throw new NullPointerException("Exception cannot be null");
         }
 
+        Catch catchCallback = null;
+
         synchronized(this) {
-            if (done || this.err != null) {
-                throw new Exception("The value has already been realized");
+            // If an exception is thrown when invoking the realize
+            // callback, then the abort method is called with internal
+            // set to true.
+            if ((internal && state != State.RECEIVING) || state != State.INITIALIZED) {
+                throw new Exception("The value has already been realized or aborted");
             }
 
-            this.done = true;
-            this.err  = err;
-        }
+            err   = e;
+            state = State.ABORTING;
 
-        while (true) {
-            Catch curr = catchCallbacks.poll();
+            Iterator<Catch> i = catchCallbacks.iterator();
 
-            if (curr == null) {
-                break;
-            }
+            while (i.hasNext()) {
+                catchCallback = i.next();
 
-            if (curr.isMatch(err)) {
-                this.handled = true;
-
-                try {
-                    curr.invoke(err);
-                }
-                finally {
+                if (catchCallback.isMatch(err)) {
+                    state = State.CAUGHT;
                     break;
                 }
             }
+
+            if (state != State.CAUGHT) {
+                return;
+            }
         }
 
-        invokeFinallyCallbacks();
+        invokeCatchCallback(catchCallback);
+    }
+
+    private void invokeReceiveCallback() throws Exception {
+        try {
+            receiveCallback.invoke(this, value, true);
+        }
+        catch (Exception e) {
+            abort(e, true);
+            return;
+        }
 
         synchronized(this) {
-            notifyAll();
+            state = State.SUCCEEDED;
+
+            if (finallyCallback == null) {
+                return;
+            }
+        }
+
+        invokeFinallyCallback();
+    }
+
+    private void invokeCatchCallback(Catch callback) {
+        try {
+            callback.invoke(err);
+
+            synchronized(this) {
+                if (finallyCallback == null) {
+                    return;
+                }
+            }
+
+            invokeFinallyCallback();
+        } catch (Exception e) {
+            State currentState;
+
+            synchronized(this) {
+                err = e;
+
+                if (finallyCallback != null) {
+                    state = State.FINALIZING;
+                }
+                else if (catchAllCallback != null) {
+                    state = State.FAILED;
+                }
+                else {
+                    state = State.FAILING;
+                }
+
+                currentState = state;
+            }
+
+            switch (currentState) {
+            case FINALIZING:
+                invokeFinallyCallback();
+                break;
+
+            case FAILED:
+                invokeCatchAllCallback();
+                break;
+            }
+        }
+    }
+
+    private void invokeFinallyCallback() {
+        try {
+            finallyCallback.invoke();
+        }
+        catch (Exception e) {
+            synchronized(this) {
+                err   = e;
+                state = State.FINALIZING;
+            }
+        }
+
+        synchronized(this) {
+            if (state == State.SUCCEEDED) {
+                return;
+            }
+            else if (catchAllCallback == null) {
+                state = State.FAILING;
+                return;
+            }
+
+            state = State.FAILED;
+        }
+
+        invokeCatchAllCallback();
+    }
+
+    private void invokeCatchAllCallback() {
+        try {
+            catchAllCallback.invoke(err);
+        }
+        catch (Exception e) {
+            // If an exception is caught, then we're really boned.
+        }
+    }
+
+    // ==== Extra stuff
+
+    private boolean isComplete() {
+        switch (state) {
+        case SUCCEEDED:
+            return true;
+
+        default:
+            return false;
         }
     }
 
@@ -207,31 +335,13 @@ public class DeferredState extends AFn {
         }
 
         synchronized(this) {
-            if (done || timeout < 0) {
-                return done;
+            if (isComplete() || timeout < 0) {
+                return isComplete();
             }
 
             wait(timeout);
 
-            return done;
-        }
-    }
-
-    private void invokeFinallyCallbacks() {
-        while (true) {
-            IFn curr = finallyCallbacks.poll();
-
-            if (curr == null) {
-                return;
-            }
-
-            // TODO: Figure out how to handle exceptions
-            try {
-                curr.invoke();
-            }
-            catch (Exception e) {
-                // Just ignore for now
-            }
+            return isComplete();
         }
     }
 
