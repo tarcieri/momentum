@@ -779,3 +779,135 @@
          :body nil
          :done nil))))
 
+(defcoretest handling-100-continue-requests-by-responding-directly
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :request evt)
+         (let [[{request-method :request-method}] val]
+           (if (= "GET" request-method)
+             (dn :response [200 {"content-length" "5"} "Hello"])
+             (dn :response [417 {"content-length" "0"} ""])))))))
+
+  (with-socket
+    (write-socket "POST / HTTP/1.1\r\n"
+                  "Content-Length: 5\r\n"
+                  "Expect: 100-continue\r\n\r\n")
+
+    (is (next-msgs
+         ch1
+         :request [#(includes-hdrs {"expect" "100-continue"} %) :chunked]
+         :done    nil))
+
+    (is (receiving
+         "HTTP/1.1 417 Expectation Failed\r\n"
+         "content-length: 0\r\n\r\n"))
+
+    (write-socket "Hello"
+                  "GET / HTTP/1.1\r\n"
+                  "Connection: close\r\n\r\n")
+
+    (is (next-msgs
+         ch1
+         :request [#(includes-hdrs {:request-method "GET"} %) nil]
+         :done    nil))
+
+    (is (receiving
+         "HTTP/1.1 200 OK\r\n"
+         "content-length: 5\r\n\r\n"
+         "Hello"))
+
+    (is (no-msgs ch1))
+    (is (closed-socket?))))
+
+(defcoretest sending-multiple-100-continue-responses
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (cond
+        (= :request evt)
+        (try
+          (dn :response [100])
+          (dn :response [100])
+          (catch Exception err
+            (enqueue ch1 [:error err])))
+
+        (= [:body nil] [evt val])
+        (dn :response [204 {"connection" "close"} ""])))))
+
+  (with-socket
+    (write-socket "POST / HTTP/1.1\r\n"
+                  "Content-Length: 5\r\n"
+                  "Expect: 100-continue\r\n\r\n")
+
+    (is (next-msgs ch1 :error #(instance? Exception %)))
+
+    (is (receiving "HTTP/1.1 100 Continue\r\n\r\n"))
+
+    (write-socket "Hello")
+
+    (is (receiving
+         "HTTP/1.1 204 No Content\r\n"
+         "connection: close\r\n\r\n"))
+
+    (is (closed-socket?))))
+
+(defcoretest client-sends-body-and-expects-100
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= [:body nil] [evt val])
+         (dn :response [204 {"connection" "close"} nil])))))
+
+  (with-socket
+    (write-socket "POST / HTTP/1.1\r\n"
+                  "Content-Length: 5\r\n"
+                  "Expect: 100-continue\r\n\r\n"
+                  "Hello")
+
+    (is (next-msgs
+         ch1
+         :request [#(includes-hdrs {"expect" "100-continue"} %) :chunked]
+         :body    "Hello"
+         :body    nil
+         :done    nil))
+
+    (is (receiving
+         "HTTP/1.1 204 No Content\r\n"
+         "connection: close\r\n\r\n"))))
+
+(defcoretest client-sends-body-and-expects-100-2
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (cond
+        (= :request evt)
+        (dn :response [100])
+
+        (= [:body nil] [evt val])
+        (dn :response [204 {"connection" "close"} ""])))))
+
+  (with-socket
+    (write-socket "POST / HTTP/1.1\r\n"
+                  "Content-Length: 5\r\n"
+                  "Expect: 100-continue\r\n\r\n"
+                  "Hello")
+
+    (is (next-msgs
+         ch1
+         :request [#(includes-hdrs {"expect" "100-continue"} %) :chunked]
+         :body    "Hello"
+         :body    nil
+         :done    nil))
+
+    (is (receiving
+         "HTTP/1.1 100 Continue\r\n\r\n"
+         "HTTP/1.1 204 No Content\r\n"
+         "connection: close\r\n\r\n"))))

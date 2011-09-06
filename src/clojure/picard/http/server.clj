@@ -32,6 +32,7 @@
      address-info
      timeout
      opts]
+
   Timeout
   (get-timeout-ms [current-state]
     (* (-> current-state .opts :keepalive)) 1000)
@@ -56,6 +57,7 @@
      bytes-to-send
      timeout
      opts]
+
   Timeout
   (get-timeout-ms [current-state]
     (* (-> current-state .opts :timeout) 1000))
@@ -389,7 +391,7 @@
              (bump-timeout state current-state)
              (swap! state #(assoc % :address-info val)))
 
-           (not (#{:pause :resume :abort} evt))
+           (not (#{:body :pause :resume :abort} evt))
            (throw
             (Exception.
              (str "Not expecting a message right now: " [evt val])))))))))
