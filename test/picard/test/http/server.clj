@@ -911,3 +911,232 @@
          "HTTP/1.1 100 Continue\r\n\r\n"
          "HTTP/1.1 204 No Content\r\n"
          "connection: close\r\n\r\n"))))
+
+(defcoretest sending-100-continue-to-1-0-client
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :request evt)
+         (try
+           (dn :response [100])
+           (catch Exception err
+             (enqueue ch1 [:error err])))
+         (dn :response [204 {} ""])))))
+
+  (with-socket
+    (write-socket "POST / HTTP/1.0\r\n"
+                  "Content-Length: 5\r\n"
+                  "Expect: 100-continue\r\n\r\n"
+                  "Hello")
+
+    (let [expected-hdrs {:http-version [1 0]
+                         "expect" "100-continue"}]
+      (is (next-msgs
+           ch1
+           :request [#(includes-hdrs expected-hdrs %) "Hello"]
+           :error   #(instance? Exception %)
+           :done    nil))
+
+      (is (no-msgs ch1)))))
+
+(defcoretest timing-out-without-writing-request
+  [ch1]
+  (start
+   (fn [dn]
+     (enqueue ch1 [:binding nil])
+     (fn [_ _]))
+   {:keepalive 1})
+
+  (with-socket
+    (Thread/sleep 2010)
+    (is (closed-socket?))
+    (is (no-msgs ch1))))
+
+(defcoretest timing-out-halfway-streamed-chunked-request
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])))
+   {:timeout 1})
+
+  (with-socket
+    (write-socket "POST / HTTP/1.1\r\n"
+                  "Transfer-Encoding: chunked\r\n\r\n"
+                  "5\r\nHello\r\n5\r\nWorld")
+
+    (is (next-msgs
+         ch1
+         :request [:dont-care :chunked]
+         :body    "Hello"
+         :body    "World"))
+
+    (Thread/sleep 2000)
+
+    (is (next-msgs ch1 :abort #(instance? Exception %)))
+
+    (is (receiving ""))
+    (is (closed-socket?))))
+
+(defcoretest each-event-resets-timer
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])))
+   {:timeout 1})
+
+  (with-socket
+    (write-socket "POST / HTTP/1.1\r\n"
+                  "Transfer-Encoding: chunked\r\n\r\n")
+
+    (is (next-msgs ch1 :request :dont-care))
+
+    (Thread/sleep 800)
+
+    (write-socket "5\r\nHello\r\n")
+
+    (is (next-msgs ch1 :body "Hello"))
+
+    (Thread/sleep 800)
+
+    (write-socket "5\r\nWorld\r\n")
+
+    (is (next-msgs ch1 :body "World"))
+
+    (Thread/sleep 800)
+
+    (write-socket "0\r\n\r\n")
+
+    (is (next-msgs ch1 :body nil))))
+
+(defcoretest timing-out-halfway-through-streamed-chunked-response
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :request evt)
+         (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
+         (dn :body "Hello")
+         (dn :body "World"))))
+   {:timeout 1})
+
+  (with-socket
+    (write-socket "GET / HTTP/1.1\r\n\r\n")
+    (is (receiving
+         "HTTP/1.1 200 OK\r\n"
+         "transfer-encoding: chunked\r\n\r\n"
+         "5\r\nHello\r\n5\r\nWorld\r\n"))
+
+    (Thread/sleep 2010)
+
+    (is (closed-socket?))))
+
+(defcoretest timing-out-during-keepalive
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (dn :response [200 {"content-length" "5"} "Hello"])))
+   {:keepalive 1})
+
+  (with-socket
+    (write-socket "GET / HTTP/1.1\r\n\r\n")
+
+    (is (receiving
+         "HTTP/1.1 200 OK\r\n"
+         "content-length: 5\r\n\r\n"
+         "Hello"))
+
+    (Thread/sleep 2010)
+
+    (is (closed-socket?))))
+
+(defcoretest closing-connection-during-keepalive
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :request evt)
+         (dn :response [200 {"content-length" "5"} "Hello"])))))
+
+  (with-socket
+    (write-socket "GET / HTTP/1.1\r\n\r\n")
+
+    (is (receiving
+         "HTTP/1.1 200 OK\r\n"
+         "content-length: 5\r\n\r\n"
+         "Hello"))
+
+    (Thread/sleep 100)
+    (close-socket)
+
+    (is (next-msgs
+         ch1
+         :request :dont-care
+         :done    nil))
+
+    (is (no-msgs ch1))))
+
+(defcoretest race-condition-between-requests
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :request evt)
+         (future
+           (dn :response [200 {"content-length" "5"} "Hello"])))
+       (when (= :done nil)
+         (Thread/sleep 50)))))
+
+  (with-socket
+    (dotimes [_ 2]
+      (write-socket "GET / HTTP/1.1\r\n\r\n")
+
+      (is (receiving
+           "HTTP/1.1 200 OK\r\n"
+           "content-length: 5\r\n\r\n"
+           "Hello")))
+
+    (is (next-msgs
+         ch1
+         :request :dont-care
+         :done    nil
+         :request :dont-care
+         :done    nil))
+
+    (is (no-msgs ch1))))
+
+(defcoretest closing-the-connection-immedietly-after-receiving-body
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :request evt)
+         (dn :response [200 {"content-length" 5} :chunked])
+         (dn :body "Hello")))))
+
+  (with-socket
+    (write-socket "GET / HTTP/1.1\r\n\r\n")
+
+    (is (receiving
+         "HTTP/1.1 200 OK\r\n"
+         "content-length: 5\r\n\r\n"
+         "Hello"))
+
+    (close-socket)
+
+    (is (next-msgs
+         ch1
+         :request :dont-care
+         :done    nil))
+
+    (is (no-msgs ch1))))
+
