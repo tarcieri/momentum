@@ -198,7 +198,7 @@
 
 ;; ==== Catch all statements
 
-(deftest catch-all-statements-invoked-with-unrescued-exceptions
+(deftest catch-all-statement-invoked-with-unrescued-exceptions
   (let [res (atom nil)
         err (Exception. "TROLLOLOL")]
     (-> (deferred)
@@ -210,6 +210,66 @@
 
     (-> (deferred)
         (abort err)
+        (catch-all #(reset! res %)))
+    (is (= err @res))))
+
+(deftest catch-all-statement-not-invoked-with-rescued-exceptions
+  (let [res (atom nil)]
+   (-> (deferred)
+       (rescue Exception identity)
+       (catch-all #(reset! res %))
+       (abort (Exception. "TROLLOLOL")))
+   (is (nil? @res))
+
+   (-> (deferred)
+       (abort (Exception. "TROLLOLOL"))
+       (rescue Exception identity)
+       (catch-all #(reset! res %)))
+   (is (nil? @res))))
+
+(deftest finalize-invoked-before-catch-all
+  (let [res (atom nil)
+        err (Exception. "TROLLOLOL")]
+    (-> (deferred)
+        (finalize #(reset! res :one))
+        (catch-all #(reset! res %))
+        (abort err))
+    (is (= err @res))))
+
+(deftest catch-all-called-with-rescue-exception
+  (let [res (atom nil)
+        err (Exception. "TROLLOLOL")]
+    (-> (deferred)
+        (rescue Exception (fn [_] (throw err)))
+        (catch-all #(reset! res %))
+        (abort (Exception. "LULZ")))
+    (is (= err @res))
+
+    (reset! res nil)
+
+    (-> (deferred)
+        (receive (fn [_ _ _] (throw (Exception. "LULZ"))))
+        (rescue Exception (fn [_] (throw err)))
+        (catch-all #(reset! res %))
+        (put 1))
+    (is (= err @res))
+
+    (reset! res nil)
+
+    (-> (deferred)
+        (abort (Exception. "GAGA"))
+        (rescue Exception (fn [_] (throw err)))
+        (finalize (fn []))
+        (catch-all #(reset! res %)))
+    (is (= err @res))))
+
+(deftest catch-all-called-with-finalize-exception
+  (let [res (atom nil)
+        err (Exception. "TROLLOLOL")]
+    (-> (deferred)
+        (rescue Exception (fn [_] (throw "OH NO")))
+        (finalize #(throw err))
+        (abort (Exception. "LULZ"))
         (catch-all #(reset! res %)))
     (is (= err @res))))
 
