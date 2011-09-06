@@ -161,7 +161,7 @@ public class DeferredState extends AFn {
 
             catchAllCallback = callback;
 
-            if (state != State.FAILING) {
+            if (state != State.ABORTING && state != State.FAILING) {
                 return;
             }
 
@@ -219,20 +219,30 @@ public class DeferredState extends AFn {
                 }
             }
 
-            if (state != State.CAUGHT && finalizeCallback != null) {
+            if (state == State.CAUGHT) {
+                // ZOMG, do nothing
+            }
+            else if (finalizeCallback != null) {
                 state = State.FINALIZING;
-            } else if (state != State.CAUGHT) {
+            } else if (catchAllCallback != null) {
+                state = State.FAILED;
+            } else {
                 return;
             }
 
             currentState = state;
         }
 
-        if (currentState == State.CAUGHT) {
+        switch (currentState) {
+        case CAUGHT:
             invokeRescueCallback(rescueCallback);
-        }
-        else {
+            break;
+        case FAILED:
+            invokeCatchAllCallback();
+            break;
+        default:
             invokeFinallyCallback();
+            break;
         }
     }
 
