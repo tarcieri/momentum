@@ -105,18 +105,20 @@
      writable?
      last-write
      event-lock
-     event-queue])
+     state-queue
+     message-queue])
 
 (defn- initial-state
   [ch]
   (State.
-   ch    ;; ch
-   nil   ;; upstream
-   false ;; aborting?
-   true  ;; writable?
-   nil   ;; last-write
-   (atom true)
-   (LinkedList.)))
+   ch              ;; ch
+   nil             ;; upstream
+   false           ;; aborting?
+   true            ;; writable?
+   nil             ;; last-write
+   (atom true)     ;; event-lock
+   (LinkedList.)   ;; state-queue
+   (LinkedList.))) ;; message-queue
 
 (declare handle-err)
 
@@ -139,29 +141,45 @@
          (.close ch))))))
 
 (defn- try-acquire
-  [event-lock event-queue evt val]
-  (locking event-lock
-    (let [acquired? @event-lock]
-      (if acquired?
-        (reset! event-lock false)
-        (do
-          (when (= :abort evt)
-            (.clear event-queue))
-          (.add event-queue [evt val])))
-      acquired?)))
+  [current-state evt val]
+  (let [event-lock    (.event-lock current-state)
+        state-queue   (.state-queue current-state)
+        message-queue (.message-queue current-state)]
+    (locking event-lock
+      ;; Clear the queues if the upstream is an abort
+      (when (= :abort evt)
+        (.clear state-queue)
+        (.clear message-queue))
+      ;; Add the event to the appropriate queue
+      (if (#{:pause :resume :abort} evt)
+        (.add state-queue [evt val])
+        (.add message-queue [evt val]))
+      ;; Finally, attempt to get the lock
+      (let [acquired? @event-lock]
+        (when acquired? (reset! event-lock false))
+        acquired?))))
+
+(defn- poll-queue*
+  [current-state]
+  (or (.. current-state state-queue poll)
+      (and (or (.. current-state ch isReadable)
+               (not (.. current-state ch isOpen)))
+           (.. current-state message-queue poll))))
 
 (defn- poll-queue
-  [event-lock event-queue]
-  (locking event-lock
-    (let [next (.poll event-queue)]
-      (when-not next
-        (reset! event-lock true))
-      next)))
+  [current-state]
+  (let [event-lock (.event-lock current-state)]
+    (locking event-lock
+      (let [next (poll-queue* current-state)]
+        (when-not next
+          (reset! event-lock true))
+        next))))
 
 (defn- abandon-lock
-  [event-lock]
-  (locking event-lock
-    (reset! event-lock true)))
+  [current-state]
+  (let [event-lock (.event-lock current-state)]
+    (locking event-lock
+      (reset! event-lock true))))
 
 (defn- handle-interest-ops
   [state upstream]
@@ -172,23 +190,26 @@
       (swap! state #(assoc % :writable? (not writable?)))
       (upstream (if writable? :pause :resume) nil))))
 
+;; Handles sending messages upstream in a sane and thread-safe way.
+;;
+;; When sending upstream, a lock must first be aquired. When aquired,
+;; the message can be sent upstream, otherwise, the messages are queued
+;; up.
 (defn- send-upstream
   [state evt val current-state]
-  (let [event-lock  (.event-lock current-state)
-        event-queue (.event-queue current-state)
-        acquired?   (try-acquire event-lock event-queue evt val)]
+  (let [upstream  (.upstream current-state)
+        acquired? (try-acquire current-state evt val)]
     (when acquired?
       (try
-        (loop [evt evt val val]
-          (let [upstream (.upstream current-state)]
+        (loop []
+          (when-let [[evt val] (poll-queue current-state)]
             (if (= :interest-ops evt)
               (handle-interest-ops state upstream)
-              (upstream evt val)))
-          (when-let [[evt val] (poll-queue event-lock event-queue)]
-            (recur evt val)))
+              (upstream evt val))
+            (recur)))
         (catch Exception err
           (handle-err state err @state true)
-          (abandon-lock event-lock))))))
+          (abandon-lock current-state))))))
 
 (defn- handle-err
   ([state err current-state]
