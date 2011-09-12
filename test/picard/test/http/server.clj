@@ -583,16 +583,20 @@
   (with-socket
     (write-socket "POST / HTTP/1.1\r\n"
                   "Connection: close\r\n"
-                  "Transfer-Encoding: chunked\r\n\r\n"
-                  "5\r\nHello\r\n5\r\nWorld\r\n0\r\n\r\n")
+                  "Transfer-Encoding: chunked\r\n\r\n")
 
     (is (next-msgs
          ch1
-         :request [#(includes-hdrs {"transfer-encoding" "chunked"} %) :chunked]
-         :body    "Hello"
-         :body    "World"
-         :body    nil
-         :done    nil))
+         :request [#(includes-hdrs {"transfer-encoding" "chunked"} %) :chunked]))
+
+    (write-socket "5\r\nHello\r\n5\r\nWorld\r\n0\r\n\r\n")
+
+    (is (next-msgs
+         ch1
+         :body "Hello"
+         :body "World"
+         :body nil
+         :done nil))
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
