@@ -261,7 +261,7 @@
        (handle-err state val current-state)
 
        :else
-       (throw (Exception. "Unexpected event: " evt))))))
+       (throw (Exception. (str "Unexpected event: " evt)))))))
 
 (defn mk-upstream-handler
   [^ChannelGroup channel-group app opts]

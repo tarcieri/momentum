@@ -99,7 +99,6 @@
 
 (defn response->netty-response
   [status hdrs body]
-  ;; Stuff
   (doto (mk-netty-response status hdrs)
     (netty-assoc-hdrs hdrs)
     (netty-set-content body)))

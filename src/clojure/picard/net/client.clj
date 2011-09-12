@@ -74,11 +74,13 @@
 (def default-client (client))
 
 (defn release
-  [{channel-group ::channel-group bootstrap ::bootstrap}]
-  (receive
-   (.close channel-group)
-   (fn [_ _ _]
-     (.releaseExternalResources bootstrap))))
+  ([]
+     (release default-client))
+  ([{channel-group ::channel-group bootstrap ::bootstrap}]
+     (receive
+      (.close channel-group)
+      (fn [_ _ _]
+        (.releaseExternalResources bootstrap)))))
 
 (defn connect
   ([app opts] (connect default-client app opts))
