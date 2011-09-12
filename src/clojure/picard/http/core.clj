@@ -25,9 +25,19 @@
 (def http-1-1   [1 1])
 (def last-chunk HttpChunk/LAST_CHUNK)
 
+(defn- maybe-lower-case
+  [s]
+  (and s (str/lower-case s)))
+
 (defn throw-connection-reset-by-peer
   []
   (throw (IOException. "Connection reset by peer")))
+
+(defn status-expects-body?
+  [status]
+  (and (<= 200 status)
+       (not= 204 status)
+       (not= 304 status)))
 
 (defn content-length
   [hdrs]
@@ -38,10 +48,25 @@
 
 (defn keepalive-request?
   [[{version :http-version connection "connection"}]]
-  (let [connection (and connection (str/lower-case connection))]
+  (let [connection (maybe-lower-case connection)]
     (if (= http-1-1 version)
       (not= "close" connection)
       (= "keep-alive" connection))))
+
+(defn keepalive-response?
+  [[status {version           :http-version
+            connection        "connection"
+            content-length    "content-length"
+            transfer-encoding "transfer-encoding"}]]
+  (let [connection (maybe-lower-case connection)
+        version    (or version http-1-1)]
+    (and
+     (if (= http-1-1 version)
+       (not= "close" connection)
+       (= "keep-alive" connection))
+     (or content-length
+         (= "chunked" (maybe-lower-case transfer-encoding))
+         (not (status-expects-body? status))))))
 
 (defn expecting-100?
   [[{version :http-version expect "expect"}]]
@@ -60,12 +85,6 @@
 
    :else
    false))
-
-(defn status-expects-body?
-  [status]
-  (and (<= 200 status)
-       (not= 204 status)
-       (not= 304 status)))
 
 (defn- netty-assoc-hdrs
   [^HttpMessage msg hdrs]

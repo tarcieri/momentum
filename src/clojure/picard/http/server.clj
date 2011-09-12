@@ -181,11 +181,11 @@
          chunked? (downstream :message last-chunk)))))))
 
 (defn- handle-response
-  [state evt val current-state]
+  [state evt response current-state]
   (when-not (= :response evt)
     (throw (Exception. "Expecting a :response event")))
 
-  (let [[status hdrs body] val
+  (let [[status hdrs body] response
         hdrs           (or hdrs {})
         body           (and (not (.head? current-state)) body)
         bytes-expected (content-length hdrs)
@@ -230,10 +230,7 @@
              :chunked?      (= (hdrs "transfer-encoding") "chunked")
              :next-dn-fn    (when (not responded?) stream-or-finalize-response)
              :keepalive?    (and (.keepalive? current-state)
-                                 (not= "close" (hdrs "connection"))
-                                 (or (hdrs "content-length")
-                                     (= (hdrs "transfer-encoding") "chunked")
-                                     (not (status-expects-body? status))))))))
+                                 (keepalive-response? response))))))
      (fn [current-state]
        (let [downstream (.downstream current-state)
              message    (response->netty-response status hdrs body)]
