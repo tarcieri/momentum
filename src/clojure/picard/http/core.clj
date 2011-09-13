@@ -7,6 +7,7 @@
     ChannelBuffer]
    [org.jboss.netty.handler.codec.http
     DefaultHttpChunk
+    DefaultHttpRequest
     DefaultHttpResponse
     HttpChunk
     HttpHeaders
@@ -68,6 +69,10 @@
          (= "chunked" (maybe-lower-case transfer-encoding))
          (not (status-expects-body? status))))))
 
+(defn is-100?
+  [[status]]
+  (= 100 status))
+
 (defn expecting-100?
   [[{version :http-version expect "expect"}]]
   (cond
@@ -110,11 +115,23 @@
   {[1 0] HttpVersion/HTTP_1_0
    [1 1] HttpVersion/HTTP_1_1})
 
+(defn- ^HttpRequest mk-netty-request
+  [{:keys [http-version request-method path-info]}]
+  (let [version (netty-versions (or http-version [1 1]))
+        method  (HttpMethod. request-method)]
+    (DefaultHttpRequest. version method path-info)))
+
 (defn- ^HttpResponse mk-netty-response
   [status {http-version :http-version}]
   (let [version (netty-versions (or http-version [1 1]))
         status  (HttpResponseStatus/valueOf status)]
     (DefaultHttpResponse. version status)))
+
+(defn request->netty-request
+  [hdrs body]
+  (doto (mk-netty-request hdrs)
+    (netty-assoc-hdrs hdrs)
+    (netty-set-content body)))
 
 (defn response->netty-response
   [status hdrs body]
@@ -169,10 +186,33 @@
       :query-string   (or (.getRawQuery uri) "")
       :script-name    "")))
 
+(defn- netty-response->status
+  [response]
+  (.. response getStatus getCode))
+
+(defn- netty-response->headers
+  [response]
+  (netty-message->headers response))
+
+(defn- netty-response->body
+  [response]
+  (let [status (netty-response->status response)]
+    (when (status-expects-body? status)
+      (netty-message->body response))))
+
 (extend-protocol msg/DecodeMessage
   HttpRequest
   (decode [request]
-    [:request  [(netty-request->headers request) (netty-message->body request)]])
+    (let [headers (netty-request->headers request)
+          body    (netty-message->body request)]
+     [:request  [headers body]]))
+
+  HttpResponse
+  (decode [response]
+    (let [status  (netty-response->status response)
+          headers (netty-response->headers response)
+          body    (netty-response->body response)]
+      [:response [status headers body]]))
 
   HttpChunk
   (decode [chunk]
