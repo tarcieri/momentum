@@ -115,11 +115,18 @@
   {[1 0] HttpVersion/HTTP_1_0
    [1 1] HttpVersion/HTTP_1_1})
 
+(defn- headers->uri
+  [{query-string :query-string path-info :path-info}]
+  (if (empty? query-string)
+    path-info
+    (str path-info "?" query-string)))
+
 (defn- ^HttpRequest mk-netty-request
-  [{:keys [http-version request-method path-info]}]
+  [{http-version :http-version request-method :request-method :as headers}]
   (let [version (netty-versions (or http-version [1 1]))
-        method  (HttpMethod. request-method)]
-    (DefaultHttpRequest. version method path-info)))
+        method  (HttpMethod. request-method)
+        uri     (headers->uri headers)]
+    (DefaultHttpRequest. version method uri)))
 
 (defn- ^HttpResponse mk-netty-response
   [status {http-version :http-version}]

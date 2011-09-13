@@ -53,7 +53,7 @@
   (= exchange-complete (.next-up-fn current-state)))
 
 (defn- maybe-finalize-exchange
-  [state current-state]
+  [current-state]
   (let [upstream   (.upstream current-state)
         downstream (.downstream current-state)]
     ;; Maybe the upstream should be reset to nil
@@ -76,7 +76,7 @@
            :next-up-fn awaiting-request)))
      (fn [current-state]
        ((.upstream current-state) :body nil)
-       (maybe-finalize-exchange state current-state)))))
+       (maybe-finalize-exchange current-state)))))
 
 (defn- handle-response
   [state evt response current-state]
@@ -123,11 +123,28 @@
              :next-up-fn awaiting-request)))))
      (fn [current-state]
        (upstream :response response)
-       (maybe-finalize-exchange state current-state)))))
+       (maybe-finalize-exchange current-state)))))
 
 (defn- stream-or-finalize-request
   [state evt chunk current-state]
-  (throw (Exception. "Not implemented")))
+  (when-not (= :body evt)
+    (throw (Exception. "Expecting a :body event")))
+
+  ;; Stuff
+  (if chunk
+    ((.downstream current-state) :body chunk)
+    (swap-then!
+     state
+     (fn [current-state]
+       (if (= awaiting-request (.next-up-fn current-state))
+         (assoc current-state
+           :next-up-fn exchange-complete
+           :next-dn-fn exchange-complete)
+         (assoc current-state
+           :next-up-fn awaiting-response)))
+     (fn [current-state]
+       ((.downstream current-state) :body chunk)
+       (maybe-finalize-exchange current-state)))))
 
 (defn- handle-request
   [state evt request current-state]
