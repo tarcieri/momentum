@@ -56,6 +56,31 @@
     opts)
    (opts :netty)))
 
+(defprotocol Client
+  (do-connect [_ app opts])
+  (do-release [_]))
+
+(defrecord BasicClient  [channel-group bootstrap]
+  Client
+  (do-connect [client app {host :host port :port :as opts}]
+    (let [bootstrap     (.bootstrap client)
+          channel-group (.channel-group client)
+          addr          (mk-socket-addr [host port])
+          pipeline      (mk-client-pipeline channel-group app opts)]
+      (.connect bootstrap addr pipeline)))
+  (do-release [client]
+    (receive
+     (.. client channel-group close)
+     (fn [_ _ _]
+       (.releaseExternalResources (.bootstrap client))))))
+
+(defrecord PooledClient [basic-client pool]
+  Client
+  (do-connect [client app opts]
+    (do-connect (.basic-client client) app opts))
+  (do-release [client]
+    (do-release (.basic-client client))))
+
 (defn client
   ([] (client {}))
   ([opts]
@@ -67,26 +92,15 @@
        (doseq [[k v] (merge-netty-opts opts)]
          (.setOption bootstrap k v))
 
-       ;; Configure the bootstrap
-       {::channel-group channel-group
-        ::bootstrap     bootstrap})))
+       (BasicClient. channel-group bootstrap))))
 
 (def default-client (client))
 
 (defn release
-  ([]
-     (release default-client))
-  ([{channel-group ::channel-group bootstrap ::bootstrap}]
-     (receive
-      (.close channel-group)
-      (fn [_ _ _]
-        (.releaseExternalResources bootstrap)))))
+  [client]
+  (.do-release client))
 
 (defn connect
   ([app opts] (connect default-client app opts))
-  ([client app {host :host port :port :as opts}]
-     (let [bootstrap     (client ::bootstrap)
-           channel-group (client ::channel-group)
-           addr         (mk-socket-addr [host port])
-           pipeline     (mk-client-pipeline channel-group app opts)]
-       (.connect bootstrap addr pipeline))))
+  ([client app opts]
+     (do-connect client app opts)))
