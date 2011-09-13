@@ -86,3 +86,106 @@
                        "content-type"   "text/plain"
                        "connection"     "close"} "Hello"]
        :done nil)))
+
+(defcoretest request-and-response-with-duplicated-headers
+  [ch1 ch2]
+  (server/start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :request evt)
+         (dn :response [200 {"content-length" "0"
+                             "connection"     "close"
+                             "foo"            "lol"
+                             "bar"            ["omg" "hi2u"]
+                             "baz"            ["1" "2" "3"]} ""])))))
+
+  (connect
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch2 [evt val])
+       (when (= :open evt)
+         (dn :request [{:request-method "GET"
+                        :path-info      "/"
+                        "baz"           "lol"
+                        "bar"           ["omg" "hi2u"]
+                        "lol"           ["1" "2" "3"]}]))))
+   {:host "127.0.0.1" :port 4040})
+
+  (is (next-msgs
+       ch1
+       :request [#(includes-hdrs {"baz" "lol"
+                                  "bar" ["omg" "hi2u"]
+                                  "lol" ["1" "2" "3"]} %) nil]
+       :done nil))
+
+  (is (next-msgs
+       ch2
+       :open :dont-care
+       :response [200 #(includes-hdrs {"foo" "lol"
+                                       "bar" ["omg" "hi2u"]
+                                       "baz" ["1" "2" "3"]} %) ""]
+       :done nil)))
+
+(defcoretest receiving-a-chunked-body
+  [ch1]
+  (server/start
+   (fn [dn]
+     (fn [evt val]
+       (when (= :request evt)
+         (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
+         (dn :body "Hello")
+         (dn :body "World")
+         (dn :body nil)))))
+
+  (connect
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :open evt)
+         (dn :request [{:request-method "GET"
+                        :path-info      "/"
+                        "connection"    "close"}]))))
+   {:host "127.0.0.1" :port 4040})
+
+  (is (next-msgs
+       ch1
+       :open     :dont-care
+       :response [200 #(includes-hdrs {"transfer-encoding" "chunked"} %) :chunked]
+       :body     "Hello"
+       :body     "World"
+       :body     nil
+       :done     nil))
+
+  (is (no-msgs ch1)))
+
+(defcoretest sending-a-chunked-body
+  [ch1 ch2]
+  (start-hello-world-app ch1)
+
+  (connect
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch2 [evt val])
+       (when (= :open evt)
+         (dn :request [{:request-method     "GET"
+                        :path-info          "/"
+                        "transfer-encoding" "chunked"} :chunked])
+         (dn :body "Foo!")
+         (dn :body "Bar!")
+         (dn :body nil))))
+   {:host "localhost" :port 4040})
+
+  (is (next-msgs
+       ch1
+       :request [#(includes-hdrs {"transfer-encoding" "chunked"} %) :chunked]
+       :body    "Foo!"
+       :body    "Bar!"
+       :body    nil
+       :done    nil))
+
+  (is (next-msgs
+       ch2
+       :open     :dont-care
+       :response [200 :dont-care "Hello"]
+       :done     nil)))

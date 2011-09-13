@@ -36,17 +36,21 @@
    false           ;; expecting-100?
    opts))          ;; opts
 
+(defn- not-expecting-message
+  [evt val]
+  (str "Not expecting a message right now: " [evt val]))
+
 (defn- exchange-complete
-  [_ _ _ _]
-  (throw (Exception. "The HTTP exchange is complete")))
+  [_ evt val _]
+  (throw (Exception. (not-expecting-message evt val))))
 
 (defn- awaiting-response
-  [_ _ _ _]
-  (throw (Exception. "Not expecting a message right now.")))
+  [_ evt val _]
+  (throw (Exception. (not-expecting-message evt val))))
 
 (defn- awaiting-request
-  [_ _ _ _]
-  (throw (Exception. "Not expecting a message right now.")))
+  [_ evt val _]
+  (throw (Exception. (not-expecting-message evt val))))
 
 (defn- exchange-complete?
   [current-state]
@@ -130,9 +134,8 @@
   (when-not (= :body evt)
     (throw (Exception. "Expecting a :body event")))
 
-  ;; Stuff
   (if chunk
-    ((.downstream current-state) :body chunk)
+    ((.downstream current-state) :message (chunk->netty-chunk chunk))
     (swap-then!
      state
      (fn [current-state]
@@ -141,10 +144,14 @@
            :next-up-fn exchange-complete
            :next-dn-fn exchange-complete)
          (assoc current-state
-           :next-up-fn awaiting-response)))
+           :next-dn-fn awaiting-response)))
      (fn [current-state]
-       ((.downstream current-state) :body chunk)
-       (maybe-finalize-exchange current-state)))))
+       (let [downstream (.downstream current-state)
+             chunked?   (.chunked? current-state)]
+         (cond
+          chunk    (downstream :message (chunk->netty-chunk chunk))
+          chunked? (downstream :message last-chunk))
+         (maybe-finalize-exchange current-state))))))
 
 (defn- handle-request
   [state evt request current-state]
@@ -155,7 +162,7 @@
         hdrs         (or hdrs {})
         keepalive?   (keepalive-request? request)
         head?        (= "HEAD" (hdrs :request-method))
-        chunked?     (= :chunked body)
+        chunked?     (and (= (hdrs "transfer-encoding" "chunked")) (not head?))
         expects-100? (expecting-100? request)]
     (swap-then!
      state
@@ -165,9 +172,9 @@
          :chunked?       chunked?
          :head?          head?
          :expecting-100? expects-100?
-         :next-dn-fn     (if-not chunked?
-                           awaiting-response
-                           stream-or-finalize-request)))
+         :next-dn-fn     (if (= :chunked body)
+                           stream-or-finalize-request
+                           awaiting-response)))
      (fn [current-state]
        (let [dn (.downstream current-state)]
          (dn :message (request->netty-request hdrs body)))))))
@@ -194,6 +201,8 @@
       (swap! state #(assoc % :upstream next-up))
       ;; Return the protocol upstream function
       (fn [evt val]
+        (when (= :abort evt)
+          (.printStackTrace val))
         (let [current-state @state]
           (cond
            (#{:response :body} evt)
