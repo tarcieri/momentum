@@ -72,15 +72,12 @@
          1 inc (fn [_] (throw (Exception.)))
          (finally (res2 :world)))
         (receive identity))
-    (is (= :world @res2))
-    ))
+    (is (= :world @res2))))
 
 (deftest nesting-pipelines
   (let [res (promise)]
     (-> (pipeline
-         1
-         #(pipeline % async-inc async-inc)
-         inc)
+         1 #(pipeline % async-inc async-inc) inc)
         (receive #(res %)))
     (is (= 4 @res))))
 
