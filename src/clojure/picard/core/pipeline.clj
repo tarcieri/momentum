@@ -46,7 +46,46 @@
          (catch-all #(abort last %)))
      last)))
 
-(defn pipeline
-  [seed & stages]
-  (-> (apply build-pipeline stages)
-      (put seed)))
+(defn- catch?
+  [clause]
+  (and (seq? clause) (= 'catch (first clause))))
+
+(defn- finally?
+  [clause]
+  (and (seq? clause) (= 'finally (first clause))))
+
+(defn- partition-clauses
+  [clauses]
+  (reduce
+   (fn [[stages catches finally] clause]
+     (cond
+      (and (catch? clause) (not finally))
+      [stages (conj catches clause) finally]
+
+      (and (finally? clause) (not finally))
+      [stages catches clause]
+
+      (or (catch? clause) (finally? clause) (first catches) finally)
+      (throw (IllegalArgumentException. (str "malformed pipeline statement: " clause)))
+
+      :else
+      [(conj stages clause) catches finally]))
+   [[] [] nil] clauses))
+
+(defn- catch-to-callback
+  [[_ klass binding & stmts]]
+  `(rescue ~klass (fn [~binding] ~@stmts)))
+
+(defn- finally-to-callback
+  [[_ & stmts :as clause]]
+  (if clause
+    [`(finalize (fn [] ~@stmts))]
+    []))
+
+(defmacro pipeline
+  [seed & clauses]
+  (let [[stages catches finally] (partition-clauses clauses)]
+    `(-> (build-pipeline ~@stages)
+         ~@(map catch-to-callback catches)
+         ~@(finally-to-callback finally)
+         (put ~seed))))

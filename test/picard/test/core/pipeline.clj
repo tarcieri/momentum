@@ -42,6 +42,39 @@
         (abort err))
     (is (= err @res))))
 
+(deftest rescuing-pipeline
+  (let [res (promise)
+        err (Exception.)]
+    (pipeline
+     1 inc (fn [_] (throw err))
+     (catch Exception e (res e)))
+    (is (= err @res))))
+
+(deftest multiple-catch-clauses
+  (let [res (promise)
+        err (IllegalArgumentException.)]
+    (pipeline
+     1 inc (fn [_] (throw err))
+     (catch IllegalArgumentException e (res e))
+     (catch Exception _ (res :fail)))
+    (is (= err @res))))
+
+(deftest finally-clauses-are-invoked
+  (let [res1 (promise)
+        res2 (promise)]
+    (-> (pipeline
+         1 inc inc
+         (finally (res1 :hello)))
+        (receive identity))
+    (is (= :hello @res1))
+
+    (-> (pipeline
+         1 inc (fn [_] (throw (Exception.)))
+         (finally (res2 :world)))
+        (receive identity))
+    (is (= :world @res2))
+    ))
+
 (deftest nesting-pipelines
   (let [res (promise)]
     (-> (pipeline
