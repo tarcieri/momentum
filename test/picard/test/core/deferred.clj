@@ -9,10 +9,10 @@
   (let [dval1 :hello
         dval2 nil
         res   (atom nil)]
-    (is (= dval1 (receive dval1 (fn [_ val _] (reset! res val)))))
+    (is (= dval1 (receive dval1 #(reset! res %))))
     (is (= :hello @res))
 
-    (is (nil? (receive dval2 (fn [_ val _] (reset! res val)))))
+    (is (nil? (receive dval2 #(reset! res %))))
     (is (nil? @res))))
 
 (deftest rescuing-objects-does-nothing
@@ -35,7 +35,7 @@
 (deftest successfully-realizing-a-deferred-value
   (let [dval (deferred)
         res  (atom nil)]
-    (is (= dval (receive dval (fn [_ val _] (reset! res val)))))
+    (is (= dval (receive dval #(reset! res %))))
     (is (= dval (put dval :hello)))
     (is (= :hello @res))))
 
@@ -43,7 +43,7 @@
   (let [dval (deferred)
         res  (atom nil)]
     (put dval :hello)
-    (receive dval (fn [_ val _] (reset! res val)))
+    (receive dval #(reset! res %))
     (is (= :hello @res))))
 
 (deftest registering-nil-callback
@@ -60,15 +60,15 @@
         res  (atom nil)]
     (put dval :one)
     (is (thrown? Exception (put dval :two)))
-    (receive dval (fn [_ val _] (reset! res val)))
+    (receive dval #(reset! res %))
     (is (= :one @res))))
 
 (deftest registering-receive-callback-twice
   (let [dval (deferred)]
-    (receive dval (fn [& _]))
-    (is (thrown? Exception (receive dval (fn [& _]))))
+    (receive dval (fn [_]))
+    (is (thrown? Exception (receive dval (fn [_]))))
     (put dval :hello)
-    (is (thrown? Exception (receive dval (fn [& _]))))))
+    (is (thrown? Exception (receive dval (fn [_]))))))
 
 ;; ==== Aborting deferred values
 
@@ -122,7 +122,7 @@
   (let [res (atom nil)
         err (Exception. "TROLLOLOL")]
     (-> (deferred)
-        (receive (fn [_ _ _] (throw err)))
+        (receive (fn [_] (throw err)))
         (rescue Exception #(reset! res %))
         (put :hello))
     (is (= err @res))))
@@ -137,7 +137,7 @@
 (deftest finalize-fn-gets-called-when-realized
   (let [res (atom nil)]
     (-> (deferred)
-        (receive (fn [_ val _] (reset! res val)))
+        (receive #(reset! res %))
         (finalize #(swap! res inc))
         (put 1))
     (is (= 2 @res))))
@@ -167,7 +167,7 @@
 (deftest finalize-gets-called-when-receive-throws
   (let [res (atom nil)]
     (-> (deferred)
-        (receive (fn [_ _ _] (throw (Exception. "TROLLOLOL"))))
+        (receive (fn [_] (throw (Exception. "TROLLOLOL"))))
         (finalize #(reset! res :hello))
         (put :run))
     (is (= :hello @res))))
@@ -181,7 +181,7 @@
     (is (= :one @res))
 
     (-> (deferred)
-        (receive (fn [_ _ _] (throw (Exception. "TROLLOLOL"))))
+        (receive (fn [_] (throw (Exception. "TROLLOLOL"))))
         (finalize #(reset! res :two))
         (put 1))
     (is (= :two @res))))
@@ -248,7 +248,7 @@
     (reset! res nil)
 
     (-> (deferred)
-        (receive (fn [_ _ _] (throw (Exception. "LULZ"))))
+        (receive (fn [_] (throw (Exception. "LULZ"))))
         (rescue Exception (fn [_] (throw err)))
         (catch-all #(reset! res %))
         (put 1))
@@ -272,65 +272,3 @@
         (abort (Exception. "LULZ"))
         (catch-all #(reset! res %)))
     (is (= err @res))))
-
-;; ==== Waiting on deferred values
-
-;; TODO: Unbreak waiting
-
-;; (deftest calling-wait
-;;   (let [dval (deferred)
-;;         res  (atom nil)]
-;;     (future
-;;       (Thread/sleep 20)
-;;       (put dval :hello))
-
-;;     (receive dval (fn [_ val _] (reset! res val)))
-;;     (is (wait dval))
-;;     (is (= :hello @res))))
-
-;; (deftest calling-wait-then-aborted
-;;   (let [dval (deferred)
-;;         res  (atom nil)]
-;;     (future
-;;       (Thread/sleep 20)
-;;       (abort dval (Exception. "TROLLOLOL")))
-
-;;     (rescue dval Exception #(reset! res %))
-;;     (is (wait dval))
-;;     (is (instance? Exception @res))))
-
-;; (deftest calling-wait-when-already-realized
-;;   (let [dval (deferred)
-;;         now  (System/currentTimeMillis)]
-;;     (put dval :hello)
-;;     (is (wait dval))
-;;     (is (> 2 (- (System/currentTimeMillis) now)))))
-
-;; (deftest calling-wait-when-already-aborted
-;;   (let [dval (deferred)
-;;         now  (System/currentTimeMillis)]
-;;     (abort dval (Exception.))
-;;     (is (wait dval))
-;;     (is (> 2 (- (System/currentTimeMillis) now)))))
-
-;; (deftest wait-call-times-out
-;;   (let [dval   (deferred)
-;;         now    (System/currentTimeMillis)
-;;         first  (future
-;;                  (wait dval 20)
-;;                  (- (System/currentTimeMillis) now))
-;;         second (future
-;;                  (wait dval 50)
-;;                  (- (System/currentTimeMillis) now))]
-;;     ;; Timers aren't precise
-;;     (is (< 19 @first @second 80))))
-
-;; Exception propagation
-;; * Cannot register any finalize callbacks once a catch-all callback
-;;   is registered.
-;; * Exception thrown in catch block gets bubled up
-;; * Exception thrown in catch block does not get caught
-;;   in next catch block
-;; * Exception thrown in finalize gets bubbled up
-;; * Exceptions thrown in finalize get priority over exceptions thrown
-;;   in catch

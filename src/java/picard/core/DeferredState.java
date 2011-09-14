@@ -248,7 +248,7 @@ public class DeferredState extends AFn {
 
     private void invokeReceiveCallback() throws Exception {
         try {
-            receiveCallback.invoke(this, value, true);
+            receiveCallback.invoke(value);
         }
         catch (Exception e) {
             abort(e, true);
@@ -362,22 +362,6 @@ public class DeferredState extends AFn {
     public Object invoke(Object value) throws Exception {
         realize(value);
         return null;
-    }
-
-    public boolean await(long timeout) throws InterruptedException {
-        if (Thread.interrupted()) {
-            throw new InterruptedException();
-        }
-
-        synchronized(this) {
-            if (isComplete() || timeout < 0) {
-                return isComplete();
-            }
-
-            wait(timeout);
-
-            return isComplete();
-        }
     }
 
     private class Rescue {

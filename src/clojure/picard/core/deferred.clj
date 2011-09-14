@@ -29,7 +29,7 @@
 
   Object
   (receive [o callback]
-    (callback o o true)
+    (callback o)
     o)
   (rescue [o _ _]
     o)
@@ -41,7 +41,7 @@
 
   nil
   (receive [_ callback]
-    (callback nil nil true)
+    (callback nil)
     nil)
   (rescue [_ _ _]
     nil)
@@ -63,11 +63,6 @@
   (abort [dval err]
     (.abort dval err false)
     dval))
-
-(defn wait
-  ([dval] (wait dval 0))
-  ([^DeferredState dval ms]
-     (.await dval (long ms))))
 
 (defn deferred
   []

@@ -58,7 +58,7 @@
      future
      (reify ChannelFutureListener
        (operationComplete [_ _]
-         (callback future (.isSuccess future) true))))))
+         (callback (.isSuccess future)))))))
 
 (extend-type ChannelGroupFuture
   DeferredValue
@@ -67,7 +67,7 @@
      future
      (reify ChannelGroupFutureListener
        (operationComplete [_ _]
-         (callback future (.isCompleteSuccess future) true))))))
+         (callback (.isCompleteSuccess future)))))))
 
 
 ;; ==== Helper functions for tracking events
@@ -136,7 +136,7 @@
   (let [ch (.ch current-state)]
     (receive
      (.last-write current-state)
-     (fn [_ _ _]
+     (fn [_]
        (when (.isOpen ch)
          (.close ch))))))
 
