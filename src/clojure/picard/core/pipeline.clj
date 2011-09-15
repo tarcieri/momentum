@@ -6,11 +6,11 @@
   (receive [pipeline callback]
     (receive (.last pipeline) callback)
     pipeline)
-  (rescue [pipeline klass callback]
-    (rescue (.last pipeline) klass callback)
+  (catch* [pipeline klass callback]
+    (catch* (.last pipeline) klass callback)
     pipeline)
-  (finalize [pipeline callback]
-    (finalize (.last pipeline) callback)
+  (finally* [pipeline callback]
+    (finally* (.last pipeline) callback)
     pipeline)
   (catch-all [pipeline callback]
     (catch-all (.last pipeline) callback)
@@ -74,12 +74,12 @@
 
 (defn- catch-to-callback
   [[_ klass binding & stmts]]
-  `(rescue ~klass (fn [~binding] ~@stmts)))
+  `(catch* ~klass (fn [~binding] ~@stmts)))
 
 (defn- finally-to-callback
   [[_ & stmts :as clause]]
   (if clause
-    [`(finalize (fn [] ~@stmts))]
+    [`(finally* (fn [] ~@stmts))]
     []))
 
 (defmacro pipeline

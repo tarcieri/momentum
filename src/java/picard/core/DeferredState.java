@@ -44,12 +44,12 @@ public class DeferredState extends AFn {
     // The callbacks
     IFn receiveCallback;
     IFn catchAllCallback;
-    IFn finalizeCallback;
-    final LinkedList<Rescue> rescueCallbacks;
+    IFn finallyCallback;
+    final LinkedList<Catch> catchCallbacks;
 
     public DeferredState() {
-        state           = State.INITIALIZED;
-        rescueCallbacks = new LinkedList<Rescue>();
+        state          = State.INITIALIZED;
+        catchCallbacks = new LinkedList<Catch>();
     }
 
     public void registerReceiveCallback(IFn callback) throws Exception {
@@ -72,22 +72,22 @@ public class DeferredState extends AFn {
         invokeReceiveCallback();
     }
 
-    public void registerRescueCallback(Class klass, IFn callback) throws Exception {
+    public void registerCatchCallback(Class klass, IFn callback) throws Exception {
         if (klass == null) {
             throw new NullPointerException("Class is null");
         } else if (callback == null) {
             throw new NullPointerException("Callback is null");
         }
 
-        final Rescue rescueCallback = new Rescue(klass, callback);
+        final Catch catchCallback = new Catch(klass, callback);
 
         synchronized(this) {
             if (catchAllCallback != null) {
                 throw new CallbackRegistrationError(alreadyRegistered("catch-all"));
             }
 
-            if (finalizeCallback != null) {
-                throw new CallbackRegistrationError(alreadyRegistered("finalize"));
+            if (finallyCallback != null) {
+                throw new CallbackRegistrationError(alreadyRegistered("finally"));
             }
 
             switch (state) {
@@ -101,13 +101,13 @@ public class DeferredState extends AFn {
 
             case INITIALIZED:
             case RECEIVING:
-                rescueCallbacks.add(rescueCallback);
+                catchCallbacks.add(catchCallback);
                 return;
 
             default:
                 // If the catch statement isn't a match, then just
                 // bail out right now.
-                if (!rescueCallback.isMatch(err)) {
+                if (!catchCallback.isMatch(err)) {
                     return;
                 }
 
@@ -115,24 +115,24 @@ public class DeferredState extends AFn {
             }
         }
 
-        invokeRescueCallback(rescueCallback);
+        invokeCatchCallback(catchCallback);
     }
 
-    public void registerFinalizeCallback(IFn callback) throws Exception {
+    public void registerFinallyCallback(IFn callback) throws Exception {
         if (callback == null) {
             throw new NullPointerException("Callback is null");
         }
 
         synchronized(this) {
-            if (finalizeCallback != null) {
-                throw new CallbackRegistrationError(alreadyRegistered("finalize"));
+            if (finallyCallback != null) {
+                throw new CallbackRegistrationError(alreadyRegistered("finally"));
             }
 
             if (catchAllCallback != null) {
                 throw new CallbackRegistrationError(alreadyRegistered("catch-all"));
             }
 
-            finalizeCallback = callback;
+            finallyCallback = callback;
 
             switch (state) {
             case INITIALIZED:
@@ -194,7 +194,7 @@ public class DeferredState extends AFn {
         }
 
         State currentState;
-        Rescue rescueCallback = null;
+        Catch catchCallback = null;
 
         synchronized(this) {
             // If an exception is thrown when invoking the realize
@@ -208,12 +208,12 @@ public class DeferredState extends AFn {
             err   = e;
             state = State.ABORTING;
 
-            Iterator<Rescue> i = rescueCallbacks.iterator();
+            Iterator<Catch> i = catchCallbacks.iterator();
 
             while (i.hasNext()) {
-                rescueCallback = i.next();
+                catchCallback = i.next();
 
-                if (rescueCallback.isMatch(err)) {
+                if (catchCallback.isMatch(err)) {
                     state = State.CAUGHT;
                     break;
                 }
@@ -222,7 +222,7 @@ public class DeferredState extends AFn {
             if (state == State.CAUGHT) {
                 // ZOMG, do nothing
             }
-            else if (finalizeCallback != null) {
+            else if (finallyCallback != null) {
                 state = State.FINALIZING;
             } else if (catchAllCallback != null) {
                 state = State.FAILED;
@@ -235,7 +235,7 @@ public class DeferredState extends AFn {
 
         switch (currentState) {
         case CAUGHT:
-            invokeRescueCallback(rescueCallback);
+            invokeCatchCallback(catchCallback);
             break;
         case FAILED:
             invokeCatchAllCallback();
@@ -258,7 +258,7 @@ public class DeferredState extends AFn {
         synchronized(this) {
             state = State.SUCCEEDED;
 
-            if (finalizeCallback == null) {
+            if (finallyCallback == null) {
                 return;
            }
         }
@@ -266,12 +266,12 @@ public class DeferredState extends AFn {
         invokeFinallyCallback();
     }
 
-    private void invokeRescueCallback(Rescue callback) {
+    private void invokeCatchCallback(Catch callback) {
         try {
             callback.invoke(err);
 
             synchronized(this) {
-                if (finalizeCallback == null) {
+                if (finallyCallback == null) {
                     return;
                 }
             }
@@ -283,7 +283,7 @@ public class DeferredState extends AFn {
             synchronized(this) {
                 err = e;
 
-                if (finalizeCallback != null) {
+                if (finallyCallback != null) {
                     state = State.FINALIZING;
                 }
                 else if (catchAllCallback != null) {
@@ -310,7 +310,7 @@ public class DeferredState extends AFn {
 
     private void invokeFinallyCallback() {
         try {
-            finalizeCallback.invoke();
+            finallyCallback.invoke();
         }
         catch (Exception e) {
             synchronized(this) {
@@ -364,11 +364,11 @@ public class DeferredState extends AFn {
         return null;
     }
 
-    private class Rescue {
+    private class Catch {
         final Class klass;
         final IFn   callback;
 
-        public Rescue(Class klass, IFn callback) {
+        public Catch(Class klass, IFn callback) {
             this.klass    = klass;
             this.callback = callback;
         }

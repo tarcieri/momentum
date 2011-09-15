@@ -3,7 +3,7 @@ package picard.net;
 import java.net.InetSocketAddress;
 import java.util.HashMap;
 
-public class ConnectionPool {
+public class ConnectionQueue {
 
     private class Node {
         public Connection channel;
@@ -21,7 +21,7 @@ public class ConnectionPool {
     Node tail;
     HashMap<InetSocketAddress,Node> localHeadByAddr;
 
-    public ConnectionPool() {
+    public ConnectionQueue() {
         this.localHeadByAddr = new HashMap<InetSocketAddress,Node>();
     }
 

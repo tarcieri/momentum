@@ -38,7 +38,7 @@
   (let [res (promise)
         err (Exception.)]
     (-> (build-pipeline inc inc)
-        (rescue Exception #(res %))
+        (catch* Exception #(res %))
         (abort err))
     (is (= err @res))))
 
@@ -89,5 +89,5 @@
          async-inc
          #(pipeline % async-inc (fn [_] (throw err))))
         (put 1)
-        (rescue Exception #(res1 %)))
+        (catch* Exception #(res1 %)))
     (is (= err @res1))))

@@ -29,11 +29,6 @@
   {"reuseAddress"         true
    "connectTimeoutMillis" 3000})
 
-(def default-pool-opts
-  {:keepalive                   60
-   :max-connections             1000
-   :max-connections-per-address 200})
-
 (defn- merge-netty-opts
   [opts]
   (merge
@@ -58,11 +53,6 @@
     {}
     opts)
    (opts :netty)))
-
-(defn- merge-default-pool-opts
-  [opts]
-  (->> (if (map? opts) opts {})
-       (merge default-pool-opts)))
 
 (defprotocol Client
   (do-connect  [_ app opts])
@@ -90,9 +80,7 @@
 (defrecord PooledClient [basic-client pool]
   Client
   (do-connect [client app opts]
-    (pool/connect
-     (.pool client) app opts
-     #(do-connect (.basic-client client) % opts)))
+    (pool/connect (.pool client) app opts))
 
   (do-release [client]
     (do-release (.basic-client client)))
@@ -116,9 +104,11 @@
 
 (defn- pooled-client
   [basic-client opts]
-  (let [opts (merge-default-pool-opts opts)
-        pool (pool/mk-pool opts)]
-    (PooledClient. basic-client pool)))
+  (PooledClient.
+   basic-client
+   (pool/mk-pool
+    #(do-connect basic-client %1 %2)
+    opts)))
 
 (defn client
   ([] (client {}))
