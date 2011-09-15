@@ -171,7 +171,6 @@
     `(let [ch# (l/poll ~chs 50)]
        (if-let [received# (l/wait-for-message ch#)]
          (do
-           (println "GOT: " received#)
            (do-report {:type :fail :message ~msg
                        :expected [] :actual received#}))
          (do-report {:type :pass :message ~msg

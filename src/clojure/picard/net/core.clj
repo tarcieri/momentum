@@ -38,7 +38,7 @@
   []
   (DefaultChannelGroup.))
 
-(defn mk-pipeline
+(defn mk-channel-pipeline
   []
   (Channels/pipeline))
 

@@ -1,8 +1,11 @@
 (ns picard.net.client
   (:use
    picard.core.deferred
+   picard.core.timer
    picard.net.core
    picard.utils)
+  (:require
+   [picard.net.pool :as pool])
   (:import
    [org.jboss.netty.channel.socket.nio
     NioClientSocketChannelFactory]
@@ -18,18 +21,18 @@
   [channel-group app {pipeline-fn :pipeline-fn :as opts}]
   (let [pipeline-fn (or pipeline-fn (fn [p _] p))
         handler     (mk-upstream-handler channel-group app opts)]
-    (doto (mk-pipeline)
+    (doto (mk-channel-pipeline)
       (pipeline-fn opts)
       (.addLast "handler" handler))))
 
 (def default-opts
-  {"reuseAddress"               true
-   "child.reuseAddres"          true,
-   "child.connectTimeoutMillis" 100})
-
-(def default-opts
   {"reuseAddress"         true
    "connectTimeoutMillis" 3000})
+
+(def default-pool-opts
+  {:keepalive                   60
+   :max-connections             1000
+   :max-connections-per-address 200})
 
 (defn- merge-netty-opts
   [opts]
@@ -56,51 +59,75 @@
     opts)
    (opts :netty)))
 
-(defprotocol Client
-  (do-connect [_ app opts])
-  (do-release [_]))
+(defn- merge-default-pool-opts
+  [opts]
+  (->> (if (map? opts) opts {})
+       (merge default-pool-opts)))
 
-(defrecord BasicClient  [channel-group bootstrap]
-  Client
+(defprotocol Client
+  (do-connect  [_ app opts])
+  (do-release  [_]))
+
+(defrecord BasicClient  [channel-group bootstrap])
+(defrecord PooledClient [basic-client pool])
+
+(extend-protocol Client
+  BasicClient
   (do-connect [client app {host :host port :port :as opts}]
-    (let [bootstrap     (.bootstrap client)
-          channel-group (.channel-group client)
-          addr          (mk-socket-addr [host port])
-          pipeline      (mk-client-pipeline channel-group app opts)]
-      (.connect bootstrap addr pipeline)))
+    (let [addr     (mk-socket-addr [host port])
+          ch-group (.channel-group client)
+          pipeline (mk-client-pipeline ch-group app opts)]
+      (.connect (.bootstrap client) addr pipeline)))
+
   (do-release [client]
     (receive
      (.. client channel-group close)
-     (fn [_ _ _]
-       (.releaseExternalResources (.bootstrap client))))))
+     (fn [_]
+       (.releaseExternalResources (.bootstrap client)))))
 
-(defrecord PooledClient [basic-client pool]
-  Client
+  PooledClient
   (do-connect [client app opts]
-    (do-connect (.basic-client client) app opts))
+    (pool/connect
+     (.pool client) app opts
+     #(do-connect (.basic-client client) % opts)))
+
   (do-release [client]
     (do-release (.basic-client client))))
+
+(defn- basic-client
+  [opts]
+  (let [thread-pool   (mk-thread-pool)
+        bootstrap     (mk-bootstrap thread-pool)
+        channel-group (mk-channel-group)]
+
+    ;; Set the options
+    (doseq [[k v] (merge-netty-opts opts)]
+      (.setOption bootstrap k v))
+
+    (BasicClient. channel-group bootstrap)))
+
+(defn- pooled-client
+  [basic-client opts]
+  (let [opts (merge-default-pool-opts opts)
+        pool (pool/mk-pool opts)]
+    (PooledClient. basic-client pool)))
 
 (defn client
   ([] (client {}))
   ([opts]
-     (let [thread-pool   (mk-thread-pool)
-           bootstrap     (mk-bootstrap thread-pool)
-           channel-group (mk-channel-group)]
-
-       ;; Set the options
-       (doseq [[k v] (merge-netty-opts opts)]
-         (.setOption bootstrap k v))
-
-       (BasicClient. channel-group bootstrap))))
+     (let [client (basic-client opts)]
+       (if-let [opts (opts :pool)]
+         (pooled-client client opts)
+         client))))
 
 (def default-client (client))
 
 (defn release
   [client]
-  (.do-release client))
+  (do-release client))
 
 (defn connect
   ([app opts] (connect default-client app opts))
   ([client app opts]
-     (do-connect client app opts)))
+     (do-connect client app opts)
+     true))

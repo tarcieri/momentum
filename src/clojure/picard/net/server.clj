@@ -20,7 +20,7 @@
       (reify ChannelPipelineFactory
         (getPipeline [_]
           (let [handler (mk-upstream-handler channel-group app opts)]
-            (doto (mk-pipeline)
+            (doto (mk-channel-pipeline)
               (pipeline-fn opts)
               (.addLast "handler" handler)))))))
 
