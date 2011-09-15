@@ -68,11 +68,8 @@
   (do-connect  [_ app opts])
   (do-release  [_]))
 
-(defrecord BasicClient  [channel-group bootstrap])
-(defrecord PooledClient [basic-client pool])
-
-(extend-protocol Client
-  BasicClient
+(defrecord BasicClient  [channel-group bootstrap]
+  Client
   (do-connect [client app {host :host port :port :as opts}]
     (let [addr     (mk-socket-addr [host port])
           ch-group (.channel-group client)
@@ -85,14 +82,25 @@
      (fn [_]
        (.releaseExternalResources (.bootstrap client)))))
 
-  PooledClient
+  clojure.lang.IFn
+  (invoke [this app opts]
+    (do-connect this app opts)
+    true))
+
+(defrecord PooledClient [basic-client pool]
+  Client
   (do-connect [client app opts]
     (pool/connect
      (.pool client) app opts
      #(do-connect (.basic-client client) % opts)))
 
   (do-release [client]
-    (do-release (.basic-client client))))
+    (do-release (.basic-client client)))
+
+  clojure.lang.IFn
+  (invoke [this app opts]
+    (do-connect this app opts)
+    true))
 
 (defn- basic-client
   [opts]
@@ -127,7 +135,7 @@
   (do-release client))
 
 (defn connect
-  ([app opts] (connect default-client app opts))
+  ([app opts]
+     (default-client app opts))
   ([client app opts]
-     (do-connect client app opts)
-     true))
+     (client app opts)))
