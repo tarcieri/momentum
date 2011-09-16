@@ -369,6 +369,44 @@
 
     (is (no-msgs ch1))))
 
+(defcoretest sending-message-from-completed-exchange-on-keepalive-connection
+  [ch1]
+  (start
+   (let [latch (atom true)]
+     (fn [dn]
+       (fn [evt val]
+         (when (= :request evt)
+           (if @latch
+             (do
+               (dn :response [200 {"content-length" "5"} "Hello"])
+               (future
+                 (Thread/sleep 50)
+                 (try
+                   (dn :response [200 {"content-length" "5"} "FAIL!"])
+                   (catch Exception e
+                     (enqueue ch1 [:error e]))))
+               (reset! latch false))
+             (future
+               (Thread/sleep 100)
+               (dn :response [200 {"content-length" "5"} "World"]))))))))
+
+  (with-socket
+    (write-socket "GET / HTTP/1.1\r\n\r\n")
+
+    (is (receiving
+         "HTTP/1.1 200 OK\r\n"
+         "content-length: 5\r\n\r\n"
+         "Hello"))
+
+    (write-socket "GET / HTTP/1.1\r\n\r\n")
+
+    (is (receiving
+         "HTTP/1.1 200 OK\r\n"
+         "content-length: 5\r\n\r\n"
+         "World"))
+
+    (is (next-msgs ch1 :error #(instance? Exception %)))))
+
 (defcoretest keepalive-head-requests
   [ch1 ch2]
   (start
