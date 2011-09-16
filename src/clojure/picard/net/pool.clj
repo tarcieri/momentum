@@ -1,6 +1,4 @@
 (ns picard.net.pool
-  (:use
-   [picard.net.core :only [mk-socket-addr]])
   (:import
    [picard.net
     Connection
@@ -8,14 +6,13 @@
 
 (defrecord Pool
     [queue
-     connect-fn
      keepalive
      max-connections
      max-connections-per-address])
 
 (defrecord ConnectionState
-    [remote-addr
-     local-addr
+    [connect-fn
+     addrs
      open?
      upstream
      downstream]
@@ -24,57 +21,53 @@
   (addr   [this] (.remote-addr this)))
 
 (defn- mk-connection
-  []
+  [connect-fn]
   (ConnectionState.
-   nil      ;; remote-addr
-   nil      ;; local-addr
-   true     ;; open?
-   nil      ;; upstream
-   nil))    ;; downstream
+   connect-fn ;; connect-fn
+   nil        ;; addrs
+   true       ;; open?
+   nil        ;; upstream
+   nil))      ;; downstream
 
-;; (defn- mk-downstream-fn
-;;   [state dn]
-;;   (fn [evt val]
-;;     (let [current-state @state]
-;;       (when (.upstream current-state)
-;;         (dn evt val)))))
-
-;; (defn- bind
-;;   [state dn]
-;;   (let [current-state @state
-;;         upstream ((.app current-state) (mk-downstream-fn state dn))]
-;;     (swap!
-;;      state
-;;      (fn [current-state]
-;;        (assoc current-state
-;;          :upstream   upstream
-;;          :downstream dn)))))
-
-;; (defn- bind
-;;   [state dn]
-;;   (swap! state #(assoc % :downstream dn)))
+(defn- mk-downstream
+  [state])
 
 (defn mk-handler
-  [pool conn]
+  [pool state]
   (fn [dn]
+    (swap! state #(assoc % :downstream dn))
     (fn [evt val]
-      )))
+      (cond
+       (= :open evt)
+       (swap! state #(assoc % :addrs val))
 
-(defn- establish-connection
-  [pool addr]
-  (let [conn (mk-connection)]
-    ;; Stuff
+       (= :close evt)
+       (swap! state #(assoc % :open? false))
+
+       (= :abort evt)
+       1
+       ))))
+
+(defn- bind-app
+  [current-state app]
+  (let [dn (.downstream current-state)]
     ))
 
-(defn- checkout
-  [pool addr]
-  (.. pool queue (checkout addr)))
+(defn- create
+  [pool addr connect-fn]
+  (let [state (atom (mk-connection connect-fn))]
+    (connect-fn (mk-handler pool state))
+    state))
+
+(defn- get-connection
+  [pool addr connect-fn]
+  (or (.. pool queue (checkout addr))
+      (create pool addr connect-fn)))
 
 (defn connect
-  [pool app {host :host port :port} connect-fn]
-  (let [addr (mk-socket-addr [host port])]
-    (or (checkout pool addr)
-        )))
+  [pool app addr connect-fn]
+  (let [state (get-connection pool addr connect-fn)]
+    (bind-app @state app)))
 
 (def default-opts
   {:keepalive                   60
@@ -86,11 +79,10 @@
   (merge default-opts (if (map? opts) opts {})))
 
 (defn mk-pool
-  [connect-fn opts]
+  [opts]
   (let [opts (merge-default-opts opts)]
     (Pool.
      (ConnectionQueue.)
-     connect-fn
      (opts :keepalive)
      (opts :max-connections)
      (opts :max-connections-per-address))))
