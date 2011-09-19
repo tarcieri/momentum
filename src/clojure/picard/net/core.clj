@@ -71,6 +71,12 @@
 
 
 ;; ==== Helper functions for tracking events
+(defn channel-open-event?
+  [^ChannelStateEvent evt]
+  (and (instance? ChannelStateEvent evt)
+       (= ChannelState/OPEN (.getState evt))
+       (.getValue evt)))
+
 (defn channel-connected-event?
   [^ChannelStateEvent evt]
   (and (instance? ChannelStateEvent evt)
@@ -288,19 +294,22 @@
              (interest-changed-event? evt)
              (send-upstream state :interest-ops nil current-state)
 
-             ;; The connection has been established. Bind the application function
-             ;; with a downstream and set the initial state. The
-             ;; downstream should not be invoked during the binding
-             ;; phase, so an open event will be fired.
-             (channel-connected-event? evt)
+             ;; The bind function is invoked on channel open, ideally
+             ;; this would always get invoked. However, there is a
+             ;; possibility that opening the socket channel
+             ;; fails. That case isn't handled right now.
+             (channel-open-event? evt)
              (let [ch (.getChannel evt)]
                ;; First, track the channel in the channel group
                (.add channel-group ch)
-               ;; Now initialize the state with the channel
+               ;; Now, initialize the state with the channel
                (reset! state (initial-state ch))
                (let [upstream (app (mk-downstream-fn state))]
-                 (swap! state #(assoc % :upstream upstream))
-                 (send-upstream state :open (channel-info ch) @state)))
+                 (swap! state #(assoc % :upstream upstream))))
+
+             (channel-connected-event? evt)
+             (let [ch-info (-> current-state .ch channel-info)]
+               (send-upstream state :open ch-info current-state))
 
              (channel-disconnected-event? evt)
              (send-upstream state :close nil current-state)

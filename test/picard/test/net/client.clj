@@ -4,7 +4,10 @@
    support.helpers
    picard.net.client)
   (:require
-   [picard.net.server :as server]))
+   [picard.net.server :as server])
+  (:import
+   [java.net
+    ConnectException]))
 
 (defn- start-echo-server
   ([] (start-echo-server nil))
@@ -79,19 +82,39 @@
        :close  nil
        :abort  #(instance? java.io.IOException %))))
 
-(defcoretest handling-exception-in-bind-function
+(defcoretest connecting-to-invalid-host
   [ch1]
-  (start-echo-server ch1)
+  nil
 
   (connect
    (fn [dn]
-     (throw (Exception. "TROLLOLOL")))
-   {:host "localhost" :port 4040})
+     (enqueue ch1 [:binding nil])
+     (fn [evt val]
+       (enqueue ch1 [evt val])))
+   ;; Hopefully this is an invalid IP address and port
+   {:host "192.168.32.123" :port 13845})
 
+  (Thread/sleep 1100)
   (is (next-msgs
        ch1
-       :open  server-addr-info
-       :close nil)))
+       :binding nil
+       :abort   #(instance? ConnectException %))))
+
+(defcoretest handling-exception-in-bind-function
+  [ch1 ch2]
+  (start-echo-server ch1)
+
+  (try
+    (connect
+     (fn [dn]
+       (throw (Exception. "TROLLOLOL")))
+     {:host "localhost" :port 4040})
+    (catch Exception e
+      (enqueue ch2 [:exception e])))
+
+  (is (no-msgs ch1))
+
+  (is (next-msgs ch2 :exception #(instance? Exception %))))
 
 (defcoretest handling-exception-after-open-event
   [ch1 ch2]
