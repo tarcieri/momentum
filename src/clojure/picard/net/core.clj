@@ -2,7 +2,7 @@
   (:use
    picard.core.deferred
    picard.net.message
-   picard.utils)
+   [picard.utils :only [swap-then!]])
   (:import
    [org.jboss.netty.buffer
     ChannelBuffer

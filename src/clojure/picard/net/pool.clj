@@ -1,4 +1,6 @@
 (ns picard.net.pool
+  (:use
+   [picard.utils :only [swap-then!]])
   (:import
    [picard.net
     Connection
@@ -14,8 +16,9 @@
     [connect-fn
      addrs
      open?
-     upstream
-     downstream]
+     downstream
+     exchange-up
+     exchange-dn]
   Connection
   (isOpen [this] (.open? this))
   (addr   [this] (.remote-addr this)))
@@ -26,11 +29,14 @@
    connect-fn ;; connect-fn
    nil        ;; addrs
    true       ;; open?
-   nil        ;; upstream
-   nil))      ;; downstream
+   nil        ;; downstream
+   nil        ;; exchange-up
+   nil))      ;; exchange-dn
 
 (defn- mk-downstream
-  [state])
+  [state next-dn]
+  (fn current [evt val]
+    ))
 
 (defn mk-handler
   [pool state]
@@ -49,9 +55,21 @@
        ))))
 
 (defn- bind-app
-  [current-state app]
-  (let [dn (.downstream current-state)]
-    ))
+  [state app]
+  (let [current-state @state
+        next-dn     (.downstream current-state)
+        exchange-dn (mk-downstream state next-dn)
+        exchange-up (app exchange-dn)]
+    (swap-then!
+     state
+     #(assoc %
+        :exchange-up exchange-up
+        :exchange-dn exchange-dn)
+     (fn [current-state]
+       (when-let [addrs (.addrs current-state)]
+         ;; Unfortunetly, this event is dispatched on an unrelated
+         ;; thread to the stream which could cause some threading issues.
+         (exchange-up :open addrs))))))
 
 (defn- create
   [pool addr connect-fn]
@@ -67,7 +85,7 @@
 (defn connect
   [pool app addr connect-fn]
   (let [state (get-connection pool addr connect-fn)]
-    (bind-app @state app)))
+    (bind-app state app)))
 
 (def default-opts
   {:keepalive                   60
