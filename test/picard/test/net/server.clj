@@ -352,3 +352,28 @@
          ch1
          :open  addr-info
          :abort #(instance? Exception %)))))
+
+;; ==== Core tests
+
+(defcoretest scheduling-fn-in-reactor
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (when (= :open evt)
+         (dn :schedule
+             (fn []
+               (Thread/sleep 50)
+               (enqueue ch1 [:scheduled nil])))
+         (enqueue ch1 [:schedule nil]))
+       (when (= :message evt)
+         (enqueue ch1 [:message nil])))))
+
+  (with-socket
+    (write-socket "Hello")
+
+    (is (next-msgs
+         ch1
+         :schedule  nil
+         :scheduled nil
+         :message   nil))))

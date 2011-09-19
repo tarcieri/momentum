@@ -203,9 +203,15 @@
       (try
         (loop []
           (when-let [[evt val] (poll-queue current-state)]
-            (if (= :interest-ops evt)
-              (handle-interest-ops state upstream)
-              (upstream evt val))
+            (cond
+             (= :interest-ops evt)
+             (handle-interest-ops state upstream)
+
+             (= :schedule evt)
+             (val)
+
+             :else
+             (upstream evt val))
             (recur)))
         (catch Exception err
           (handle-err state err @state true)
@@ -256,6 +262,9 @@
        (= :resume evt)
        (when (.upstream current-state)
          (.setReadable (.ch current-state) true))
+
+       (= :schedule evt)
+       (send-upstream state evt val current-state)
 
        (= :abort evt)
        (handle-err state val current-state)
