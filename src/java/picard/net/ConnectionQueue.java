@@ -5,24 +5,12 @@ import java.util.HashMap;
 
 public class ConnectionQueue {
 
-    private class Node {
-        public Connection channel;
-        public Node nextGlobal;
-        public Node prevGlobal;
-        public Node nextLocal;
-        public Node prevLocal;
-
-        public Node(Connection channel) {
-            this.channel = channel;
-        }
-    }
-
-    Node head;
-    Node tail;
-    HashMap<InetSocketAddress,Node> localHeadByAddr;
+    Connection head;
+    Connection tail;
+    HashMap<InetSocketAddress,Connection> localHeadByAddr;
 
     public ConnectionQueue() {
-        this.localHeadByAddr = new HashMap<InetSocketAddress,Node>();
+        this.localHeadByAddr = new HashMap<InetSocketAddress,Connection>();
     }
 
     public Connection checkout(InetSocketAddress addr) {
@@ -43,51 +31,46 @@ public class ConnectionQueue {
         }
     }
 
-    public void checkin(Connection channel) {
-        final Node node = new Node(channel);
-        InetSocketAddress addr = channel.addr();
+    public void checkin(Connection conn) {
+        InetSocketAddress addr = conn.addr();
 
         synchronized (this) {
             if (head != null) {
-                head.prevGlobal = node;
+                head.prevGlobal = conn;
             }
 
-            node.nextGlobal = head;
-            head = node;
+            conn.nextGlobal = head;
+            head = conn;
 
             if (tail == null) {
-                tail = node;
+                tail = conn;
             }
 
-            Node localHead = localHeadByAddr.get(addr);
+            Connection localHead = localHeadByAddr.get(addr);
 
             if (localHead != null) {
-                localHead.prevLocal = node;
-                node.nextLocal = localHead;
+                localHead.prevLocal = conn;
+                conn.nextLocal = localHead;
             }
 
-            localHeadByAddr.put(addr, node);
+            localHeadByAddr.put(addr, conn);
         }
     }
 
     private Connection popChannelByAddr(InetSocketAddress addr) {
-        Connection retval;
-        Node node = localHeadByAddr.get(addr);
+        Connection retval = localHeadByAddr.get(addr);
 
-        if (node == null) {
+        if (retval == null) {
             return null;
         }
 
-        removeNode(node, addr);
-
-        retval = node.channel;
-        node.channel = null;
+        removeNode(retval, addr);
 
         return retval;
     }
 
 
-    private void removeNode(Node node, InetSocketAddress addr) {
+    private void removeNode(Connection node, InetSocketAddress addr) {
         if (head == node) {
             head = node.nextGlobal;
         }

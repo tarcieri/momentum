@@ -12,80 +12,121 @@
      max-connections
      max-connections-per-address])
 
-(defrecord ConnectionState
-    [connect-fn
-     addrs
-     open?
-     downstream
-     exchange-up
-     exchange-dn]
-  Connection
-  (isOpen [this] (.open? this))
-  (addr   [this] (.remote-addr this)))
+(defmacro sync-get
+  [conn field]
+  `(locking ~conn
+     (. ~conn ~field)))
+
+(defmacro sync-set
+  [conn & fields-and-vals]
+  (when-not (= (mod (count fields-and-vals) 2) 0)
+    (throw (IllegalArgumentException. "Need to pass an even number of fields / vals")))
+
+  `(locking ~conn
+     ~@(map
+        (fn [[field val]] `(set! (. ~conn ~field) ~val))
+        (partition 2 fields-and-vals))))
 
 (defn- mk-connection
-  [connect-fn]
-  (ConnectionState.
-   connect-fn ;; connect-fn
-   nil        ;; addrs
-   true       ;; open?
-   nil        ;; downstream
-   nil        ;; exchange-up
-   nil))      ;; exchange-dn
+  [addr connect-fn]
+  (Connection. addr connect-fn))
+
+(defn- current-exchange?
+  [conn dn]
+  (locking conn
+    (= (. conn exchangeDn) dn)))
+
+(defn- finalize-exchange
+  [conn]
+  (locking conn
+    (let [exchange-up (. conn exchangeUp)]
+      (set! (. conn exchangeUp) nil)
+      (set! (. conn exchangeDn) nil)
+      exchange-up)))
 
 (defn- mk-downstream
-  [state next-dn]
+  [pool conn next-dn]
   (fn current [evt val]
-    ))
+    (cond
+     (not (current-exchange? conn current))
+     (throw (Exception. "Current exchange is complete"))
+
+     (= [:close nil] [evt val])
+     (let [exchange-up (finalize-exchange conn)]
+       (exchange-up :close nil)
+       (.. pool queue (checkin conn)))
+
+     :else
+     (next-dn evt val))))
+
+(defn- abort-app
+  [app err]
+  (let [upstream (app (fn [_ _]))]
+    (upstream :abort err)))
+
+;; Ideally, if the connection is closed, it should retry
+(defn- maybe-bind-app
+  [pool conn app]
+  (when-not (sync-get conn exchangeUp)
+    (when-let [addrs (sync-get conn addrs)]
+      (if (sync-get conn isOpen)
+        (let [next-dn     (. conn downstream)
+              exchange-dn (mk-downstream pool conn next-dn)
+              exchange-up (app exchange-dn)]
+          (sync-set conn exchangeDn exchange-dn exchangeUp exchange-up)
+          (exchange-up :open addrs))
+        ;; TODO: Handle when the connection is closed.
+        (abort-app app (Exception. "Something went wrong"))))))
 
 (defn mk-handler
-  [pool state]
+  [pool conn app]
   (fn [dn]
-    (swap! state #(assoc % :downstream dn))
+    (locking conn (set! (. conn downstream) dn))
     (fn [evt val]
       (cond
+       (= :message evt)
+       (when-let [exchange-up (locking conn (. conn exchangeUp))]
+         (exchange-up :message val))
+
        (= :open evt)
-       (swap! state #(assoc % :addrs val))
+       (do
+         (locking conn (set! (. conn addrs) val))
+         (maybe-bind-app pool conn app))
 
        (= :close evt)
-       (swap! state #(assoc % :open? false))
+       (when-let [exchange-up (finalize-exchange conn)]
+         (exchange-up :close val))
 
+       ;; If the connection has not been bound, bind it here.
        (= :abort evt)
-       1
-       ))))
+       (let [exchange-up (finalize-exchange conn)]
+         (cond
+          exchange-up
+          (exchange-up :abort val)
 
-(defn- bind-app
-  [state app]
-  (let [current-state @state
-        next-dn     (.downstream current-state)
-        exchange-dn (mk-downstream state next-dn)
-        exchange-up (app exchange-dn)]
-    (swap-then!
-     state
-     #(assoc %
-        :exchange-up exchange-up
-        :exchange-dn exchange-dn)
-     (fn [current-state]
-       (when-let [addrs (.addrs current-state)]
-         ;; Unfortunetly, this event is dispatched on an unrelated
-         ;; thread to the stream which could cause some threading issues.
-         (exchange-up :open addrs))))))
+          (nil? (locking conn (. conn addrs)))
+          (abort-app app val)))))))
+
+(defn- schedule-bind-app
+  [pool conn app]
+  (let [dn (sync-get conn downstream)]
+    (dn :schedule #(maybe-bind-app pool conn app))))
 
 (defn- create
-  [pool addr connect-fn]
-  (let [state (atom (mk-connection connect-fn))]
-    (connect-fn (mk-handler pool state))
-    state))
+  [pool addr app connect-fn]
+  (let [conn (mk-connection addr connect-fn)]
+    (connect-fn (mk-handler pool conn app))
+    conn))
 
 (defn- get-connection
-  [pool addr connect-fn]
+  [pool addr app connect-fn]
   (or (.. pool queue (checkout addr))
-      (create pool addr connect-fn)))
+      (create pool addr app connect-fn)))
 
 (defn connect
   [pool app addr connect-fn]
-  (let [state (get-connection pool addr connect-fn)]
-    (bind-app state app)))
+  (let [conn (get-connection pool addr app connect-fn)]
+    (schedule-bind-app pool conn app)))
 
 (def default-opts
   {:keepalive                   60
