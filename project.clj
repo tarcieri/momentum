@@ -12,6 +12,7 @@
 
   :source-path      "src/clojure"
   :java-source-path "src/java"
+  :javac-options    {:debug "true"}
   :aot              [picard.log4j.CommonLogFormatLayout
                      picard.log4j.VerboseLayout
                      picard.exceptions.PoolFullException]
