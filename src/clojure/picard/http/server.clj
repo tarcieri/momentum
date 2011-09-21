@@ -18,8 +18,7 @@
  stream-or-finalize-request
  handle-response
  stream-or-finalize-response
- awaiting-100-continue
- waiting-for-response)
+ awaiting-100-continue)
 
 (defprotocol Timeout
   (get-timeout-ms [_])
@@ -115,6 +114,10 @@
           timeout (timer/register ms #(abort current-state))]
       (swap! state #(assoc % :timeout timeout)))))
 
+(defn- waiting-for-response
+  [_ _ _ _ _]
+  (throw (Exception. "Not expecting a message right now.")))
+
 (defn- awaiting-100-continue?
   [current-state]
   (= awaiting-100-continue (.next-up-fn current-state)))
@@ -148,6 +151,17 @@
        (if (.keepalive? ~current-state)
          (bump-timeout conn# @conn#)
          ((.downstream ~current-state) :close nil)))))
+
+(defn- handle-hard-close
+  [state _]
+  (swap-then!
+   state
+   #(assoc %
+      :responded? true
+      :keepalive? false
+      :next-up-fn waiting-for-response
+      :next-dn-fn nil)
+   #(maybe-finalizing-exchange state %)))
 
 (defn- stream-or-finalize-response
   [state evt chunk current-state]
@@ -238,10 +252,6 @@
           state current-state
           (downstream :message message)))))))
 
-(defn- waiting-for-response
-  [_ _ _ _ _]
-  (throw (Exception. "Not expecting a message right now.")))
-
 (defn- stream-or-finalize-request
   [state evt chunk current-state]
   (if chunk
@@ -310,7 +320,10 @@
          (when-not (and (= :body evt) (or (not val) (.head? current-state)))
            (throw (Exception. "Not currently expecting an event."))))
 
-       (#{:abort :close} evt)
+       (= :close evt)
+       (handle-hard-close state current-state)
+
+       (= :abort evt)
        (do
          (clear-timeout state current-state)
          (dn evt val))

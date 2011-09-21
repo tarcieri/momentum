@@ -1211,3 +1211,76 @@
          :body "World"
          :body  nil
          :done  nil))))
+
+(defcoretest hard-closing-socket-before-response
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :request evt)
+         (dn :close nil)))))
+
+  (with-socket
+    (write-socket
+     "GET / HTTP/1.1\r\n"
+     "Host: localhost\r\n"
+     "\r\n")
+
+    (is (next-msgs ch1 :request :dont-care :done nil))
+
+    (is (closed-socket?))))
+
+(defcoretest hard-closing-socket-while-streaming-request
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :body evt)
+         (dn :close nil)))))
+
+  (with-socket
+    (write-socket
+     "POST / HTTP/1.1\r\n"
+     "Host: localhost\r\n"
+     "Transfer-Encoding: chunked\r\n"
+     "\r\n"
+     "5\r\nHello\r\n"
+     "5\r\nWorld\r\n"
+     "0\r\n\r\n")
+
+    (is (next-msgs
+         ch1
+         :request :dont-care
+         :body    "Hello"
+         :done    nil))
+
+    (is (closed-socket?))))
+
+(defcoretest hard-closing-socket-while-streaming-response
+  [ch1]
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :request evt)
+         (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
+         (dn :body "Hello")
+         (dn :close nil)))))
+
+  (with-socket
+    (write-socket
+     "GET / HTTP/1.1\r\n"
+     "Host: localhost\r\n"
+     "\r\n")
+
+    (is (next-msgs ch1 :request :dont-care :done nil))
+
+    (is (receiving
+         "HTTP/1.1 200 OK\r\n"
+         "transfer-encoding: chunked\r\n"
+         "\r\n"
+         "5\r\nHello\r\n"))
+
+    (is (closed-socket?))))
