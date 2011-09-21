@@ -4,7 +4,8 @@
   (:import
    [picard.net
     Connection
-    ConnectionQueue]))
+    ConnectionQueue
+    StaleConnectionException]))
 
 (defrecord Pool
     [queue
@@ -47,6 +48,7 @@
 (defn- mk-downstream
   [pool conn next-dn]
   (fn current [evt val]
+    ;; (println "(P) DN: " [evt val])
     (cond
      (not (current-exchange? conn current))
      (throw (Exception. "Current exchange is complete"))
@@ -74,15 +76,17 @@
               exchange-dn (mk-downstream pool conn next-dn)
               exchange-up (app exchange-dn)]
           (sync-set conn exchangeDn exchange-dn exchangeUp exchange-up)
-          (exchange-up :open addrs))
+          (exchange-up :open (assoc addrs :exchange-count (. conn inc))))
         ;; TODO: Handle when the connection is closed.
-        (abort-app app (Exception. "Something went wrong"))))))
+        (abort-app app (StaleConnectionException.
+                        "The connection has been closed"))))))
 
 (defn mk-handler
   [pool conn app]
   (fn [dn]
     (locking conn (set! (. conn downstream) dn))
     (fn [evt val]
+      ;; (println "(P) UP: " [evt val])
       (cond
        (= :message evt)
        (when-let [exchange-up (locking conn (. conn exchangeUp))]

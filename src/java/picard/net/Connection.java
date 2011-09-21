@@ -10,6 +10,7 @@ public class Connection {
     public Object  downstream;
     public Object  exchangeUp;
     public Object  exchangeDn;
+    public int     exchangeCount;
     public boolean isOpen;
 
     // Stuff related to the linked lists
@@ -30,5 +31,9 @@ public class Connection {
 
     public synchronized boolean isOpen() {
         return isOpen;
+    }
+
+    public synchronized int inc() {
+        return ++exchangeCount;
     }
 }
