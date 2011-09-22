@@ -1,6 +1,8 @@
 %%{
   machine http;
 
+  include uri "uri.rl";
+
   CRLF = "\r\n";
 
   # === HTTP methods
@@ -31,7 +33,7 @@
          ;
 
   # === HTTP request URI
-  request_uri = "/";
+  request_uri = ( "*" | uri );
 
   # === HTTP version
   http_version = "HTTP/" ( digit + $ http_major ) "."
@@ -42,7 +44,7 @@
 
   # === HTTP head
   request_line = method " " request_uri " " http_version CRLF;
-  request_head = ( request_line headers CRLF ) @ head_complete;
+  request_head = ( request_line headers CRLF ) > start_head @ end_head;
 
   main := request_head +;
 }%%

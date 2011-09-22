@@ -8,7 +8,8 @@
   [parser hdrs]
   (assoc hdrs
     :request-method (.. parser getMethod toString)
-    :path-info      "/"
+    :path-info      (.. parser getPathInfo)
+    :query-string   (.. parser getQueryString)
     :http-version   [(.getHttpMajor parser) (.getHttpMinor parser)]))
 
 (defn parse

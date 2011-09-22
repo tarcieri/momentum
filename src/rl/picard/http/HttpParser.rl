@@ -44,6 +44,26 @@ public class HttpParser extends AFn {
         PATCH
     }
 
+    private class Mark {
+        public final ByteBuffer buf;
+        public final int offset;
+
+        public Mark(ByteBuffer buf, int offset) {
+            this.buf    = buf;
+            this.offset = offset;
+        }
+    }
+
+    private class Node {
+        public final Node next;
+        public final ByteBuffer buf;
+
+        public Node(Node next, ByteBuffer buf) {
+            this.next = next;
+            this.buf  = buf;
+        }
+    }
+
     %%{
         machine http;
 
@@ -77,7 +97,8 @@ public class HttpParser extends AFn {
             httpMajor += fc - '0';
 
             if (httpMajor > 999) {
-                // TODO: handle error
+                flags |= ERROR;
+                throw new HttpParserException("The HTTP major version is invalid.");
             }
         }
 
@@ -86,17 +107,53 @@ public class HttpParser extends AFn {
             httpMinor += fc - '0';
 
             if (httpMinor > 999) {
-                // TODO: handle error
+                flags |= ERROR;
+                throw new HttpParserException("The HTTP minor version is invalid.");
             }
         }
 
-        action head_complete {
+        action start_path {
+            pathInfoMark = new Mark(buf, fpc);
+        }
+
+        action end_path {
+            pathInfo = extract(pathInfoMark, buf, fpc);
+        }
+
+        action start_query {
+            queryStringMark = new Mark(buf, fpc);
+        }
+
+        action end_query {
+            queryString = extract(queryStringMark, buf, fpc);
+        }
+
+        action start_head {
+            flags |= PARSING_HEAD;
+        }
+
+        action end_head {
+            // Not parsing the HTTP message head anymore
+            flags ^= PARSING_HEAD;
+
             callback.request(this);
+
+            // Unset references to allow the GC to reclaim the memory
+            resetHeadState();
         }
 
 
         include "http.rl";
     }%%
+
+    public static final int MAX_HEADER_SIZE = 100 * 1024;
+    public static final int PARSING_HEAD    = 1 << 0;
+    public static final int IDENTITY_BODY   = 1 << 1;
+    public static final int CHUNKED_BODY    = 1 << 2;
+    public static final int KEEP_ALIVE      = 1 << 3;
+    public static final int UPGRADE         = 1 << 4;
+    public static final int ERROR           = 1 << 5;
+
 
     %% write data;
 
@@ -106,6 +163,21 @@ public class HttpParser extends AFn {
     // that are processed independently. This variable may be modified
     // from outside the execution loop, but not from within.
     private int cs;
+
+    // Stores some miscellaneous parser state such as whether or not
+    // the body is chunked or not, whether or not the connection is
+    // keep alive or upgraded, etc...
+    private int flags;
+
+    // The parser saves off all ByteBuffers that traverse an HTTP
+    // message's head. The buffers are stored in a stack. Whenever the
+    // parser crosses a point of interest (the start of the request
+    // URI, header name, header value, etc...), a mark will be created
+    // and saved off that points to the buffer in question and an
+    // offset in that buffer. When the end of the URI, header,
+    // etc... is reached, the stack is walked back until the original
+    // mark and the data is copied into a String and saved off.
+    private Node head;
 
     // The HTTP protocol version used by the current message being
     // parsed. The major and minor numbers are broken up since they
@@ -122,12 +194,47 @@ public class HttpParser extends AFn {
     // requests.
     private MessageType type;
 
+    // Tracks the HTTP method of the currently parsed request. If the
+    // HTTP message being currently parsed is a response, then this
+    // will be nil.
     private HttpMethod method;
+
+    // Tracks the various message information
+    private String pathInfo;
+    private Mark   pathInfoMark;
+    private String queryString;
+    private Mark   queryStringMark;
+
+    // The object that gets called on various parse events.
     private HttpParserCallback callback;
 
     public HttpParser(HttpParserCallback callback) {
         %% write init;
         this.callback = callback;
+    }
+
+    public boolean isParsingHead() {
+        return ( flags & PARSING_HEAD ) == PARSING_HEAD;
+    }
+
+    public boolean isIdentityBody() {
+        return ( flags & IDENTITY_BODY ) == IDENTITY_BODY;
+    }
+
+    public boolean isChunkedBody() {
+        return ( flags & CHUNKED_BODY ) == CHUNKED_BODY;
+    }
+
+    public boolean isKeepAlive() {
+        return ( flags & KEEP_ALIVE ) == KEEP_ALIVE;
+    }
+
+    public boolean isUpgrade() {
+        return ( flags & UPGRADE ) == UPGRADE;
+    }
+
+    public boolean isError() {
+        return ( flags & ERROR ) == ERROR;
     }
 
     public HttpMethod getMethod() {
@@ -142,19 +249,119 @@ public class HttpParser extends AFn {
         return httpMinor;
     }
 
+    public String getPathInfo() {
+        if (pathInfo == null) {
+            return "";
+        }
+
+        return pathInfo;
+    }
+
+    public String getQueryString() {
+        if (queryString == null) {
+            return "";
+        }
+
+        return queryString;
+    }
+
     public int execute(String str) {
         ByteBuffer buf = ByteBuffer.wrap(str.getBytes());
         return execute(buf);
     }
 
     public int execute(ByteBuffer buf) {
-        // Setup variables needed by ragel
+        // First make sure that the parser isn't in an error state
+        if (isError()) {
+            throw new HttpParserException("The parser is in an error state.");
+        }
+
+        // Setup ragel variables
         int p  = 0;
         int pe = buf.remaining();
 
         %% getkey buf.get(p);
         %% write exec;
 
+        if (isParsingHead()) {
+            pushBuffer(buf);
+        }
+
         return p;
+    }
+
+    private void reset() {
+        flags = 0;
+        resetHeadState();
+    }
+
+    private void resetHeadState() {
+        head            = null;
+        method          = null;
+        pathInfo        = null;
+        pathInfoMark    = null;
+        queryString     = null;
+        queryStringMark = null;
+    }
+
+    private void pushBuffer(ByteBuffer buf) {
+        head = new Node(head, buf);
+    }
+
+    // Takes a starting mark (buffer, offset) and an end buffer +
+    // offset and copies the bytes to a string and returns it. This is
+    // a fairly simple operation when the start and end points are in
+    // the same buffer, but when they are not, the buffer stack is
+    // traversed, copying all data in between, until the start buffer
+    // is found.
+    private String extract(Mark from, ByteBuffer toBuf, int toOffset) {
+        int size    = extractSize(from, toBuf, toOffset);
+        int pos     = 0;
+        Node next   = head;
+        byte [] buf = new byte[size];
+
+        if (from.buf == toBuf) {
+            copy(buf, pos, from.buf, from.offset, toOffset);
+        }
+        else {
+            pos += copy(buf, pos, toBuf, 0, toOffset);
+
+            while (next.buf != from.buf) {
+                pos += copy(buf, pos, next.buf, 0, next.buf.limit());
+                next = next.next;
+            }
+
+            copy(buf, pos, from.buf, from.offset, from.buf.limit());
+        }
+
+        return new String(buf);
+    }
+
+    private int extractSize(Mark from, ByteBuffer toBuf, int toOffset) {
+        int retval = toOffset - from.offset;
+        Node next  = head;
+
+        while (from.buf != toBuf) {
+            toBuf   = next.buf;
+            next    = next.next;
+            retval += toBuf.limit();
+        }
+
+        return retval;
+    }
+
+    private int copy(byte [] dst, int pos, ByteBuffer src, int from, int to) {
+        int oldPos = src.position();
+        int oldLim = src.limit();
+        int length = to - from;
+
+        src.position(from);
+        src.limit(to);
+        src.get(dst, dst.length - (pos + length), length);
+
+        src.position(oldPos);
+        src.limit(oldLim);
+
+        return length;
     }
 }
