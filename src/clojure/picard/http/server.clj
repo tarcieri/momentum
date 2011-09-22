@@ -21,6 +21,7 @@
  awaiting-100-continue)
 
 (defprotocol Timeout
+  (track-timeout? [-])
   (get-timeout-ms [_])
   (get-timeout [_])
   (abort [_]))
@@ -33,6 +34,7 @@
      opts]
 
   Timeout
+  (track-timeout? [_] true)
   (get-timeout-ms [current-state]
     (* (-> current-state .opts :keepalive)) 1000)
   (get-timeout [current-state]
@@ -51,6 +53,7 @@
      keepalive?
      chunked?
      head?
+     upgraded?
      responded?
      bytes-expected
      bytes-to-send
@@ -58,6 +61,8 @@
      opts]
 
   Timeout
+  (track-timeout? [current-state]
+    (not (.upgraded? current-state)))
   (get-timeout-ms [current-state]
     (* (-> current-state .opts :timeout) 1000))
   (get-timeout [current-state]
@@ -78,20 +83,21 @@
 (defn- initial-exchange-state
   [conn downstream address-info opts]
   (ExchangeState.
-   conn
-   address-info
-   nil
-   downstream
-   handle-request
-   handle-response
-   true
-   false
-   false
-   false
-   nil
-   0
-   nil
-   opts))
+   conn             ;; connection
+   address-info     ;; address-info
+   nil              ;; upstream
+   downstream       ;; downstream
+   handle-request   ;; next-up-fn
+   handle-response  ;; next-dn-fn
+   true             ;; keepalive?
+   false            ;; chunked?
+   false            ;; head?
+   false            ;; upgraded?
+   false            ;; responded?
+   nil              ;; bytes-expected
+   0                ;; bytes-to-send
+   nil              ;; timeout
+   opts))           ;; opts
 
 ;; Timeouts
 
@@ -108,15 +114,24 @@
 
 (defn- bump-timeout
   [state current-state]
-  (locking state
-    (clear-timeout* current-state)
-    (let [ms      (get-timeout-ms current-state)
-          timeout (timer/register ms #(abort current-state))]
-      (swap! state #(assoc % :timeout timeout)))))
+  (when (track-timeout? current-state)
+    (locking state
+      (clear-timeout* current-state)
+      (let [ms      (get-timeout-ms current-state)
+            timeout (timer/register ms #(abort current-state))]
+        (swap! state #(assoc % :timeout timeout))))))
 
 (defn- waiting-for-response
-  [_ _ _ _ _]
+  [_ _ _ _]
   (throw (Exception. "Not expecting a message right now.")))
+
+(defn- upstream-pass-through
+  [_ _ _ _]
+  (throw (Exception. "Should be receiving message events.")))
+
+(defn- downstream-pass-through
+  [_ _ _ _]
+  (throw (Exception. "Should be receiving message events.")))
 
 (defn- awaiting-100-continue?
   [current-state]
@@ -222,30 +237,45 @@
     (when (and (= 100 status) (not (awaiting-100-continue? current-state)))
       (throw (Exception. "Not expecting a 100 Continue response.")))
 
-    ;; 204 and 304 responses MUST NOT have a response body, so if we
-    ;; get one, throw an exception.
-    (when (and (#{204 304} status) (not (empty? body)))
+    ;; 100, 101, 204, and 304 responses MUST NOT have a response body,
+    ;; so if we get one, throw an exception.
+    (when (not (or (status-expects-body? status) (empty? body)))
       (throw (Exception. (str status " responses must not include a body."))))
 
     (swap-then!
      state
      (fn [current-state]
-       (if (= 100 status)
-         (assoc current-state :next-up-fn stream-or-finalize-request)
-         (let [responded? (or (.head? current-state) (not= :chunked body))]
-           (assoc current-state
-             :bytes-to-send  bytes-to-send
-             :bytes-expected bytes-expected
-             :responded?     responded?
-             ;; TODO: This isn't exactly correct since 304 responses
-             ;; won't send the body and we also need to handle the
-             ;; case of transfer-encoding: chunked w/ a single chunk
-             ;; passed with the response.
-             :chunked?      (= (hdrs "transfer-encoding") "chunked")
-             :next-dn-fn    (when (not responded?) stream-or-finalize-response)
-             :keepalive?    (and (.keepalive? current-state)
-                                 (keepalive-response? response))))))
+       (cond
+        (= 100 status)
+        (assoc current-state :next-up-fn stream-or-finalize-request)
+
+        (= 101 status)
+        (assoc current-state
+          :keepalive? false
+          :upgraded?  true
+          :next-up-fn upstream-pass-through
+          :next-dn-fn downstream-pass-through)
+
+        :else
+        (let [responded? (or (.head? current-state) (not= :chunked body))]
+          (assoc current-state
+            :bytes-to-send  bytes-to-send
+            :bytes-expected bytes-expected
+            :responded?     responded?
+            ;; TODO: This isn't exactly correct since 304 responses
+            ;; won't send the body and we also need to handle the
+            ;; case of transfer-encoding: chunked w/ a single chunk
+            ;; passed with the response.
+            :chunked?      (= (hdrs "transfer-encoding") "chunked")
+            :next-dn-fn    (when (not responded?) stream-or-finalize-response)
+            :keepalive?    (and (.keepalive? current-state)
+                                (keepalive-response? response))))))
      (fn [current-state]
+       ;; If the connection is upgraded, we don't track timeouts
+       ;; anymore.
+       (when (.upgraded? current-state)
+         (clear-timeout state current-state))
+
        (let [downstream (.downstream current-state)
              message    (response->netty-response status hdrs body)]
          (maybe-finalizing-exchange

@@ -1284,3 +1284,47 @@
          "5\r\nHello\r\n"))
 
     (is (closed-socket?))))
+
+;; Upgrading the connection
+;; (defcoretest upgrading-the-connection-to-echo-server
+;;   [ch1]
+;;   (start
+;;    (fn [dn]
+;;      (fn [evt val]
+;;        (enqueue ch1 [evt val])
+;;        (when (= :request evt)
+;;          (dn :response [101 {"connection" "upgrade" "upgrade" "echo"}]))
+;;        (when (= :message evt)
+;;          (dn :message val)))))
+
+;;   (with-socket
+;;     (write-socket
+;;      "GET / HTTP/1.1\r\n"
+;;      "Host: localhost\r\n"
+;;      "Connection: Upgrade\r\n"
+;;      "Upgrade: echo\r\n"
+;;      "\r\n")
+
+;;     (is (next-msgs
+;;          ch1
+;;          :request [#(includes-hdrs {"connection" "Upgrade" "upgrade" "echo"} %) nil]))
+
+;;     (is (receiving
+;;          "HTTP/1.1 101 Switching Protocols\r\n"
+;;          "connection: upgrade\r\n"
+;;          "upgrade: echo\r\n"
+;;          "\r\n"))
+
+;;     (write-socket "HELLO")
+;;     (Thread/sleep 100)
+;;     (is (next-msgs ch1 :message "HELLO"))
+
+;;     (write-socket "GOODBYE")
+;;     (Thread/sleep 100)
+;;     (is (next-msgs ch1 :message "GOODBYE"))
+
+;;     (close-socket)
+;;     (is (next-msgs ch1 :close nil))))
+
+;; (defcoretest connections-marked-as-upgrade-are-not-kept-alive)
+;; (defcoretest upgraded-connections-do-not-timeout)

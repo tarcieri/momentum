@@ -51,7 +51,7 @@
   [[{version :http-version connection "connection"}]]
   (let [connection (maybe-lower-case connection)]
     (if (= http-1-1 version)
-      (not= "close" connection)
+      (not (#{"close" "upgrade"} connection))
       (= "keep-alive" connection))))
 
 (defn keepalive-response?
