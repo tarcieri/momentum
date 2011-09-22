@@ -1,0 +1,48 @@
+%%{
+  machine http;
+
+  CRLF = "\r\n";
+
+  # === HTTP methods
+  method = "HEAD"        @ method_head
+         | "GET"         @ method_get
+         | "POST"        @ method_post
+         | "PUT"         @ method_put
+         | "DELETE"      @ method_delete
+         | "CONNECT"     @ method_connect
+         | "OPTIONS"     @ method_options
+         | "TRACE"       @ method_trace
+         | "COPY"        @ method_copy
+         | "LOCK"        @ method_lock
+         | "MKCOL"       @ method_mkcol
+         | "MOVE"        @ method_move
+         | "PROPFIND"    @ method_propfind
+         | "PROPPATCH"   @ method_proppatch
+         | "UNLOCK"      @ method_unlock
+         | "REPORT"      @ method_report
+         | "MKACTIVITY"  @ method_mkactivity
+         | "CHECKOUT"    @ method_checkout
+         | "MERGE"       @ method_merge
+         | "MSEARCH"     @ method_msearch
+         | "NOTIFY"      @ method_notify
+         | "SUBSCRIBE"   @ method_subscribe
+         | "UNSUBSCRIBE" @ method_unsubscribe
+         | "PATCH"       @ method_patch
+         ;
+
+  # === HTTP request URI
+  request_uri = "/";
+
+  # === HTTP version
+  http_version = "HTTP/" ( digit + $ http_major ) "."
+                         ( digit + $ http_minor );
+
+
+  headers = ( "Host: localhost" CRLF ) *;
+
+  # === HTTP head
+  request_line = method " " request_uri " " http_version CRLF;
+  request_head = ( request_line headers CRLF ) @ head_complete;
+
+  main := request_head +;
+}%%
