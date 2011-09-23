@@ -4,6 +4,18 @@
   include uri "uri.rl";
 
   CRLF = "\r\n";
+  CTL  = (cntrl | 127);
+  LWS  = CRLF ? ( " " | "\t" ) +;
+  TEXT = any -- CTL;
+  LINE = TEXT -- CRLF;
+
+  separators = "(" | ")" | "<" | ">" | "@" | "," | ";"
+             | ":" | "\\" | "\"" | "/" | "[" | "]"
+             | "?" | "=" | "{" | "}" | " " | "\t";
+
+  token      = TEXT -- separators;
+  token_w_sp = token | " " | "\t";
+  quoted_str = "\"" ((any -- "\"") | ("\\" any)) * "\"";
 
   # === HTTP methods
   method = "HEAD"        @ method_head
@@ -40,7 +52,21 @@
                          ( digit + $ http_minor );
 
 
-  headers = ( "Host: localhost" CRLF ) *;
+  # === HTTP headers
+  header_sep = ":" " " *;
+  header_eol = " " * CRLF;
+
+  header_value_line_1 = LINE *;
+  header_value_line_n = ( ( " " | "\t" ) * ) <: LINE *;
+  header_value        = ( header_value_line_1 ( header_eol <: header_value_line_n ) * )
+                        > start_header_value % end_header_value;
+
+  header_name = ( token + ) > start_header_name % end_header_name;
+
+  # Generic headers will catch any header that was not explicitly listed
+  generic_header = header_name header_sep <: header_value :> header_eol;
+
+  headers = generic_header *;
 
   # === HTTP head
   request_line = method " " request_uri " " http_version CRLF;

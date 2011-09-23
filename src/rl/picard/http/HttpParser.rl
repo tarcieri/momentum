@@ -128,15 +128,34 @@ public class HttpParser extends AFn {
             queryString = extract(queryStringMark, buf, fpc);
         }
 
+        action start_header_name {
+            headerNameMark = new Mark(buf, fpc);
+        }
+
+        action end_header_name {
+            headerName = extract(headerNameMark, buf, fpc);
+        }
+
+        action start_header_value {
+            headerValueMark = new Mark(buf, fpc);
+        }
+
+        action end_header_value {
+            String headerValue = extract(headerValueMark, buf, fpc);
+
+            callback.header(headers, headerName, headerValue);
+        }
+
         action start_head {
-            flags |= PARSING_HEAD;
+            flags  |= PARSING_HEAD;
+            headers = callback.blankHeaders();
         }
 
         action end_head {
             // Not parsing the HTTP message head anymore
             flags ^= PARSING_HEAD;
 
-            callback.request(this);
+            callback.request(this, headers);
 
             // Unset references to allow the GC to reclaim the memory
             resetHeadState();
@@ -168,6 +187,12 @@ public class HttpParser extends AFn {
     // the body is chunked or not, whether or not the connection is
     // keep alive or upgraded, etc...
     private int flags;
+
+    // When starting to parse an HTTP message head, an object is
+    // requested from the callback. This object should be the
+    // structure that contains HTTP headers for the message being
+    // processed.
+    private Object headers;
 
     // The parser saves off all ByteBuffers that traverse an HTTP
     // message's head. The buffers are stored in a stack. Whenever the
@@ -204,6 +229,9 @@ public class HttpParser extends AFn {
     private Mark   pathInfoMark;
     private String queryString;
     private Mark   queryStringMark;
+    private String headerName;
+    private Mark   headerNameMark;
+    private Mark   headerValueMark;
 
     // The object that gets called on various parse events.
     private HttpParserCallback callback;
@@ -297,11 +325,15 @@ public class HttpParser extends AFn {
 
     private void resetHeadState() {
         head            = null;
+        headers         = null;
         method          = null;
         pathInfo        = null;
         pathInfoMark    = null;
         queryString     = null;
         queryStringMark = null;
+        headerName      = null;
+        headerNameMark  = null;
+        headerValueMark = null;
     }
 
     private void pushBuffer(ByteBuffer buf) {

@@ -6,11 +6,13 @@
 
 (defn- request-headers
   [parser hdrs]
-  (assoc hdrs
+  (persistent!
+   (assoc!
+    hdrs
     :request-method (.. parser getMethod toString)
     :path-info      (.. parser getPathInfo)
     :query-string   (.. parser getQueryString)
-    :http-version   [(.getHttpMajor parser) (.getHttpMinor parser)]))
+    :http-version   [(.getHttpMajor parser) (.getHttpMinor parser)])))
 
 (defn parse
   [^HttpParser parser raw]
@@ -20,5 +22,11 @@
   [f]
   (HttpParser.
    (reify HttpParserCallback
-     (^void request [_ ^HttpParser parser]
-       (f :request [(request-headers parser {})])))))
+     (blankHeaders [_]
+       (transient {}))
+
+     (header [_ headers name value]
+       (assoc! headers name value))
+
+     (^void request [_ ^HttpParser parser ^Object hdrs]
+       (f :request [(request-headers parser hdrs)])))))
