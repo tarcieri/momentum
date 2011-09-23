@@ -49,23 +49,96 @@ public class HttpParser extends AFn {
     public static final String HDR_TRANSFER_ENCODING = "transfer-encoding";
     public static final String HDR_CHUNKED           = "chunked";
 
+    // A helper class that can be used to mark points of interest in
+    // the buffers that are being parsed. Whenever a point of interest
+    // is reached, it is marked with an instance of this class. When
+    // the end of the point of interest is reached, that is also
+    // marked. Using this class allows spanning multiple chunks since
+    // when the end of a chunk is reached, we can simply finalize the
+    // mark and then start up a new one when the next chunk is
+    // received.
     private class Mark {
-        public final ByteBuffer buf;
-        public final int offset;
+        // The previous mark in the stack
+        private final Mark previous;
 
-        public Mark(ByteBuffer buf, int offset) {
-            this.buf    = buf;
-            this.offset = offset;
+        // The byte buffer that this mark points to
+        private final ByteBuffer buf;
+
+        // The offset in the buffer that the mark starts at
+        private final int from;
+
+        // The offset in the buffer that the mark ends at
+        private int to;
+
+        // The total length of all the previous marks and the current
+        // combined.
+        private int total;
+
+        public Mark(ByteBuffer buf, int from) {
+            this(buf, from, null);
         }
-    }
 
-    private class Node {
-        public final Node next;
-        public final ByteBuffer buf;
+        public Mark(ByteBuffer buf, int from, Mark previous) {
+            this.buf      = buf;
+            this.from     = from;
+            this.previous = previous;
+        }
 
-        public Node(Node next, ByteBuffer buf) {
-            this.next = next;
-            this.buf  = buf;
+        public int total() {
+            return total;
+        }
+
+        public void finalize() {
+            finalize(buf.limit());
+        }
+
+        public void finalize(int offset) {
+            this.to    = offset;
+            this.total = offset - from;
+
+            if (previous != null) {
+                this.total += previous.total();
+            }
+        }
+
+        public Mark link(ByteBuffer buf) {
+            return link(buf, buf.position());
+        }
+
+        public Mark link(ByteBuffer buf, int from) {
+            return new Mark(buf, from, this);
+        }
+
+        public String materialize() {
+            byte [] buf = new byte[total()];
+            Mark    cur = this;
+            int     pos = 0;
+
+            while (cur != null) {
+                pos += cur.copy(buf, pos);
+                cur  = cur.previous();
+            }
+
+            return new String(buf);
+        }
+
+        protected Mark previous() {
+            return previous;
+        }
+
+        protected int copy(byte [] dst, int pos) {
+            int oldPos = buf.position();
+            int oldLim = buf.limit();
+            int length = to - from;
+
+            buf.position(from);
+            buf.limit(to);
+            buf.get(dst, dst.length - (pos + length), length);
+
+            buf.position(oldPos);
+            buf.limit(oldLim);
+
+            return length;
         }
     }
 
@@ -122,7 +195,10 @@ public class HttpParser extends AFn {
         }
 
         action end_path {
-            pathInfo = extract(pathInfoMark, buf, fpc);
+            pathInfoMark.finalize(fpc);
+
+            pathInfo     = pathInfoMark.materialize();
+            pathInfoMark = null;
         }
 
         action start_query {
@@ -130,7 +206,10 @@ public class HttpParser extends AFn {
         }
 
         action end_query {
-            queryString = extract(queryStringMark, buf, fpc);
+            queryStringMark.finalize(fpc);
+
+            queryString     = queryStringMark.materialize();
+            queryStringMark = null;
         }
 
         action start_header_name {
@@ -138,7 +217,10 @@ public class HttpParser extends AFn {
         }
 
         action end_header_name {
-            headerName = extract(headerNameMark, buf, fpc).toLowerCase();
+            headerNameMark.finalize(fpc);
+
+            headerName     = headerNameMark.materialize().toLowerCase();
+            headerNameMark = null;
         }
 
         action start_header_value {
@@ -146,7 +228,10 @@ public class HttpParser extends AFn {
         }
 
         action end_header_value {
-            String headerValue = extract(headerValueMark, buf, fpc);
+            headerValueMark.finalize(fpc);
+
+            String headerValue = headerValueMark.materialize();
+            headerValueMark    = null;
 
             callback.header(headers, headerName, headerValue);
         }
@@ -204,9 +289,12 @@ public class HttpParser extends AFn {
 
         action end_transfer_encoding {
             if (headerValueMark != null) {
-                String headerValue = extract(headerValueMark, buf, fpc);
-                callback.header(headers, HDR_TRANSFER_ENCODING, headerValue.toLowerCase());
-                headerValueMark = null;
+                headerValueMark.finalize(fpc);
+
+                String headerValue = headerValueMark.materialize().toLowerCase();
+                headerValueMark    = null;
+
+                callback.header(headers, HDR_TRANSFER_ENCODING, headerValue);
             }
         }
 
@@ -258,16 +346,6 @@ public class HttpParser extends AFn {
     // structure that contains HTTP headers for the message being
     // processed.
     private Object headers;
-
-    // The parser saves off all ByteBuffers that traverse an HTTP
-    // message's head. The buffers are stored in a stack. Whenever the
-    // parser crosses a point of interest (the start of the request
-    // URI, header name, header value, etc...), a mark will be created
-    // and saved off that points to the buffer in question and an
-    // offset in that buffer. When the end of the URI, header,
-    // etc... is reached, the stack is walked back until the original
-    // mark and the data is copied into a String and saved off.
-    private Node head;
 
     // The HTTP protocol version used by the current message being
     // parsed. The major and minor numbers are broken up since they
@@ -377,14 +455,38 @@ public class HttpParser extends AFn {
         int pe = buf.remaining();
         int eof = pe + 1;
 
+        if (isParsingHead()) {
+            pathInfoMark    = link(buf, pathInfoMark);
+            queryStringMark = link(buf, queryStringMark);
+            headerNameMark  = link(buf, headerNameMark);
+            headerValueMark = link(buf, headerValueMark);
+        }
+
         %% getkey buf.get(p);
         %% write exec;
 
         if (isParsingHead()) {
-            pushBuffer(buf);
+            tieOff(pathInfoMark);
+            tieOff(queryStringMark);
+            tieOff(headerNameMark);
+            tieOff(headerValueMark);
         }
 
         return p;
+    }
+
+    private Mark link(ByteBuffer buf, Mark mark) {
+        if (mark == null) {
+            return null;
+        }
+
+        return mark.link(buf);
+    }
+
+    private void tieOff(Mark mark) {
+        if (mark != null) {
+            mark.finalize();
+        }
     }
 
     private void reset() {
@@ -394,7 +496,6 @@ public class HttpParser extends AFn {
     }
 
     private void resetHeadState() {
-        head            = null;
         headers         = null;
         method          = null;
         pathInfo        = null;
@@ -404,66 +505,5 @@ public class HttpParser extends AFn {
         headerName      = null;
         headerNameMark  = null;
         headerValueMark = null;
-    }
-
-    private void pushBuffer(ByteBuffer buf) {
-        head = new Node(head, buf);
-    }
-
-    // Takes a starting mark (buffer, offset) and an end buffer +
-    // offset and copies the bytes to a string and returns it. This is
-    // a fairly simple operation when the start and end points are in
-    // the same buffer, but when they are not, the buffer stack is
-    // traversed, copying all data in between, until the start buffer
-    // is found.
-    private String extract(Mark from, ByteBuffer toBuf, int toOffset) {
-        int size    = extractSize(from, toBuf, toOffset);
-        int pos     = 0;
-        Node next   = head;
-        byte [] buf = new byte[size];
-
-        if (from.buf == toBuf) {
-            copy(buf, pos, from.buf, from.offset, toOffset);
-        }
-        else {
-            pos += copy(buf, pos, toBuf, 0, toOffset);
-
-            while (next.buf != from.buf) {
-                pos += copy(buf, pos, next.buf, 0, next.buf.limit());
-                next = next.next;
-            }
-
-            copy(buf, pos, from.buf, from.offset, from.buf.limit());
-        }
-
-        return new String(buf);
-    }
-
-    private int extractSize(Mark from, ByteBuffer toBuf, int toOffset) {
-        int retval = toOffset - from.offset;
-        Node next  = head;
-
-        while (from.buf != toBuf) {
-            toBuf   = next.buf;
-            next    = next.next;
-            retval += toBuf.limit();
-        }
-
-        return retval;
-    }
-
-    private int copy(byte [] dst, int pos, ByteBuffer src, int from, int to) {
-        int oldPos = src.position();
-        int oldLim = src.limit();
-        int length = to - from;
-
-        src.position(from);
-        src.limit(to);
-        src.get(dst, dst.length - (pos + length), length);
-
-        src.position(oldPos);
-        src.limit(oldLim);
-
-        return length;
     }
 }
