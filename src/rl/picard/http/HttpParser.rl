@@ -44,6 +44,11 @@ public class HttpParser extends AFn {
         PATCH
     }
 
+    public static final String HDR_CONNECTION        = "connection";
+    public static final String HDR_CONTENT_LENGTH    = "content-length";
+    public static final String HDR_TRANSFER_ENCODING = "transfer-encoding";
+    public static final String HDR_CHUNKED           = "chunked";
+
     private class Mark {
         public final ByteBuffer buf;
         public final int offset;
@@ -133,7 +138,7 @@ public class HttpParser extends AFn {
         }
 
         action end_header_name {
-            headerName = extract(headerNameMark, buf, fpc);
+            headerName = extract(headerNameMark, buf, fpc).toLowerCase();
         }
 
         action start_header_value {
@@ -144,6 +149,65 @@ public class HttpParser extends AFn {
             String headerValue = extract(headerValueMark, buf, fpc);
 
             callback.header(headers, headerName, headerValue);
+        }
+
+        action count_content_length {
+            if (contentLength >= ALMOST_MAX_LONG) {
+                flags |= ERROR;
+                throw new HttpParserException("The content-length is WAY too big");
+            }
+
+            contentLength *= 10;
+            contentLength += fc - '0';
+        }
+
+        action content_length_err {
+            flags |= ERROR;
+
+            // Hack to get Java to compile
+            if (isError()) {
+                throw new HttpParserException("The content-length is in an invalid format");
+            }
+        }
+
+        action end_content_length {
+            if (isChunkedBody()) {
+                flags |= ERROR;
+                throw new HttpParserException("The message head is invalid");
+            }
+
+            flags |= IDENTITY_BODY;
+
+            callback.header(headers, HDR_CONTENT_LENGTH, String.valueOf(contentLength));
+        }
+
+        action transfer_encoding_err {
+            flags |= ERROR;
+
+            // Hack to get Java to compile
+            if (isError()) {
+                throw new HttpParserException("The transfer-encoding is in an invalid format");
+            }
+        }
+
+        action end_transfer_encoding_chunked {
+            if (isIdentityBody()) {
+                flags |= ERROR;
+                throw new HttpParserException("The message head is invalid");
+            }
+
+            flags |= CHUNKED_BODY;
+
+            headerValueMark = null;
+            callback.header(headers, HDR_TRANSFER_ENCODING, HDR_CHUNKED);
+        }
+
+        action end_transfer_encoding {
+            if (headerValueMark != null) {
+                String headerValue = extract(headerValueMark, buf, fpc);
+                callback.header(headers, HDR_TRANSFER_ENCODING, headerValue.toLowerCase());
+                headerValueMark = null;
+            }
         }
 
         action start_head {
@@ -165,13 +229,14 @@ public class HttpParser extends AFn {
         include "http.rl";
     }%%
 
-    public static final int MAX_HEADER_SIZE = 100 * 1024;
-    public static final int PARSING_HEAD    = 1 << 0;
-    public static final int IDENTITY_BODY   = 1 << 1;
-    public static final int CHUNKED_BODY    = 1 << 2;
-    public static final int KEEP_ALIVE      = 1 << 3;
-    public static final int UPGRADE         = 1 << 4;
-    public static final int ERROR           = 1 << 5;
+    public static final long ALMOST_MAX_LONG = Long.MAX_VALUE / 10 - 10;
+    public static final int  MAX_HEADER_SIZE = 100 * 1024;
+    public static final int  PARSING_HEAD    = 1 << 0;
+    public static final int  IDENTITY_BODY   = 1 << 1;
+    public static final int  CHUNKED_BODY    = 1 << 2;
+    public static final int  KEEP_ALIVE      = 1 << 3;
+    public static final int  UPGRADE         = 1 << 4;
+    public static final int  ERROR           = 1 << 5;
 
 
     %% write data;
@@ -232,6 +297,9 @@ public class HttpParser extends AFn {
     private String headerName;
     private Mark   headerNameMark;
     private Mark   headerValueMark;
+
+    // Track the content length of the HTTP message
+    private long contentLength;
 
     // The object that gets called on various parse events.
     private HttpParserCallback callback;
@@ -307,6 +375,7 @@ public class HttpParser extends AFn {
         // Setup ragel variables
         int p  = 0;
         int pe = buf.remaining();
+        int eof = pe + 1;
 
         %% getkey buf.get(p);
         %% write exec;
@@ -320,6 +389,7 @@ public class HttpParser extends AFn {
 
     private void reset() {
         flags = 0;
+        contentLength = 0;
         resetHeadState();
     }
 

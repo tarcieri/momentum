@@ -26,7 +26,16 @@
        (transient {}))
 
      (header [_ headers name value]
-       (assoc! headers name value))
+       (let [existing (headers name)]
+         (cond
+          (nil? existing)
+          (assoc! headers name value)
+
+          (string? existing)
+          (assoc! headers name [existing value])
+
+          :else
+          (assoc! headers name (conj existing value)))))
 
      (^void request [_ ^HttpParser parser ^Object hdrs]
        (f :request [(request-headers parser hdrs)])))))

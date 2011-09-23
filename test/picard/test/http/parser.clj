@@ -3,7 +3,10 @@
    clojure.test
    picard.http.parser)
   (:require
-   [clojure.string :as str]))
+   [clojure.string :as str])
+  (:import
+   [picard.http
+    HttpParserException]))
 
 (def valid-methods
   ["HEAD"
@@ -53,14 +56,19 @@
    :query-string   ""
    :http-version   [1 1]})
 
+(defn- parsing
+  ([raw] (parsing raw (fn [_ _])))
+  ([raw f]
+     (let [p (parser f)]
+       (if (coll? raw)
+         (doseq [raw raw] (parse p raw))
+         (parse p raw)))))
+
 (defn- is-parsed-as
   [msg raw & expected]
   (let [res      (atom [])
-        expected (vec (map vec (partition 2 expected)))
-        p        (parser (fn [evt val] (swap! res #(conj % [evt val]))))]
-    (if (coll? raw)
-      (doseq [raw raw] (parse p raw))
-      (parse p raw))
+        expected (vec (map vec (partition 2 expected)))]
+    (parsing raw (fn [evt val] (swap! res #(conj % [evt val]))))
     (do-report
      {:type    (if (= expected @res) :pass :fail)
       :message  msg
@@ -141,4 +149,68 @@
   (is (parsed-as
        (str "GET / HTTP/1.1\r\n"
             "Zomg: HI2U\r\n\r\n")
-       :request [(assoc request-line "Zomg" "HI2U")])))
+       :request [(assoc request-line "zomg" "HI2U")])))
+
+(deftest parsing-content-lengths
+  (is (parsed-as
+       (str "GET / HTTP/1.1\r\n"
+            "Content-Length: 922337203685477580\r\n\r\n")
+       :request [(assoc request-line "content-length" "922337203685477580")]))
+
+  (is (thrown?
+       HttpParserException
+       (parsing (str "GET / HTTP/1.1\r\n"
+                     "Content-Length: lulz\r\n\r\n"))))
+
+  (is (thrown?
+       HttpParserException
+       (parsing (str "GET / HTTP/1.1\r\n"
+                     "Content-Length: 9223372036854775807\r\n\r\n")))))
+
+(deftest ^{:focus true} parsing-transfer-encodings
+  (is (parsed-as
+       (str "GET / HTTP/1.1\r\n"
+            "Transfer-Encoding: chunked\r\n\r\n")
+       :request [(assoc request-line "transfer-encoding" "chunked")]))
+
+  ;; (is (parsed-as
+  ;;      (str "GET / HTTP/1.1\r\n"
+  ;;           "transfer-encoding: chunked \r\n\r\n")
+  ;;      :request [(assoc request-line "transfer-encoding" "chunked")]))
+
+  ;; (is (parsed-as
+  ;;      (str "GET / HTTP/1.1\r\n"
+  ;;           "Transfer-Encoding: chunked;lulz\r\n\r\n")
+  ;;      :request [(assoc request-line "transfer-encoding" "chunked;lulz")]))
+
+  ;; (is (parsed-as
+  ;;      (str "GET / HTTP/1.1\r\n"
+  ;;           "Transfer-encoding: Chunked\r\n\r\n")
+  ;;      :request [(assoc request-line "transfer-encoding" "chunked")]))
+
+  ;; (is (parsed-as
+  ;;      (str "GET / HTTP/1.1\r\n"
+  ;;           "Transfer-encoding: chun\r\n\r\n")
+  ;;      :request [(assoc request-line "transfer-encoding" "chun")]))
+
+  (is (parsed-as
+       (str "GET / HTTP/1.1\r\n"
+            "TRANSFER-ENCODING: zomg\r\n\r\n")
+       :request [(assoc request-line "transfer-encoding" "zomg")]))
+
+  ;; (is (parsed-as
+  ;;      (str "GET / HTTP/1.1\r\n"
+  ;;           "Transfer-Encoding: zomg \r\n\r\n")
+  ;;      :request [(assoc request-line "transfer-encoding" "zomg")]))
+
+  ;; (is (parsed-as
+  ;;      (str "GET / HTTP/1.1\r\n"
+  ;;           "transfer-encoding: zomg;omg\r\n\r\n")
+  ;;      :request [(assoc request-line "transfer-encoding" "zomg;omg")]))
+
+  ;; (is (parsed-as
+  ;;      (str "GET / HTTP/1.1\r\n"
+  ;;           "transfer-encoding: Zomg;OMG\r\n\r\n")
+  ;;      :request [(assoc request-line "transfer-encoding" "zomg;omg")]))
+
+  )
