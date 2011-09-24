@@ -37,8 +37,8 @@ public class Mark {
         this.previous = previous;
     }
 
-    public int total() {
-        return total;
+    public Mark previous() {
+        return previous;
     }
 
     public void mark(int offset) {
@@ -46,17 +46,11 @@ public class Mark {
     }
 
     public void finalize() {
-        System.out.println("[Mark#finalize] -> to: " + to + ", from: " + from);
         total = to - from;
 
         if (previous != null) {
-            System.out.println("[Mark#finalize] previous.total(): " + previous.total());
             total += previous.total();
         }
-    }
-
-    public Mark trim() {
-        return this;
     }
 
     public void finalize(int offset) {
@@ -67,6 +61,24 @@ public class Mark {
     public Mark bridge(ByteBuffer nextBuf) {
         finalize(buf.limit());
         return new Mark(nextBuf, 0, this);
+    }
+
+    public Mark remainingWhiteSpace() {
+        if (to == buf.limit()) {
+            return null;
+        }
+        else if (lastByteIsText()) {
+            finalize(buf.limit());
+            return null;
+        }
+        else {
+            Mark rest = new Mark(buf, to, this);
+
+            finalize();
+            rest.finalize(buf.limit());
+
+            return rest;
+        }
     }
 
     public String materialize() {
@@ -82,8 +94,8 @@ public class Mark {
         return new String(buf);
     }
 
-    protected Mark previous() {
-        return previous;
+    protected int total() {
+        return total;
     }
 
     protected int copy(byte [] dst, int pos) {
@@ -93,25 +105,15 @@ public class Mark {
 
         buf.position(from);
         buf.limit(to);
-        try {
-            buf.get(dst, dst.length - (pos + length), length);
-        }
-        catch (RuntimeException e) {
-            System.out.println("CURRENT: ");
-            System.out.println(new String(dst));
-            System.out.println("-------------");
-            System.out.println("from: " + from + ", to: " + to);
-            System.out.println("offset: " + (dst.length - (pos + length)));
-            System.out.println("length: " + length);
-            System.out.println("====");
-            System.out.println("BUFFER: '" + new String(buf.array()) + "'");
-            System.out.println("====");
-            throw e;
-        }
+        buf.get(dst, dst.length - (pos + length), length);
 
         buf.position(oldPos);
         buf.limit(oldLim);
 
         return length;
+    }
+
+    private boolean lastByteIsText() {
+        return ! HttpParser.isWhiteSpace(buf.get(buf.limit() - 1));
     }
 }

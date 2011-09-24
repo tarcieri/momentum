@@ -139,51 +139,26 @@ public class HttpParser extends AFn {
         }
 
         action start_header_value_line {
-            System.out.println("!!!! START HEADER LINE");
-            // Handle concatting header lines with a single space
-            if (headerValueMark == null) {
-                headerValueMark = new HeaderValueMark(buf, fpc, headerValueMark);
+            if (headerValue == null) {
+                headerValue = new HeaderValue(buf, fpc);
             }
             else {
-                Mark sp = new HeaderValueMark(SPACE, 0, headerValueMark);
-                sp.finalize(1);
-
-                headerValueMark = new HeaderValueMark(buf, fpc, sp);
+                headerValue.startLine(buf, fpc);
             }
         }
 
         action end_header_value_non_ws {
-            System.out.println("!!!! ENDING NON WS CHAR");
-            headerValueMark.mark(fpc);
+            headerValue.mark(fpc);
         }
 
         action end_header_value_line {
-            System.out.println("[HttpParser#end_header_value_line] headerValueMark: " +
-                               headerValueMark);
-            headerValueMark.finalize();
-            headerValueMark = headerValueMark.trim();
+            headerValue.endLine();
         }
 
         action end_header_value {
-            System.out.println("-------------> CAAAAALLBACK");
-            String headerValue = headerValueMark.materialize();
-            headerValueMark    = null;
-
-            callback.header(headers, headerName, headerValue);
+            callback.header(headers, headerName, headerValue.materialize());
+            headerValue = null;
         }
-
-        # action start_header_value {
-        #     headerValueMark = new Mark(buf, fpc);
-        # }
-
-        # action end_header_value {
-        #     headerValueMark.finalize(fpc);
-
-        #     String headerValue = headerValueMark.materialize();
-        #     headerValueMark    = null;
-
-        #     callback.header(headers, headerName, headerValue);
-        # }
 
         action count_content_length {
             if (contentLength >= ALMOST_MAX_LONG) {
@@ -232,19 +207,19 @@ public class HttpParser extends AFn {
 
             flags |= CHUNKED_BODY;
 
-            headerValueMark = null;
+            // headerValueMark = null;
             callback.header(headers, HDR_TRANSFER_ENCODING, HDR_CHUNKED);
         }
 
         action end_transfer_encoding {
-            if (headerValueMark != null) {
-                headerValueMark.finalize(fpc);
+            // if (headerValueMark != null) {
+            //     headerValueMark.finalize(fpc);
 
-                String headerValue = headerValueMark.materialize().toLowerCase();
-                headerValueMark    = null;
+            //     String headerValue = headerValueMark.materialize().toLowerCase();
+            //     headerValueMark    = null;
 
-                callback.header(headers, HDR_TRANSFER_ENCODING, headerValue);
-            }
+            //     callback.header(headers, HDR_TRANSFER_ENCODING, headerValue);
+            // }
         }
 
         action start_head {
@@ -331,7 +306,8 @@ public class HttpParser extends AFn {
     private Mark   queryStringMark;
     private String headerName;
     private Mark   headerNameMark;
-    private Mark   headerValueMark;
+
+    private HeaderValue headerValue;
 
     // Track the content length of the HTTP message
     private long contentLength;
@@ -416,7 +392,10 @@ public class HttpParser extends AFn {
             pathInfoMark    = bridge(buf, pathInfoMark);
             queryStringMark = bridge(buf, queryStringMark);
             headerNameMark  = bridge(buf, headerNameMark);
-            headerValueMark = bridge(buf, headerValueMark);
+
+            if (headerValue != null) {
+                headerValue.bridge(buf);
+            }
         }
 
         %% getkey buf.get(p);
@@ -448,6 +427,6 @@ public class HttpParser extends AFn {
         queryStringMark = null;
         headerName      = null;
         headerNameMark  = null;
-        headerValueMark = null;
+        headerValue     = null;
     }
 }

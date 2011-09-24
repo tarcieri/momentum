@@ -60,7 +60,7 @@ public class HttpParser extends AFn {
     }
 
     
-// line 275 "src/rl/picard/http/HttpParser.rl"
+// line 250 "src/rl/picard/http/HttpParser.rl"
 
 
     public static final long ALMOST_MAX_LONG = Long.MAX_VALUE / 10 - 10;
@@ -374,7 +374,7 @@ static final int http_error = 0;
 static final int http_en_main = 1;
 
 
-// line 288 "src/rl/picard/http/HttpParser.rl"
+// line 263 "src/rl/picard/http/HttpParser.rl"
 
     // Variable used by ragel to represent the current state of the
     // parser. This must be an integer and it should persist across
@@ -421,7 +421,8 @@ static final int http_en_main = 1;
     private Mark   queryStringMark;
     private String headerName;
     private Mark   headerNameMark;
-    private Mark   headerValueMark;
+
+    private HeaderValue headerValue;
 
     // Track the content length of the HTTP message
     private long contentLength;
@@ -431,12 +432,12 @@ static final int http_en_main = 1;
 
     public HttpParser(HttpParserCallback callback) {
         
-// line 435 "src/java/picard/http/HttpParser.java"
+// line 436 "src/java/picard/http/HttpParser.java"
 	{
 	cs = http_start;
 	}
 
-// line 344 "src/rl/picard/http/HttpParser.rl"
+// line 320 "src/rl/picard/http/HttpParser.rl"
         this.callback = callback;
     }
 
@@ -512,13 +513,16 @@ static final int http_en_main = 1;
             pathInfoMark    = bridge(buf, pathInfoMark);
             queryStringMark = bridge(buf, queryStringMark);
             headerNameMark  = bridge(buf, headerNameMark);
-            headerValueMark = bridge(buf, headerValueMark);
+
+            if (headerValue != null) {
+                headerValue.bridge(buf);
+            }
         }
 
         
-// line 423 "src/rl/picard/http/HttpParser.rl"
+// line 402 "src/rl/picard/http/HttpParser.rl"
         
-// line 522 "src/java/picard/http/HttpParser.java"
+// line 526 "src/java/picard/http/HttpParser.java"
 	{
 	int _klen;
 	int _trans = 0;
@@ -765,54 +769,42 @@ case 1:
 	case 32:
 // line 141 "src/rl/picard/http/HttpParser.rl"
 	{
-            System.out.println("!!!! START HEADER LINE");
-            // Handle concatting header lines with a single space
-            if (headerValueMark == null) {
-                headerValueMark = new HeaderValueMark(buf, p, headerValueMark);
+            if (headerValue == null) {
+                headerValue = new HeaderValue(buf, p);
             }
             else {
-                Mark sp = new HeaderValueMark(SPACE, 0, headerValueMark);
-                sp.finalize(1);
-
-                headerValueMark = new HeaderValueMark(buf, p, sp);
+                headerValue.startLine(buf, p);
             }
         }
 	break;
 	case 33:
-// line 155 "src/rl/picard/http/HttpParser.rl"
+// line 150 "src/rl/picard/http/HttpParser.rl"
 	{
-            System.out.println("!!!! ENDING NON WS CHAR");
-            headerValueMark.mark(p);
+            headerValue.mark(p);
         }
 	break;
 	case 34:
-// line 160 "src/rl/picard/http/HttpParser.rl"
+// line 154 "src/rl/picard/http/HttpParser.rl"
 	{
-            System.out.println("[HttpParser#end_header_value_line] headerValueMark: " +
-                               headerValueMark);
-            headerValueMark.finalize();
-            headerValueMark = headerValueMark.trim();
+            headerValue.endLine();
         }
 	break;
 	case 35:
-// line 167 "src/rl/picard/http/HttpParser.rl"
+// line 158 "src/rl/picard/http/HttpParser.rl"
 	{
-            System.out.println("-------------> CAAAAALLBACK");
-            String headerValue = headerValueMark.materialize();
-            headerValueMark    = null;
-
-            callback.header(headers, headerName, headerValue);
+            callback.header(headers, headerName, headerValue.materialize());
+            headerValue = null;
         }
 	break;
 	case 36:
-// line 250 "src/rl/picard/http/HttpParser.rl"
+// line 225 "src/rl/picard/http/HttpParser.rl"
 	{
             flags  |= PARSING_HEAD;
             headers = callback.blankHeaders();
         }
 	break;
 	case 37:
-// line 255 "src/rl/picard/http/HttpParser.rl"
+// line 230 "src/rl/picard/http/HttpParser.rl"
 	{
             // Not parsing the HTTP message head anymore
             flags ^= PARSING_HEAD;
@@ -824,7 +816,7 @@ case 1:
         }
 	break;
 	case 38:
-// line 265 "src/rl/picard/http/HttpParser.rl"
+// line 240 "src/rl/picard/http/HttpParser.rl"
 	{
             flags |= ERROR;
 
@@ -833,7 +825,7 @@ case 1:
             }
         }
 	break;
-// line 837 "src/java/picard/http/HttpParser.java"
+// line 829 "src/java/picard/http/HttpParser.java"
 			}
 		}
 	}
@@ -855,7 +847,7 @@ case 4:
 	while ( __nacts-- > 0 ) {
 		switch ( _http_actions[__acts++] ) {
 	case 38:
-// line 265 "src/rl/picard/http/HttpParser.rl"
+// line 240 "src/rl/picard/http/HttpParser.rl"
 	{
             flags |= ERROR;
 
@@ -864,7 +856,7 @@ case 4:
             }
         }
 	break;
-// line 868 "src/java/picard/http/HttpParser.java"
+// line 860 "src/java/picard/http/HttpParser.java"
 		}
 	}
 	}
@@ -874,7 +866,7 @@ case 5:
 	break; }
 	}
 
-// line 424 "src/rl/picard/http/HttpParser.rl"
+// line 403 "src/rl/picard/http/HttpParser.rl"
 
         return p;
     }
@@ -902,6 +894,6 @@ case 5:
         queryStringMark = null;
         headerName      = null;
         headerNameMark  = null;
-        headerValueMark = null;
+        headerValue     = null;
     }
 }
