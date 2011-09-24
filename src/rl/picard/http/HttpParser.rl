@@ -44,102 +44,17 @@ public class HttpParser extends AFn {
         PATCH
     }
 
+    public static final byte SP = (byte) 0x20; // Space
+    public static final byte HT = (byte) 0x09; // Horizontal tab
+    public static final ByteBuffer SPACE = ByteBuffer.wrap(new byte[] { SP });
+
     public static final String HDR_CONNECTION        = "connection";
     public static final String HDR_CONTENT_LENGTH    = "content-length";
     public static final String HDR_TRANSFER_ENCODING = "transfer-encoding";
     public static final String HDR_CHUNKED           = "chunked";
 
-    // A helper class that can be used to mark points of interest in
-    // the buffers that are being parsed. Whenever a point of interest
-    // is reached, it is marked with an instance of this class. When
-    // the end of the point of interest is reached, that is also
-    // marked. Using this class allows spanning multiple chunks since
-    // when the end of a chunk is reached, we can simply finalize the
-    // mark and then start up a new one when the next chunk is
-    // received.
-    private class Mark {
-        // The previous mark in the stack
-        private final Mark previous;
-
-        // The byte buffer that this mark points to
-        private final ByteBuffer buf;
-
-        // The offset in the buffer that the mark starts at
-        private final int from;
-
-        // The offset in the buffer that the mark ends at
-        private int to;
-
-        // The total length of all the previous marks and the current
-        // combined.
-        private int total;
-
-        public Mark(ByteBuffer buf, int from) {
-            this(buf, from, null);
-        }
-
-        public Mark(ByteBuffer buf, int from, Mark previous) {
-            this.buf      = buf;
-            this.from     = from;
-            this.previous = previous;
-        }
-
-        public int total() {
-            return total;
-        }
-
-        public void finalize() {
-            finalize(buf.limit());
-        }
-
-        public void finalize(int offset) {
-            this.to    = offset;
-            this.total = offset - from;
-
-            if (previous != null) {
-                this.total += previous.total();
-            }
-        }
-
-        public Mark link(ByteBuffer buf) {
-            return link(buf, buf.position());
-        }
-
-        public Mark link(ByteBuffer buf, int from) {
-            return new Mark(buf, from, this);
-        }
-
-        public String materialize() {
-            byte [] buf = new byte[total()];
-            Mark    cur = this;
-            int     pos = 0;
-
-            while (cur != null) {
-                pos += cur.copy(buf, pos);
-                cur  = cur.previous();
-            }
-
-            return new String(buf);
-        }
-
-        protected Mark previous() {
-            return previous;
-        }
-
-        protected int copy(byte [] dst, int pos) {
-            int oldPos = buf.position();
-            int oldLim = buf.limit();
-            int length = to - from;
-
-            buf.position(from);
-            buf.limit(to);
-            buf.get(dst, dst.length - (pos + length), length);
-
-            buf.position(oldPos);
-            buf.limit(oldLim);
-
-            return length;
-        }
+    public static boolean isWhiteSpace(byte b) {
+        return b == SP || b == HT;
     }
 
     %%{
@@ -223,18 +138,52 @@ public class HttpParser extends AFn {
             headerNameMark = null;
         }
 
-        action start_header_value {
-            headerValueMark = new Mark(buf, fpc);
+        action start_header_value_line {
+            System.out.println("!!!! START HEADER LINE");
+            // Handle concatting header lines with a single space
+            if (headerValueMark == null) {
+                headerValueMark = new HeaderValueMark(buf, fpc, headerValueMark);
+            }
+            else {
+                Mark sp = new HeaderValueMark(SPACE, 0, headerValueMark);
+                sp.finalize(1);
+
+                headerValueMark = new HeaderValueMark(buf, fpc, sp);
+            }
+        }
+
+        action end_header_value_non_ws {
+            System.out.println("!!!! ENDING NON WS CHAR");
+            headerValueMark.mark(fpc);
+        }
+
+        action end_header_value_line {
+            System.out.println("[HttpParser#end_header_value_line] headerValueMark: " +
+                               headerValueMark);
+            headerValueMark.finalize();
+            headerValueMark = headerValueMark.trim();
         }
 
         action end_header_value {
-            headerValueMark.finalize(fpc);
-
+            System.out.println("-------------> CAAAAALLBACK");
             String headerValue = headerValueMark.materialize();
             headerValueMark    = null;
 
             callback.header(headers, headerName, headerValue);
         }
+
+        # action start_header_value {
+        #     headerValueMark = new Mark(buf, fpc);
+        # }
+
+        # action end_header_value {
+        #     headerValueMark.finalize(fpc);
+
+        #     String headerValue = headerValueMark.materialize();
+        #     headerValueMark    = null;
+
+        #     callback.header(headers, headerName, headerValue);
+        # }
 
         action count_content_length {
             if (contentLength >= ALMOST_MAX_LONG) {
@@ -311,6 +260,14 @@ public class HttpParser extends AFn {
 
             // Unset references to allow the GC to reclaim the memory
             resetHeadState();
+        }
+
+        action something_went_wrong {
+            flags |= ERROR;
+
+            if (isError()) {
+                throw new HttpParserException("Something went wrong");
+            }
         }
 
 
@@ -451,42 +408,29 @@ public class HttpParser extends AFn {
         }
 
         // Setup ragel variables
-        int p  = 0;
-        int pe = buf.remaining();
+        int p   = 0;
+        int pe  = buf.remaining();
         int eof = pe + 1;
 
         if (isParsingHead()) {
-            pathInfoMark    = link(buf, pathInfoMark);
-            queryStringMark = link(buf, queryStringMark);
-            headerNameMark  = link(buf, headerNameMark);
-            headerValueMark = link(buf, headerValueMark);
+            pathInfoMark    = bridge(buf, pathInfoMark);
+            queryStringMark = bridge(buf, queryStringMark);
+            headerNameMark  = bridge(buf, headerNameMark);
+            headerValueMark = bridge(buf, headerValueMark);
         }
 
         %% getkey buf.get(p);
         %% write exec;
 
-        if (isParsingHead()) {
-            tieOff(pathInfoMark);
-            tieOff(queryStringMark);
-            tieOff(headerNameMark);
-            tieOff(headerValueMark);
-        }
-
         return p;
     }
 
-    private Mark link(ByteBuffer buf, Mark mark) {
+    private Mark bridge(ByteBuffer buf, Mark mark) {
         if (mark == null) {
             return null;
         }
 
-        return mark.link(buf);
-    }
-
-    private void tieOff(Mark mark) {
-        if (mark != null) {
-            mark.finalize();
-        }
+        return mark.bridge(buf);
     }
 
     private void reset() {

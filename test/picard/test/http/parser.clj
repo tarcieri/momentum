@@ -145,11 +145,112 @@
                   :path-info      "/hello/world"
                   :query-string   "zomgwhatsup"}])))
 
-(deftest parsing-single-headers
+(deftest ^{:focus true} parsing-single-headers
+  ;; (is (parsed-as
+  ;;      (str "GET / HTTP/1.1\r\n"
+  ;;           "Zomg: HI2U\r\n\r\n")
+  ;;      :request [(assoc request-line "zomg" "HI2U")]))
+
+  ;; (is (parsed-as
+  ;;      (str "GET / HTTP/1.1\r\n"
+  ;;           "Zomg:HI2U\r\n\r\n")
+  ;;      :request [(assoc request-line "zomg" "HI2U")]))
+
+  ;; (is (parsed-as
+  ;;      (str "GET / HTTP/1.1\r\n"
+  ;;           "Zomg  :  HI2U \r\n\r\n")
+  ;;      :request [(assoc request-line "zomg" "HI2U")]))
+
+  ;; (is (parsed-as
+  ;;      ["GET / HTTP/1.1\r\n"
+  ;;       "Zomg" ": HI2U\r\n\r\n"]
+  ;;      :request [(assoc request-line "zomg" "HI2U")]))
+
+  ;; (is (parsed-as
+  ;;      ["GET / HTTP/1.1\r\n"
+  ;;       "ZO" "MG" "  : " "HI2U\r\n\r\n"]
+  ;;      :request [(assoc request-line "zomg" "HI2U")]))
+
+  ;; (is (parsed-as
+  ;;      ["GET / HTTP/1.1\r\n"
+  ;;       "zomg: " "H" "I" "2" "U" "\r\n\r\n"]
+  ;;      :request [(assoc request-line "zomg" "HI2U")]))
+
+  ;; (is (parsed-as
+  ;;      (str "GET / HTTP/1.1\r\n"
+  ;;           "zomg: HI  2U \r\n\r\n")
+  ;;      :request [(assoc request-line "zomg" "HI  2U")]))
+
+  ;; (is (parsed-as
+  ;;      ["GET / HTTP/1.1\r\n"
+  ;;       "zomg: HI  " "2U\r\n\r\n"]
+  ;;      :request [(assoc request-line "zomg" "HI  2U")]))
+
+  ;; (is (parsed-as
+  ;;      ["GET / HTTP/1.1\r\n"
+  ;;       "zomg: HI " " " " 2U\r\n\r\n"]
+  ;;      :request [(assoc request-line "zomg" "HI   2U")]))
+
+  ;; (is (parsed-as
+  ;;      ["GET / HTTP/1.1\r\n"
+  ;;       "zomg: HI2U" "\r\n\r\n"]
+  ;;      :request [(assoc request-line "zomg" "HI2U")]))
+
+  ;; (is (parsed-as
+  ;;      ["GET / HTTP/1.1\r\n"
+  ;;       "zomg: HI" " " " 2U\r\n\r\n"]
+  ;;      :request [(assoc request-line "zomg" "HI  2U")]))
+
+  ;; (is (parsed-as
+  ;;      ["GET / HTTP/1.1\r\n"
+  ;;       "zomg: HI " " 2U" "\r\n\r\n"]
+  ;;      :request [(assoc request-line "zomg" "HI  2U")]))
+
+  ;; (is (parsed-as
+  ;;      ["GET / HTTP/1.1\r\n"
+  ;;       "zomg: HI" " " "\r\n\r\n"]
+  ;;      :request [(assoc request-line "zomg" "HI")]))
+
+  ;; (is (parsed-as
+  ;;      ["GET / HTTP/1.1\r\n"
+  ;;       "zomg: HI " " " " \r\n\r\n"]
+  ;;      :request [(assoc request-line "zomg" "HI")]))
+
+  ;; (is (parsed-as
+  ;;      (str "GET / HTTP/1.1\r\n"
+  ;;           "zomg: HI\r\n"
+  ;;           " 2U\r\n\r\n")
+  ;;      :request [(assoc request-line "zomg" "HI 2U")]))
+
+  ;; (is (parsed-as
+  ;;      (str "GET / HTTP/1.1\r\n"
+  ;;           "zomg: HI\r\n"
+  ;;           "\t2U\r\n\r\n")
+  ;;      :request [(assoc request-line "zomg" "HI 2U")]))
+
+  ;; (is (parsed-as
+  ;;      (str "GET / HTTP/1.1\r\n"
+  ;;           "zomg:HI\r\n"
+  ;;           " 2U\r\n\r\n")
+  ;;      :request [(assoc request-line "zomg" "HI 2U")]))
+
+  ;; (is (parsed-as
+  ;;      ["GET / HTTP/1.1\r\n"
+  ;;       "zomg: HI " "\r\n 2U\r\n\r\n"]
+  ;;      :request [(assoc request-line "zomg" "HI 2U")]))
+
   (is (parsed-as
-       (str "GET / HTTP/1.1\r\n"
-            "Zomg: HI2U\r\n\r\n")
-       :request [(assoc request-line "zomg" "HI2U")])))
+       ["GET / HTTP/1.1\r\n"
+        "Zomg: HI  " "\r\n"
+        "  2U\r\n\r\n"]
+       :request [(assoc request-line "zomg" "HI 2U")]))
+
+  ;; (is (parsed-as
+  ;;      ["GET / HTTP/1.1\r\n"
+  ;;       "Zomg: HI   \r\n"
+  ;;       "   2U\r\n\r\n"]
+  ;;      :request [(assoc request-line "zomg" "HI 2U")]))
+  )
 
 (deftest parsing-content-lengths
   (is (parsed-as
@@ -167,7 +268,7 @@
        (parsing (str "GET / HTTP/1.1\r\n"
                      "Content-Length: 9223372036854775807\r\n\r\n")))))
 
-(deftest ^{:focus true} parsing-transfer-encodings
+(deftest parsing-transfer-encodings
   (is (parsed-as
        (str "GET / HTTP/1.1\r\n"
             "Transfer-Encoding: chunked\r\n\r\n")
