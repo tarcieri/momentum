@@ -21,30 +21,30 @@
   paramed_val = token * ( ";" ) ?;
 
   # === HTTP methods
-  method = "HEAD"        @ method_head
-         | "GET"         @ method_get
-         | "POST"        @ method_post
-         | "PUT"         @ method_put
-         | "DELETE"      @ method_delete
-         | "CONNECT"     @ method_connect
-         | "OPTIONS"     @ method_options
-         | "TRACE"       @ method_trace
-         | "COPY"        @ method_copy
-         | "LOCK"        @ method_lock
-         | "MKCOL"       @ method_mkcol
-         | "MOVE"        @ method_move
-         | "PROPFIND"    @ method_propfind
-         | "PROPPATCH"   @ method_proppatch
-         | "UNLOCK"      @ method_unlock
-         | "REPORT"      @ method_report
-         | "MKACTIVITY"  @ method_mkactivity
-         | "CHECKOUT"    @ method_checkout
-         | "MERGE"       @ method_merge
-         | "MSEARCH"     @ method_msearch
-         | "NOTIFY"      @ method_notify
-         | "SUBSCRIBE"   @ method_subscribe
-         | "UNSUBSCRIBE" @ method_unsubscribe
-         | "PATCH"       @ method_patch
+  method = "HEAD"        % method_head
+         | "GET"         % method_get
+         | "POST"        % method_post
+         | "PUT"         % method_put
+         | "DELETE"      % method_delete
+         | "CONNECT"     % method_connect
+         | "OPTIONS"     % method_options
+         | "TRACE"       % method_trace
+         | "COPY"        % method_copy
+         | "LOCK"        % method_lock
+         | "MKCOL"       % method_mkcol
+         | "MOVE"        % method_move
+         | "PROPFIND"    % method_propfind
+         | "PROPPATCH"   % method_proppatch
+         | "UNLOCK"      % method_unlock
+         | "REPORT"      % method_report
+         | "MKACTIVITY"  % method_mkactivity
+         | "CHECKOUT"    % method_checkout
+         | "MERGE"       % method_merge
+         | "MSEARCH"     % method_msearch
+         | "NOTIFY"      % method_notify
+         | "SUBSCRIBE"   % method_subscribe
+         | "UNSUBSCRIBE" % method_unsubscribe
+         | "PATCH"       % method_patch
          ;
 
   # === HTTP request URI
@@ -56,8 +56,77 @@
 
 
   # === HTTP headers
-  header_sep = WS * ":";
+  header_sep = WS * ":" WS *;
   header_eol = WS * CRLF;
+
+  header_name = "accept"i                    % hn_accept
+              | "accept-charset"i            % hn_accept_charset
+              | "accept-encoding"i           % hn_accept_encoding
+              | "accept-language"i           % hn_accept_language
+              | "accept-ranges"i             % hn_accept_ranges
+              | "age"i                       % hn_age
+              | "allow"i                     % hn_allow
+              | "authorization"i             % hn_authorization
+              | "cache-control"i             % hn_cache_control
+              | "connection"i                % hn_connection
+              | "content-encoding"i          % hn_content_encoding
+              | "content-language"i          % hn_content_language
+              | "content-length"i            % hn_content_length
+              | "content-location"i          % hn_content_location
+              | "content-md5"i               % hn_content_md5
+              | "content-disposition"i       % hn_content_disposition
+              | "content-range"i             % hn_content_range
+              | "content-type"i              % hn_content_type
+              | "cookie"i                    % hn_cookie
+              | "date"i                      % hn_date
+              | "dnt"i                       % hn_dnt
+              | "etag"i                      % hn_etag
+              | "expect"i                    % hn_expect
+              | "expires"i                   % hn_expires
+              | "from"i                      % hn_from
+              | "host"i                      % hn_host
+              | "if-match"i                  % hn_if_match
+              | "if-modified-since"i         % hn_if_modified_since
+              | "if-none-match"i             % hn_if_none_match
+              | "if-range"i                  % hn_if_range
+              | "if-unmodified-since"i       % hn_if_unmodified_since
+              | "keep-alive"i                % hn_keep_alive
+              | "last-modified"i             % hn_last_modified
+              | "link"i                      % hn_link
+              | "location"i                  % hn_location
+              | "max-forwards"i              % hn_max_forwards
+              | "p3p"i                       % hn_p3p
+              | "pragma"i                    % hn_pragma
+              | "proxy-authenticate"i        % hn_proxy_authenticate
+              | "proxy-authorization"i       % hn_proxy_authorization
+              | "range"i                     % hn_range
+              | "referer"i                   % hn_referer
+              | "refresh"i                   % hn_refresh
+              | "retry-after"i               % hn_retry_after
+              | "server"i                    % hn_server
+              | "set-cookie"i                % hn_set_cookie
+              | "strict-transport-security"i % hn_strict_transport_security
+              | "te"i                        % hn_te
+              | "trailer"i                   % hn_trailer
+              | "transfer-encoding"i         % hn_transfer_encoding
+              | "upgrade"i                   % hn_upgrade
+              | "user-agent"i                % hn_user_agent
+              | "vary"i                      % hn_vary
+              | "via"i                       % hn_via
+              | "warning"i                   % hn_warning
+              | "www-authenticate"i          % hn_www_authenticate
+              | "x-content-type-options"i    % hn_x_content_type_options
+              | "x-do-not-track"i            % hn_x_do_not_track
+              | "x-forwarded-for"i           % hn_x_forwarded_for
+              | "x-forwarded-proto"i         % hn_x_forwarded_proto
+              | "x-frame-options"i           % hn_x_frame_options
+              | "x-powered-by"i              % hn_x_powered_by
+              | "x-requested-with"i          % hn_x_requested_with
+              | "x-xss-protection"i          % hn_x_xss_protection
+              | ( token + )
+                > start_header_name
+                % end_header_name
+              ;
 
   tracking_non_whitespace = ( LINE -- WS ) +
                           % end_header_value_non_ws
@@ -70,18 +139,15 @@
                     ;
 
   header_value_line_1 = header_value_line CRLF;
-
   header_value_line_n = WS+ <: header_value_line_1;
 
-  header_value = ( WS * <: header_value_line_1 header_value_line_n * )
+  header_value = ( header_value_line_1 header_value_line_n * )
                % end_header_value
                ;
 
-  header_name = ( token + )
-              > start_header_name
-              % end_header_name;
-
-  generic_header = header_name header_sep header_value;
+  generic_header = header_name
+                   header_sep <:
+                   header_value;
 
   # Header: Content-Length
   # ===
@@ -89,30 +155,16 @@
   content_length_val = digit +
                      $ count_content_length
                      % end_content_length
-                     $err(content_length_err)
                      ;
 
   content_length = "content-length"i
                    header_sep
-                   content_length_val
+                   content_length_val $lerr(content_length_err)
                    header_eol;
 
-  # Header: Transfer-Encoding
-  # ===
-  #
-
-  te_chunked = "chunked"i
-             % end_transfer_encoding_chunked
-             ;
-
-  transfer_encoding = "transfer-encoding"i header_sep te_chunked header_eol;
-
-  # header = content_length
-  #        | transfer_encoding
-  #        | generic_header
-  #        ;
-
-  header = generic_header;
+  header = content_length
+         | generic_header
+         ;
 
   headers = header *;
 

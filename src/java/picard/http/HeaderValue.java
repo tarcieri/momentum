@@ -13,7 +13,7 @@ public class HeaderValue {
     }
 
     public void startLine(ByteBuffer buf, int offset) {
-        Mark sp = new Mark(HeaderParser.SPACE, 0, complete);
+        Mark sp = new Mark(HttpParser.SPACE, 0, complete);
         sp.finalize(1); // We want the whole space :)
 
         current = new Mark(buf, offset, sp);
