@@ -162,7 +162,16 @@
                    content_length_val $lerr(content_length_err)
                    header_eol;
 
+  # Header: Transfer-Encoding
+  # ===
+  #
+  transfer_encoding = "transfer-encoding"i
+                      header_sep
+                      "chunked"i
+                      header_eol;
+
   header = content_length
+         | transfer_encoding % end_transfer_encoding_chunked
          | generic_header
          ;
 

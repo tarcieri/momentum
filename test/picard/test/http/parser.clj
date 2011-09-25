@@ -408,10 +408,4 @@
   (is (parsed-as
        (str "GET / HTTP/1.1\r\n"
             "transfer-encoding: zomg;omg\r\n\r\n")
-       :request [(assoc request-line "transfer-encoding" "zomg;omg")]))
-
-  (is (parsed-as
-       (str "GET / HTTP/1.1\r\n"
-            "transfer-encoding: Zomg;OMG\r\n\r\n")
-       :request [(assoc request-line "transfer-encoding" "zomg;omg")]))
-  )
+       :request [(assoc request-line "transfer-encoding" "zomg;omg")])))

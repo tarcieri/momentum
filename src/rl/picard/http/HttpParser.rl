@@ -114,7 +114,7 @@ public class HttpParser extends AFn {
     public static final String HDR_X_REQUESTED_WITH          = "x-requested-with";
     public static final String HDR_X_XSS_PROTECTION          = "x-xss-protection";
 
-    // public static final String HDR_CHUNKED = "chunked";
+    public static final String VAL_CHUNKED = "chunked";
 
     public static boolean isWhiteSpace(byte b) {
         return b == SP || b == HT;
@@ -321,13 +321,6 @@ public class HttpParser extends AFn {
             callback.header(headers, HDR_CONTENT_LENGTH, String.valueOf(contentLength));
         }
 
-        action transfer_encoding_err {
-            // Hack to get Java to compile
-            if (true) {
-                throw new HttpParserException("The transfer-encoding is in an invalid format");
-            }
-        }
-
         action end_transfer_encoding_chunked {
             if (isIdentityBody()) {
                 throw new HttpParserException("The message head is invalid");
@@ -335,19 +328,8 @@ public class HttpParser extends AFn {
 
             flags |= CHUNKED_BODY;
 
-            // headerValueMark = null;
-            callback.header(headers, HDR_TRANSFER_ENCODING, HDR_CHUNKED);
-        }
-
-        action end_transfer_encoding {
-            // if (headerValueMark != null) {
-            //     headerValueMark.finalize(fpc);
-
-            //     String headerValue = headerValueMark.materialize().toLowerCase();
-            //     headerValueMark    = null;
-
-            //     callback.header(headers, HDR_TRANSFER_ENCODING, headerValue);
-            // }
+            headerValue = null;
+            callback.header(headers, HDR_TRANSFER_ENCODING, VAL_CHUNKED);
         }
 
         action start_head {
