@@ -3,6 +3,12 @@ package picard.http;
 import clojure.lang.AFn;
 import java.nio.ByteBuffer;
 
+/**
+ * TODO:
+ *   - Limit the number of times marks can be bridged.
+ *   - Unify HeaderValue and marks.
+ *   - Limit the size of the head
+ */
 public class HttpParser extends AFn {
     public enum MessageType {
         REQUEST,
@@ -349,17 +355,32 @@ public class HttpParser extends AFn {
             // Not parsing the HTTP message head anymore
             flags ^= PARSING_HEAD;
 
-            callback.request(this, headers);
+            ByteBuffer body = null;
 
-            // Unset references to allow the GC to reclaim the memory
-            resetHeadState();
+            // callback.request(this, headers);
 
             if (isIdentityBody()) {
-                fnext identity_body;
+                // If the remaining content length is present in the
+                // buffer, just include it in the callback.
+                if (buf.remaining() >= contentLength) {
+                    int toRead = (int) contentLength;
+                    ++fpc;
+                    body = slice(buf, fpc, fpc + toRead);
+                    fpc += toRead - 1;
+                    contentLength = 0;
+                }
+                else {
+                    fnext identity_body;
+                }
             }
             else if (isChunkedBody()) {
                 fnext chunked_body;
             }
+
+            callback.request(this, headers, body);
+
+            // Unset references to allow the GC to reclaim the memory
+            resetHeadState();
         }
 
         action handling_body {
@@ -392,6 +413,9 @@ public class HttpParser extends AFn {
         }
 
         action something_went_wrong {
+            System.out.println("CURRENT POS: " + fpc);
+            System.out.println("CURRENT CHAR: " + fc);
+
             if (true) {
                 throw new HttpParserException("Something went wrong");
             }

@@ -124,7 +124,7 @@ public class HttpParser extends AFn {
     }
 
     
-// line 402 "src/rl/picard/http/HttpParser.rl"
+// line 420 "src/rl/picard/http/HttpParser.rl"
 
 
     public static final long ALMOST_MAX_LONG = Long.MAX_VALUE / 10 - 10;
@@ -2626,7 +2626,7 @@ static final int http_en_identity_body = 737;
 static final int http_en_main = 1;
 
 
-// line 416 "src/rl/picard/http/HttpParser.rl"
+// line 434 "src/rl/picard/http/HttpParser.rl"
 
     // Variable used by ragel to represent the current state of the
     // parser. This must be an integer and it should persist across
@@ -2689,7 +2689,7 @@ static final int http_en_main = 1;
 	cs = http_start;
 	}
 
-// line 473 "src/rl/picard/http/HttpParser.rl"
+// line 491 "src/rl/picard/http/HttpParser.rl"
         this.callback = callback;
     }
 
@@ -2773,7 +2773,7 @@ static final int http_en_main = 1;
 
         try {
             
-// line 556 "src/rl/picard/http/HttpParser.rl"
+// line 574 "src/rl/picard/http/HttpParser.rl"
             
 // line 2779 "src/java/picard/http/HttpParser.java"
 	{
@@ -2818,7 +2818,7 @@ case 1:
 	case 0: {
 		_widec = 65536 + (( buf.get(p)) - 0);
 		if ( 
-// line 365 "src/rl/picard/http/HttpParser.rl"
+// line 380 "src/rl/picard/http/HttpParser.rl"
 
             contentLength > 0
          ) _widec += 65536;
@@ -3414,21 +3414,36 @@ case 1:
             // Not parsing the HTTP message head anymore
             flags ^= PARSING_HEAD;
 
-            callback.request(this, headers);
+            ByteBuffer body = null;
 
-            // Unset references to allow the GC to reclaim the memory
-            resetHeadState();
+            // callback.request(this, headers);
 
             if (isIdentityBody()) {
-                cs = 737;
+                // If the remaining content length is present in the
+                // buffer, just include it in the callback.
+                if (buf.remaining() >= contentLength) {
+                    int toRead = (int) contentLength;
+                    ++p;
+                    body = slice(buf, p, p + toRead);
+                    p += toRead - 1;
+                    contentLength = 0;
+                }
+                else {
+                    cs = 737;
+                }
             }
             else if (isChunkedBody()) {
                 cs = 746;
             }
+
+            callback.request(this, headers, body);
+
+            // Unset references to allow the GC to reclaim the memory
+            resetHeadState();
         }
 	break;
 	case 107:
-// line 369 "src/rl/picard/http/HttpParser.rl"
+// line 384 "src/rl/picard/http/HttpParser.rl"
 	{
             int toRead;
 
@@ -3451,14 +3466,17 @@ case 1:
         }
 	break;
 	case 109:
-// line 394 "src/rl/picard/http/HttpParser.rl"
+// line 409 "src/rl/picard/http/HttpParser.rl"
 	{
+            System.out.println("CURRENT POS: " + p);
+            System.out.println("CURRENT CHAR: " + ( buf.get(p)));
+
             if (true) {
                 throw new HttpParserException("Something went wrong");
             }
         }
 	break;
-// line 3462 "src/java/picard/http/HttpParser.java"
+// line 3480 "src/java/picard/http/HttpParser.java"
 			}
 		}
 	}
@@ -3489,20 +3507,23 @@ case 4:
         }
 	break;
 	case 108:
-// line 390 "src/rl/picard/http/HttpParser.rl"
+// line 405 "src/rl/picard/http/HttpParser.rl"
 	{
             cs = 1;
         }
 	break;
 	case 109:
-// line 394 "src/rl/picard/http/HttpParser.rl"
+// line 409 "src/rl/picard/http/HttpParser.rl"
 	{
+            System.out.println("CURRENT POS: " + p);
+            System.out.println("CURRENT CHAR: " + ( buf.get(p)));
+
             if (true) {
                 throw new HttpParserException("Something went wrong");
             }
         }
 	break;
-// line 3506 "src/java/picard/http/HttpParser.java"
+// line 3527 "src/java/picard/http/HttpParser.java"
 		}
 	}
 	}
@@ -3512,7 +3533,7 @@ case 5:
 	break; }
 	}
 
-// line 557 "src/rl/picard/http/HttpParser.rl"
+// line 575 "src/rl/picard/http/HttpParser.rl"
         }
         catch (RuntimeException e) {
             flags |= ERROR;

@@ -39,8 +39,8 @@
           :else
           (assoc! headers name (conj existing value)))))
 
-     (^void request [_ ^HttpParser parser ^Object hdrs]
-       (f :request [(request-headers parser hdrs)]))
+     (^void request [_ ^HttpParser parser ^Object hdrs ^ByteBuffer body]
+       (f :request [(request-headers parser hdrs) body]))
 
      (^void body [_ ^HttpParser parser ^ByteBuffer buf]
        (f :body buf)))))

@@ -7,6 +7,8 @@
   (:import
    [org.jboss.netty.buffer
     ChannelBuffer]
+   [java.nio
+    ByteBuffer]
    [java.net
     Socket]
    [java.util.concurrent
@@ -121,6 +123,12 @@
 
      (instance? ChannelBuffer val)
      (.toString val "UTF-8")
+
+     (instance? ByteBuffer val)
+     (let [val (.duplicate val)
+           arr (byte-array (.remaining val))]
+       (.get val arr)
+       (String. arr))
 
      :else
      val)
