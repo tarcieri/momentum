@@ -115,6 +115,7 @@ public class HttpParser extends AFn {
     public static final String HDR_X_XSS_PROTECTION          = "x-xss-protection";
 
     public static final String VAL_CHUNKED = "chunked";
+    public static final String VAL_CLOSE   = "close";
 
     public static boolean isWhiteSpace(byte b) {
         return b == SP || b == HT;
@@ -332,6 +333,13 @@ public class HttpParser extends AFn {
             callback.header(headers, HDR_TRANSFER_ENCODING, VAL_CHUNKED);
         }
 
+        action end_connection {
+            flags |= CONN_CLOSE;
+
+            headerValue = null;
+            callback.header(headers, HDR_CONNECTION, VAL_CLOSE);
+        }
+
         action start_head {
             flags  |= PARSING_HEAD;
             headers = callback.blankHeaders();
@@ -345,6 +353,42 @@ public class HttpParser extends AFn {
 
             // Unset references to allow the GC to reclaim the memory
             resetHeadState();
+
+            if (isIdentityBody()) {
+                fnext identity_body;
+            }
+            else if (isChunkedBody()) {
+                fnext chunked_body;
+            }
+        }
+
+        action handling_body {
+            contentLength > 0
+        }
+
+        action handle_body {
+            int toRead;
+
+            toRead = (int) Math.min((long) Integer.MAX_VALUE, contentLength);
+            toRead = Math.min(buf.remaining(), toRead);
+
+            if (toRead > 0) {
+                contentLength -= toRead;
+
+                callback.body(this, slice(buf, fpc, fpc + toRead));
+
+                fpc += toRead - 1;
+
+                if (contentLength == 0) {
+                    callback.body(this, null);
+                }
+
+                fbreak;
+            }
+        }
+
+        action reset {
+            fnext main;
         }
 
         action something_went_wrong {
@@ -362,9 +406,10 @@ public class HttpParser extends AFn {
     public static final int  PARSING_HEAD    = 1 << 0;
     public static final int  IDENTITY_BODY   = 1 << 1;
     public static final int  CHUNKED_BODY    = 1 << 2;
-    public static final int  KEEP_ALIVE      = 1 << 3;
-    public static final int  UPGRADE         = 1 << 4;
-    public static final int  ERROR           = 1 << 5;
+    public static final int  CONN_CLOSE      = 1 << 3;
+    public static final int  KEEP_ALIVE      = 1 << 4;
+    public static final int  UPGRADE         = 1 << 5;
+    public static final int  ERROR           = 1 << 6;
 
 
     %% write data;
@@ -547,5 +592,14 @@ public class HttpParser extends AFn {
         headerName      = null;
         headerNameMark  = null;
         headerValue     = null;
+    }
+
+    private ByteBuffer slice(ByteBuffer buf, int from, int to) {
+        ByteBuffer retval = buf.asReadOnlyBuffer();
+
+        retval.position(from);
+        retval.limit(to);
+
+        return retval;
     }
 }

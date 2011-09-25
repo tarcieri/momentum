@@ -170,19 +170,39 @@
                       "chunked"i
                       header_eol;
 
+  # Header: Connection
+  # ===
+  # This probably isn't completely right since mutliple tokens
+  # are permitted in the Connection header.
+  # http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.10
+  #
+  connection = "connection"i
+               header_sep
+               "close"i
+               header_eol;
+
   header = content_length
-         | transfer_encoding % end_transfer_encoding_chunked
+         | transfer_encoding   % end_transfer_encoding_chunked
+         | connection          % end_connection
          | generic_header
          ;
 
   headers = header *;
 
   # === HTTP head
-  request_line = method " " request_uri " " http_version CRLF;
-  request_head = ( request_line headers CRLF ) > start_head @ end_head;
-  exchanges    = ( request_head + )
-               $err(something_went_wrong)
-               ;
+  request_line  = method " " request_uri " " http_version CRLF;
+  exchange_head = ( request_line headers CRLF ) > start_head @ end_head;
 
-  main := exchanges;
+  # === HTTP chunked body
+  chunked_body := 'a' *;
+
+  # === HTTP identity body
+  identity_chunk = any $ handle_body when handling_body;
+
+  identity_body := identity_chunk * CRLF CRLF
+                     % reset
+                     $! something_went_wrong;
+
+  main := exchange_head + $err(something_went_wrong);
+
 }%%

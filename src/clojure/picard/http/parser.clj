@@ -1,5 +1,7 @@
 (ns picard.http.parser
   (:import
+   [java.nio
+    ByteBuffer]
    [picard.http
     HttpParser
     HttpParserCallback]))
@@ -38,4 +40,7 @@
           (assoc! headers name (conj existing value)))))
 
      (^void request [_ ^HttpParser parser ^Object hdrs]
-       (f :request [(request-headers parser hdrs)])))))
+       (f :request [(request-headers parser hdrs)]))
+
+     (^void body [_ ^HttpParser parser ^ByteBuffer buf]
+       (f :body buf)))))

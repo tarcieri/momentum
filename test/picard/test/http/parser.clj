@@ -123,6 +123,21 @@
    :query-string   ""
    :http-version   [1 1]})
 
+(defn- buf->str
+  [b]
+  (when b
+    (let [len (.remaining b)
+          arr (byte-array len)]
+      (.get b arr)
+      (String. arr))))
+
+(defn- normalizing
+  [f]
+  (fn [evt val]
+    (if (= :body evt)
+      (f :body (buf->str val))
+      (f evt val))))
+
 (defn- parsing
   ([raw]
      (let [msgs (atom [])]
@@ -130,8 +145,9 @@
                 (fn [evt val]
                   (swap! msgs #(conj % [evt val]))))
        @msgs))
+
   ([raw f]
-     (let [p (parser f)]
+     (let [p (parser (normalizing f))]
        (if (coll? raw)
          (doseq [raw raw] (parse p raw))
          (parse p raw)))))
@@ -140,7 +156,12 @@
   [msg raw & expected]
   (let [res      (atom [])
         expected (vec (map vec (partition 2 expected)))]
-    (parsing raw (fn [evt val] (swap! res #(conj % [evt val]))))
+
+    (parsing
+     raw
+     (fn [evt val]
+       (swap! res #(conj % [evt val]))))
+
     (do-report
      {:type    (if (= expected @res) :pass :fail)
       :message  msg
@@ -409,3 +430,13 @@
        (str "GET / HTTP/1.1\r\n"
             "transfer-encoding: zomg;omg\r\n\r\n")
        :request [(assoc request-line "transfer-encoding" "zomg;omg")])))
+
+(deftest parsing-identity-bodies
+  (is (parsed-as
+       (str "GET / HTTP/1.1\r\n"
+            "Content-Length: 5\r\n"
+            "\r\n"
+            "Hello")
+       :request [(assoc request-line "content-length" "5")]
+       :body    "Hello"
+       :body    nil)))
