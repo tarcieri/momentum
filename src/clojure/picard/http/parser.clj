@@ -45,4 +45,7 @@
          (f :request [hdrs body])))
 
      (^void body [_ ^HttpParser parser ^ByteBuffer buf]
-       (f :body buf)))))
+       (f :body buf))
+
+     (^void message [_ ^HttpParser parser ^ByteBuffer buf]
+       (f :message buf)))))

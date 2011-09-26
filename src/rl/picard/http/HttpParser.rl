@@ -11,7 +11,7 @@ import java.nio.ByteBuffer;
  *   - Check for overflows in the chunk size
  *   - CONNECT and Upgrade should upgrade the connection
  */
-public class HttpParser extends AFn {
+public final class HttpParser extends AFn {
     public enum MessageType {
         REQUEST,
         RESPONSE
@@ -379,7 +379,10 @@ public class HttpParser extends AFn {
 
             ByteBuffer body = null;
 
-            if (isIdentityBody()) {
+            if (isUpgrade()) {
+                fnext upgraded;
+            }
+            else if (isIdentityBody()) {
                 int remaining = buf.limit() - fpc;
                 // If the remaining content length is present in the
                 // buffer, just include it in the callback.
@@ -439,6 +442,15 @@ public class HttpParser extends AFn {
                 callback.body(this, slice(buf, fpc, fpc + toRead));
 
                 fpc += toRead - 1;
+            }
+        }
+
+        action handle_message {
+            int remaining = buf.limit() - fpc;
+
+            if (remaining > 0) {
+                callback.message(this, slice(buf, fpc, buf.limit()));
+                break parseLoop;
             }
         }
 
@@ -581,7 +593,7 @@ public class HttpParser extends AFn {
     }
 
     public boolean isUpgrade() {
-        return ( flags & UPGRADE ) == UPGRADE;
+        return ( flags & UPGRADE ) == UPGRADE || method == HttpMethod.CONNECT;
     }
 
     public boolean isError() {
@@ -643,8 +655,10 @@ public class HttpParser extends AFn {
         }
 
         try {
-            %% getkey buf.get(p);
-            %% write exec;
+            parseLoop: {
+                %% getkey buf.get(p);
+                %% write exec;
+            }
         }
         catch (RuntimeException e) {
             flags |= ERROR;

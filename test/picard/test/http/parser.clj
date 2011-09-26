@@ -345,7 +345,7 @@
        :body    nil))
   )
 
-(deftest ^{:focus true} parsing-chunked-bodies
+(deftest parsing-chunked-bodies
   (is (parsed-as
        (str "GET / HTTP/1.1\r\n"
             "Transfer-Encoding: chunked\r\n\r\n"
@@ -356,6 +356,27 @@
        :body    "Hello"
        :body    "World"
        :body    nil)))
+
+(deftest parsing-upgraded-connections
+  (is (parsed-as
+       (str "GET / HTTP/1.1\r\n"
+            "Connection: Upgrade\r\n\r\n"
+            "ZOMGHI2U\r\n")
+       :request [(assoc request-line "connection" "upgrade") nil]
+       :message "ZOMGHI2U\r\n"))
+
+  (is (parsed-as
+       ["GET / HTTP/1.1\r\n"
+        "Connection: UPGRADE\r\n\r\n"
+        "GET / HTTP/1.1\r\n\r\n"]
+       :request [(assoc request-line "connection" "upgrade") nil]
+       :message "GET / HTTP/1.1\r\n\r\n"))
+
+  (is (parsed-as
+       (str "CONNECT / HTTP/1.1\r\n\r\n"
+            "Hello world")
+       :request [(assoc request-line :request-method "CONNECT") nil]
+       :message "Hello world")))
 
 (deftest keepalive-requests
   (is (parsed-as

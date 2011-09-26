@@ -225,6 +225,9 @@
                      % reset
                      $! something_went_wrong;
 
+  # === Upgraded connections
+  upgraded := any * $ handle_message;
+
   main := exchange_head + $err(something_went_wrong);
 
 }%%

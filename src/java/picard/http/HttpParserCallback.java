@@ -14,4 +14,8 @@ public interface HttpParserCallback {
 
     // Called with body chunks
     void body(HttpParser parser, ByteBuffer buf);
+
+    // Called with raw messages. This happens when the connection is
+    // upgraded
+    void message(HttpParser parser, ByteBuffer buf);
 }
