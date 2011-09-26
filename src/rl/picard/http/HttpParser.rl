@@ -369,6 +369,8 @@ public final class HttpParser extends AFn {
         }
 
         action start_head {
+            reset();
+
             flags  |= PARSING_HEAD;
             headers = callback.blankHeaders();
         }
@@ -426,6 +428,10 @@ public final class HttpParser extends AFn {
 
                 if (contentLength == 0) {
                     callback.body(this, null);
+                }
+
+                if (contentLength == 0) {
+                    fnext main;
                 }
             }
         }
@@ -682,9 +688,11 @@ public final class HttpParser extends AFn {
     }
 
     private void reset() {
-        flags = 0;
+        flags         = 0;
+        status        = 0;
+        httpMajor     = 0;
+        httpMinor     = 0;
         contentLength = 0;
-        resetHeadState();
     }
 
     private void resetHeadState() {

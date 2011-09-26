@@ -222,7 +222,6 @@
                      when handling_body;
 
   identity_body := identity_chunk *
-                     % reset
                      $! something_went_wrong;
 
   # === Upgraded connections

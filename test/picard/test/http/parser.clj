@@ -343,7 +343,11 @@
        :body    "Hello"
        :body    "World"
        :body    nil))
-  )
+
+  (is (parsed-as
+       (str "GET / HTTP/1.1\r\n"
+            "CONTENT-LENGTH: 11\r\n\r\nHello World")
+       :request [(assoc request-line "content-length" "11") "Hello World"])))
 
 (deftest parsing-chunked-bodies
   (is (parsed-as
@@ -391,36 +395,38 @@
        :request [request-line nil]
        :request [request-line nil]))
 
-  ;; (is (parsed-as
-  ;;      (str "GET / HTTP/1.1\r\n"
-  ;;           "Host: localhost\r\n"
-  ;;           "Foo: 123\r\n\r\n"
-  ;;           "POST / HTTP/1.1\r\n"
-  ;;           "Content-Length: 11\r\n\r\n"
-  ;;           "Hello world"
-  ;;           "GET / HTTP/1.1\r\n\r\n")
-  ;;      :request [(assoc request-line "host" "localhost" "foo" "123") nil]
-  ;;      :request [(assoc request-line
-  ;;                  :request-method  "POST"
-  ;;                  "content-length" "11") "Hello world"]
-  ;;      :request [request-line nil]))
+  (is (parsed-as
+       (str "GET / HTTP/1.1\r\n"
+            "Host: localhost\r\n"
+            "Foo: 123\r\n\r\n"
+            "POST / HTTP/1.1\r\n"
+            "Content-Length: 11\r\n\r\n"
+            "Hello world"
+            "GET / HTTP/1.1\r\n\r\n")
+       :request [(assoc request-line "host" "localhost" "foo" "123") nil]
+       :request [(assoc request-line
+                   :request-method  "POST"
+                   "content-length" "11") "Hello world"]
+       :request [request-line nil]))
 
-  ;; (is (parsed-as
-  ;;      ["GET / HTTP/1.1\r\n"
-  ;;       "Host: localhost\r\n\r\n"
-  ;;       "POST / HTTP/1.1\r\n"
-  ;;       "Content-Length: 11\r\n\r\n"
-  ;;       "Hello " "world"
-  ;;       "POST / HTTP/1.1\r\n"
-  ;;       "CONTENT-LENGTH: 11\r\n\r\nHello world"
-  ;;       "GET / HTTP/1.1\r\n\r\n"]
-  ;;      :request [(assoc request-line "host" "localhost") nil]
-  ;;      :request [(assoc request-line
-  ;;                  :request-method "POST"
-  ;;                  "content-length" "11") :chunked]
-  ;;      :body    "Hello"
-  ;;      :body    "world"
-  ;;      :body    nil
-  ;;      :request [(assoc request-line "content-length" "11") "Hello world"]
-  ;;      :request [request-line nil]))
+  (is (parsed-as
+       ["GET / HTTP/1.1\r\n"
+        "Host: localhost\r\n\r\n"
+        "POST / HTTP/1.1\r\n"
+        "Content-Length: 11\r\n\r\n"
+        "Hello " "world"
+        "POST / HTTP/1.1\r\n"
+        "CONTENT-LENGTH: 11\r\n\r\nHello world"
+        "GET / HTTP/1.1\r\n\r\n"]
+       :request [(assoc request-line "host" "localhost") nil]
+       :request [(assoc request-line
+                   :request-method "POST"
+                   "content-length" "11") :chunked]
+       :body    "Hello "
+       :body    "world"
+       :body    nil
+       :request [(assoc request-line
+                   :request-method  "POST"
+                   "content-length" "11") "Hello world"]
+       :request [request-line nil]))
   )
