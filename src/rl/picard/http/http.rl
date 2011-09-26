@@ -209,7 +209,8 @@
                 when handling_body;
 
   chunk_tail = last_chunk
-                 % last_chunk;
+                 % last_chunk
+               ( TEXT + CRLF ) *;
 
   chunk = chunk_head chunk_body * <: CRLF;
 

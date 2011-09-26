@@ -8,7 +8,7 @@ import java.nio.ByteBuffer;
  *   - Limit the number of times marks can be bridged.
  *   - Unify HeaderValue and marks.
  *   - Check for overflows in the chunk size
- *   - CONNECT and Upgrade should upgrade the connection
+ *   - Improve the handling of Connection header values
  */
 public final class HttpParser extends AFn {
     public enum MessageType {
