@@ -1,6 +1,8 @@
 package picard.http;
 
 import clojure.lang.AFn;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 
 /**
@@ -9,6 +11,9 @@ import java.nio.ByteBuffer;
  *   - Unify HeaderValue and marks.
  *   - Check for overflows in the chunk size
  *   - Improve the handling of Connection header values
+ *   - Handle full URIs in the request line
+ *   - Limit the maximum number of URI characters
+ *   - Possibly handle quotes in URIs (old Mozilla bug)
  */
 public final class HttpParser extends AFn {
     public enum MessageType {
@@ -53,6 +58,8 @@ public final class HttpParser extends AFn {
 
     public static final byte SP = (byte) 0x20; // Space
     public static final byte HT = (byte) 0x09; // Horizontal tab
+    public static final String SLASH = new String("/");
+    public static final String EMPTY_STRING = new String("");
     public static final ByteBuffer SPACE = ByteBuffer.wrap(new byte[] { SP });
 
     // Map of hexadecimal chars to their numeric value
@@ -234,6 +241,10 @@ public final class HttpParser extends AFn {
         action hn_x_requested_with          { setHeaderName(HDR_X_REQUESTED_WITH);          }
         action hn_x_xss_protection          { setHeaderName(HDR_X_XSS_PROTECTION);          }
 
+        action start_version {
+            httpMinor = 0;
+        }
+
         action http_major {
             httpMajor *= 10;
             httpMajor += fc - '0';
@@ -252,26 +263,22 @@ public final class HttpParser extends AFn {
             }
         }
 
-        action start_path {
-            pathInfoMark = new Mark(buf, fpc);
+        action start_uri {
+            uriMark = new Mark(buf, fpc);
         }
 
-        action end_path {
-            pathInfoMark.finalize(fpc);
+        action end_uri {
+            uriMark.finalize(fpc);
 
-            pathInfo     = pathInfoMark.materialize();
-            pathInfoMark = null;
-        }
+            String uriStr = uriMark.materialize();
 
-        action start_query {
-            queryStringMark = new Mark(buf, fpc);
-        }
-
-        action end_query {
-            queryStringMark.finalize(fpc);
-
-            queryString     = queryStringMark.materialize();
-            queryStringMark = null;
+            try {
+                uri = new URI(uriStr);
+            }
+            catch (URISyntaxException e) {
+                throw new HttpParserException("The URI is not valid: " + uriStr);
+            }
+            uriMark = null;
         }
 
         action start_header_name {
@@ -561,10 +568,8 @@ public final class HttpParser extends AFn {
     private short status;
 
     // Tracks the various message information
-    private String pathInfo;
-    private Mark   pathInfoMark;
-    private String queryString;
-    private Mark   queryStringMark;
+    private URI    uri;
+    private Mark   uriMark;
     private String headerName;
     private Mark   headerNameMark;
 
@@ -578,7 +583,9 @@ public final class HttpParser extends AFn {
 
     public HttpParser(HttpParserCallback callback) {
         %% write init;
+
         this.callback = callback;
+        reset();
     }
 
     public boolean isRequest() {
@@ -630,19 +637,26 @@ public final class HttpParser extends AFn {
     }
 
     public String getPathInfo() {
+        String pathInfo = uri.getPath();
+
         if (pathInfo == null) {
-            return "";
+            return SLASH;
+        }
+        else if (pathInfo.equals(EMPTY_STRING)) {
+            return SLASH;
         }
 
         return pathInfo;
     }
 
     public String getQueryString() {
-        if (queryString == null) {
-            return "";
+        String qs = uri.getQuery();
+
+        if (qs == null) {
+            return EMPTY_STRING;
         }
 
-        return queryString;
+        return qs;
     }
 
     public int execute(String str) {
@@ -662,9 +676,8 @@ public final class HttpParser extends AFn {
         int eof = pe + 1;
 
         if (isParsingHead()) {
-            pathInfoMark    = bridge(buf, pathInfoMark);
-            queryStringMark = bridge(buf, queryStringMark);
-            headerNameMark  = bridge(buf, headerNameMark);
+            uriMark        = bridge(buf, uriMark);
+            headerNameMark = bridge(buf, headerNameMark);
 
             if (headerValue != null) {
                 headerValue.bridge(buf);
@@ -703,17 +716,15 @@ public final class HttpParser extends AFn {
         hread         = 0;
         status        = 0;
         httpMajor     = 0;
-        httpMinor     = 0;
+        httpMinor     = 9;
         contentLength = 0;
     }
 
     private void resetHeadState() {
         headers         = null;
         method          = null;
-        pathInfo        = null;
-        pathInfoMark    = null;
-        queryString     = null;
-        queryStringMark = null;
+        uri             = null;
+        uriMark         = null;
         headerName      = null;
         headerNameMark  = null;
         headerValue     = null;

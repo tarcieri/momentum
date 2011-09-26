@@ -1,8 +1,6 @@
 %%{
   machine http;
 
-  include uri "uri.rl";
-
   CRLF = "\r\n";
    CTL = (cntrl | 127);
     WS = ( " " | "\t" );
@@ -48,11 +46,14 @@
          ;
 
   # === HTTP request URI
-  request_uri = ( "*" | uri );
+  request_uri = ( TEXT -- WS ) +
+                  > start_uri
+                  % end_uri;
 
   # === HTTP version
-  http_version = "HTTP/"i ( digit + $ http_major ) "."
-                          ( digit + $ http_minor );
+  http_version = ( "HTTP/"i ( digit + $ http_major ) "."
+                            ( digit + $ http_minor ) )
+                   > start_version;
 
 
   # === HTTP headers
@@ -192,7 +193,7 @@
   headers = header *;
 
   # === HTTP head
-  request_line  = method " " + request_uri " " + http_version CRLF;
+  request_line  = method " " + request_uri ( " " + http_version ) ? CRLF;
   exchange_head = ( CRLF * request_line headers CRLF )
                     > start_head
                     @ end_head;

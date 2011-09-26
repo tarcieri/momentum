@@ -17,7 +17,7 @@
    {:path-info "/hello/world" :query-string ""}
 
    "g:h"
-   {:path-info "" :query-string ""}
+   {:path-info "/" :query-string ""}
 
    "/forums/1/topics/2375?page=1#posts-17408"
    {:path-info "/forums/1/topics/2375" :query-string "page=1"}
@@ -25,8 +25,20 @@
    "/test.cgi?foo=bar?baz"
    {:path-info "/test.cgi" :query-string "foo=bar?baz"}
 
-   "/with_\"stupid\"_quotes?foo=\"bar\""
-   {:path-info "/with_\"stupid\"_quotes" :query-string "foo=\"bar\""}})
+   ;; "/with_\"stupid\"_quotes?foo=\"bar\""
+   ;; {:path-info "/with_\"stupid\"_quotes" :query-string "foo=\"bar\""}
+
+   "http://hypnotoad.org/hail?all"
+   {:path-info "/hail" :query-string "all"}
+
+   "http://hypnotoad.org?hail=all"
+   {:path-info "/" :query-string "hail=all"}
+
+   "http://hypnotoad.org:1234/"
+   {:path-info "/" :query-string ""}
+
+   "http://hypnotoad.org:1234"
+   {:path-info "/" :query-string ""}})
 
 
 (def get-request  {:request-method "GET"  :path-info "/" :query-string "" :http-version [1 1]})
@@ -89,7 +101,11 @@
 
   (is (parsed-as
        "\r\nGET / HTTP/1.1\r\n\r\n"
-       :request [get-request nil])))
+       :request [get-request nil]))
+
+  (is (parsed-as
+       "GET /\r\n\r\n"
+       :request [(assoc get-request :http-version [0 9]) nil])))
 
 (deftest parsing-various-valid-request-uris
   (doseq [[uri hdrs] valid-uris]
@@ -235,7 +251,13 @@
   (is (parsed-as
        ["GET / HTTP/1.1\r\n"
         "ZOMG" "  " " : " "      " "\r\n\r\n"]
-       :request [(assoc get-request "zomg" "") nil])))
+       :request [(assoc get-request "zomg" "") nil]))
+
+  (is (parsed-as
+       (str "GET / HTTP/1.1\r\n"
+            "Zomg: \"ssdp:discover\"\r\n"
+            "\r\n")
+       :request [(assoc get-request "zomg" "\"ssdp:discover\"") nil])))
 
 (def header-to-test-val
   {"content-length" "1000"})
