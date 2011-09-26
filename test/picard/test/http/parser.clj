@@ -224,12 +224,12 @@
   (is (parsed-as
        (str "GET / HTTP/1.1\r\n"
             "Content-Length: 1000\r\n\r\n")
-       :request [(assoc request-line "content-length" "1000") nil]))
+       :request [(assoc request-line "content-length" "1000") :chunked]))
 
   (is (parsed-as
        (str "GET / HTTP/1.1\r\n"
             "Content-Length: 922337203685477580\r\n\r\n")
-       :request [(assoc request-line "content-length" "922337203685477580") nil]))
+       :request [(assoc request-line "content-length" "922337203685477580") :chunked]))
 
   (is (thrown?
        HttpParserException
@@ -254,12 +254,12 @@
   (is (parsed-as
        (str "GET / HTTP/1.1\r\n"
             "Transfer-Encoding: chunked\r\n\r\n")
-       :request [(assoc request-line "transfer-encoding" "chunked") nil]))
+       :request [(assoc request-line "transfer-encoding" "chunked") :chunked]))
 
   (is (parsed-as
        (str "GET / HTTP/1.1\r\n"
             "transfer-encoding: chunked \r\n\r\n")
-       :request [(assoc request-line "transfer-encoding" "chunked") nil]))
+       :request [(assoc request-line "transfer-encoding" "chunked") :chunked]))
 
   (is (parsed-as
        (str "GET / HTTP/1.1\r\n"
@@ -269,7 +269,7 @@
   (is (parsed-as
        (str "GET / HTTP/1.1\r\n"
             "Transfer-encoding: Chunked\r\n\r\n")
-       :request [(assoc request-line "transfer-encoding" "chunked") nil]))
+       :request [(assoc request-line "transfer-encoding" "chunked") :chunked]))
 
   (is (parsed-as
        (str "GET / HTTP/1.1\r\n"
@@ -297,4 +297,81 @@
             "Content-Length: 5\r\n"
             "\r\n"
             "Hello")
-       :request [(assoc request-line "content-length" "5") "Hello"])))
+       :request [(assoc request-line "content-length" "5") "Hello"]))
+
+  (is (parsed-as
+       [(str "GET / HTTP/1.1\r\n"
+             "Content-Length: 5\r\n\r\n")
+        "Hello"]
+       :request [(assoc request-line "content-length" "5") :chunked]
+       :body    "Hello"
+       :body    nil))
+
+  (is (parsed-as
+       [(str "GET / HTTP/1.1\r\n"
+             "Content-Length: 10\r\n\r\n")
+        "Hello" "World"]
+       :request [(assoc request-line "content-length" "10") :chunked]
+       :body    "Hello"
+       :body    "World"
+       :body    nil))
+  )
+
+(deftest ^{:focus true} parsing-chunked-bodies
+  (is (parsed-as
+       (str "GET / HTTP/1.1\r\n"
+            "Transfer-Encoding: chunked\r\n\r\n"
+            "5\r\nHello\r\n"
+            "5\r\nWorld\r\n"
+            "0\r\n\r\n")
+       :request [(assoc request-line "transfer-encoding" "chunked") :chunked]
+       :body    "Hello"
+       :body    "World"
+       :body    nil)))
+
+(deftest keepalive-requests
+  (is (parsed-as
+       (str "GET / HTTP/1.1\r\n\r\n"
+            "GET / HTTP/1.1\r\n\r\n")
+       :request [request-line nil]
+       :request [request-line nil]))
+
+  (is (parsed-as
+       ["GET / HTTP/1.1\r\n\r\n"
+        "GET / HTTP/1.1\r\n\r\n"]
+       :request [request-line nil]
+       :request [request-line nil]))
+
+  ;; (is (parsed-as
+  ;;      (str "GET / HTTP/1.1\r\n"
+  ;;           "Host: localhost\r\n"
+  ;;           "Foo: 123\r\n\r\n"
+  ;;           "POST / HTTP/1.1\r\n"
+  ;;           "Content-Length: 11\r\n\r\n"
+  ;;           "Hello world"
+  ;;           "GET / HTTP/1.1\r\n\r\n")
+  ;;      :request [(assoc request-line "host" "localhost" "foo" "123") nil]
+  ;;      :request [(assoc request-line
+  ;;                  :request-method  "POST"
+  ;;                  "content-length" "11") "Hello world"]
+  ;;      :request [request-line nil]))
+
+  ;; (is (parsed-as
+  ;;      ["GET / HTTP/1.1\r\n"
+  ;;       "Host: localhost\r\n\r\n"
+  ;;       "POST / HTTP/1.1\r\n"
+  ;;       "Content-Length: 11\r\n\r\n"
+  ;;       "Hello " "world"
+  ;;       "POST / HTTP/1.1\r\n"
+  ;;       "CONTENT-LENGTH: 11\r\n\r\nHello world"
+  ;;       "GET / HTTP/1.1\r\n\r\n"]
+  ;;      :request [(assoc request-line "host" "localhost") nil]
+  ;;      :request [(assoc request-line
+  ;;                  :request-method "POST"
+  ;;                  "content-length" "11") :chunked]
+  ;;      :body    "Hello"
+  ;;      :body    "world"
+  ;;      :body    nil
+  ;;      :request [(assoc request-line "content-length" "11") "Hello world"]
+  ;;      :request [request-line nil]))
+  )

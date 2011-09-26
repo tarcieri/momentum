@@ -8,6 +8,7 @@ import java.nio.ByteBuffer;
  *   - Limit the number of times marks can be bridged.
  *   - Unify HeaderValue and marks.
  *   - Limit the size of the head
+ *   - Check for overflows in the chunk size
  */
 public class HttpParser extends AFn {
     public enum MessageType {
@@ -53,6 +54,18 @@ public class HttpParser extends AFn {
     public static final byte SP = (byte) 0x20; // Space
     public static final byte HT = (byte) 0x09; // Horizontal tab
     public static final ByteBuffer SPACE = ByteBuffer.wrap(new byte[] { SP });
+
+    // Map of hexadecimal chars to their numeric value
+    public static final byte[] HEX_MAP = new byte [] {
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+         0,  1,  2,  3,  4,  5,  6,  7,  8,  9, -1, -1, -1, -1, -1, -1,
+        -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1
+    };
 
     // Listing out all of the headers that we are going to use
     public static final String HDR_ACCEPT                    = "accept";
@@ -357,12 +370,11 @@ public class HttpParser extends AFn {
 
             ByteBuffer body = null;
 
-            // callback.request(this, headers);
-
             if (isIdentityBody()) {
+                int remaining = buf.limit() - fpc;
                 // If the remaining content length is present in the
                 // buffer, just include it in the callback.
-                if (buf.remaining() >= contentLength) {
+                if (remaining >= contentLength) {
                     int toRead = (int) contentLength;
                     ++fpc;
                     body = slice(buf, fpc, fpc + toRead);
@@ -377,7 +389,7 @@ public class HttpParser extends AFn {
                 fnext chunked_body;
             }
 
-            callback.request(this, headers, body);
+            callback.message(this, headers, body);
 
             // Unset references to allow the GC to reclaim the memory
             resetHeadState();
@@ -403,8 +415,40 @@ public class HttpParser extends AFn {
                 if (contentLength == 0) {
                     callback.body(this, null);
                 }
+            }
+        }
 
-                fbreak;
+        action handle_chunk {
+            int toRead;
+
+            toRead = (int) Math.min((long) Integer.MAX_VALUE, contentLength);
+            toRead = Math.min(buf.remaining(), toRead);
+
+            if (toRead > 0) {
+                contentLength -= toRead;
+
+                callback.body(this, slice(buf, fpc, fpc + toRead));
+
+                fpc += toRead - 1;
+            }
+        }
+
+        action last_chunk {
+            callback.body(this, null);
+        }
+
+        action start_chunk_size {
+            contentLength = 0;
+        }
+
+        action count_chunk_size {
+            contentLength *= 16;
+            contentLength += HEX_MAP[fc];
+        }
+
+        action chunk_size_err {
+            if (true) {
+                throw new HttpParserException("Invalid chunk size");
             }
         }
 
@@ -413,11 +457,9 @@ public class HttpParser extends AFn {
         }
 
         action something_went_wrong {
-            System.out.println("CURRENT POS: " + fpc);
-            System.out.println("CURRENT CHAR: " + fc);
-
             if (true) {
-                throw new HttpParserException("Something went wrong");
+                String msg = parseErrorMsg(buf, fpc);
+                throw new HttpParserException("Something went wrong:\n" + msg);
             }
         }
 
@@ -476,6 +518,10 @@ public class HttpParser extends AFn {
     // will be nil.
     private HttpMethod method;
 
+    // The response status if the current message being parsed is a
+    // response.
+    private short status;
+
     // Tracks the various message information
     private String pathInfo;
     private Mark   pathInfoMark;
@@ -497,8 +543,20 @@ public class HttpParser extends AFn {
         this.callback = callback;
     }
 
+    public boolean isRequest() {
+        return type == MessageType.REQUEST;
+    }
+
+    public boolean isResponse() {
+        return type == MessageType.RESPONSE;
+    }
+
     public boolean isParsingHead() {
         return ( flags & PARSING_HEAD ) == PARSING_HEAD;
+    }
+
+    public boolean hasBody() {
+        return isIdentityBody() || isChunkedBody();
     }
 
     public boolean isIdentityBody() {
@@ -607,6 +665,9 @@ public class HttpParser extends AFn {
     }
 
     private void resetHeadState() {
+        status          = 0;
+        httpMajor       = 0;
+        httpMinor       = 0;
         headers         = null;
         method          = null;
         pathInfo        = null;
@@ -625,5 +686,21 @@ public class HttpParser extends AFn {
         retval.limit(to);
 
         return retval;
+    }
+
+    private String parseErrorMsg(ByteBuffer buf, int fpc) {
+        int from = Math.max(0, fpc - 35);
+        int to   = Math.min(fpc + 35, buf.limit());
+
+        ByteBuffer before = slice(buf, from, fpc);
+        ByteBuffer after  = slice(buf, fpc, to);
+
+        byte[] beforeBytes = new byte[before.remaining()];
+        byte[] afterBytes  = new byte[after.remaining()];
+
+        before.get(beforeBytes);
+        after.get(afterBytes);
+
+        return new String(beforeBytes) + "|" + new String(afterBytes);
     }
 }

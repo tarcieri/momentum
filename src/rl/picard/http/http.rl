@@ -194,12 +194,32 @@
   exchange_head = ( request_line headers CRLF ) > start_head @ end_head;
 
   # === HTTP chunked body
-  chunked_body := 'a' *;
+  chunk_ext  = ";" TEXT *;
+  last_chunk = '0' + chunk_ext ? CRLF;
+  chunk_size = ( xdigit + - '0' + )
+                 > start_chunk_size
+                 $ count_chunk_size
+                 $! chunk_size_err;
+
+  chunk_head = chunk_size chunk_ext ? CRLF;
+  chunk_body = any
+                $ handle_chunk
+                when handling_body;
+
+  chunk_tail = last_chunk
+                 % last_chunk;
+
+  chunk = chunk_head chunk_body * <: CRLF;
+
+  chunked_body := ( chunk + chunk_tail CRLF )
+                    $! something_went_wrong;
 
   # === HTTP identity body
-  identity_chunk = any $ handle_body when handling_body;
+  identity_chunk = any
+                     $ handle_body
+                     when handling_body;
 
-  identity_body := identity_chunk * CRLF CRLF
+  identity_body := identity_chunk *
                      % reset
                      $! something_went_wrong;
 
