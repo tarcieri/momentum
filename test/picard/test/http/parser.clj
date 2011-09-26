@@ -28,6 +28,9 @@
    ;; "/with_\"stupid\"_quotes?foo=\"bar\""
    ;; {:path-info "/with_\"stupid\"_quotes" :query-string "foo=\"bar\""}
 
+   ;; "GET /δ¶/δt/pope?q=1#narf HTTP/1.1\r\n"
+   ;; {:path-info "/δ¶/δt/pope" :query-string "q=1"}
+
    "http://hypnotoad.org/hail?all"
    {:path-info "/hail" :query-string "all"}
 
@@ -41,8 +44,10 @@
    {:path-info "/" :query-string ""}})
 
 
-(def get-request  {:request-method "GET"  :path-info "/" :query-string "" :http-version [1 1]})
-(def post-request {:request-method "POST" :path-info "/" :query-string "" :http-version [1 1]})
+(def get-request  {:request-method "GET"  :path-info "/"
+                   :query-string   ""     :http-version [1 1]})
+(def post-request {:request-method "POST" :path-info "/"
+                   :query-string   ""     :http-version [1 1]})
 
 ;; ==== REQUEST LINE TESTS
 
