@@ -7,7 +7,6 @@ import java.nio.ByteBuffer;
  * TODO:
  *   - Limit the number of times marks can be bridged.
  *   - Unify HeaderValue and marks.
- *   - Limit the size of the head
  *   - Check for overflows in the chunk size
  *   - CONNECT and Upgrade should upgrade the connection
  */
@@ -483,6 +482,12 @@ public final class HttpParser extends AFn {
             fnext main;
         }
 
+        action count_message_head {
+            if (++hread > MAX_HEADER_SIZE) {
+                throw new HttpParserException("The HTTP message head is too large");
+            }
+        }
+
         action something_went_wrong {
             if (true) {
                 String msg = parseErrorMsg(buf, fpc);
@@ -518,6 +523,12 @@ public final class HttpParser extends AFn {
     // the body is chunked or not, whether or not the connection is
     // keep alive or upgraded, etc...
     private int flags;
+
+    // The number of bytes read while parsing the HTTP message
+    // head. This is to protect against a possible attack where
+    // somebody sends unbounded HTTP message heads and causes out of
+    // memory errors.
+    private int hread;
 
     // When starting to parse an HTTP message head, an object is
     // requested from the callback. This object should be the
@@ -689,6 +700,7 @@ public final class HttpParser extends AFn {
 
     private void reset() {
         flags         = 0;
+        hread         = 0;
         status        = 0;
         httpMajor     = 0;
         httpMinor     = 0;
@@ -696,9 +708,6 @@ public final class HttpParser extends AFn {
     }
 
     private void resetHeadState() {
-        status          = 0;
-        httpMajor       = 0;
-        httpMinor       = 0;
         headers         = null;
         method          = null;
         pathInfo        = null;

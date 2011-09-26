@@ -227,6 +227,8 @@
   # === Upgraded connections
   upgraded := any * $ handle_message;
 
-  main := exchange_head + $err(something_went_wrong);
+  main := exchange_head +
+            $ count_message_head
+            $err(something_went_wrong);
 
 }%%

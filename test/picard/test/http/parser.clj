@@ -428,5 +428,25 @@
        :request [(assoc request-line
                    :request-method  "POST"
                    "content-length" "11") "Hello world"]
-       :request [request-line nil]))
-  )
+       :request [request-line nil])))
+
+(deftest insanity-requests
+  (is (thrown?
+       HttpParserException
+       (parsing
+        (str "GET / HTTP/1.1\r\n"
+             (apply str (repeat 102400 "a")) ":X\r\n\r\n"))))
+
+  (is (thrown?
+       HttpParserException
+       (parsing
+        (concat
+         ["GET / HTTP/1.1\r\n"]
+         (repeat 102400 "a") ["X\r\n\r\n"]))))
+
+  (is (thrown?
+       HttpParserException
+       (parsing
+        (concat
+         ["GET / HTTP/1.1\r\n"]
+         (repeat "Zomg: HI2U\r\n"))))))
