@@ -58,7 +58,9 @@
          :request [{:request-method method
                     :path-info      "/"
                     :query-string   ""
-                    :http-version   [1 1]} nil])))
+                    :http-version   [1 1]}
+                   (when (= "CONNECT" method)
+                     :upgraded)])))
 
   (is (parsed-as
        "GET / HTTP/1.0\r\n\r\n"
@@ -85,7 +87,9 @@
          :request [{:request-method method
                     :path-info      "/"
                     :query-string   ""
-                    :http-version   [1 1]} nil]))))
+                    :http-version   [1 1]}
+                   (when (= "CONNECT" method)
+                     :upgraded)]))))
 
 (deftest parsing-some-request-line-edge-cases
   (is (parsed-as
@@ -305,7 +309,7 @@
   (is (thrown?
        HttpParserException
        (parsing (str "GET / HTTP/1.1\r\n"
-                     "Content-Length: 9223372036854775807\r\n\r\n"))))
+                     "Content-Length: 92233720368547758070\r\n\r\n"))))
   (is (thrown?
        HttpParserException
        (parsing (str "GET / HTTP/1.1\r\n"
@@ -434,27 +438,35 @@
             "\r\n")
        :request [(assoc post-request "transfer-encoding" "chunked") :chunked]
        :body    "Hello"
-       :body    nil)))
+       :body    nil))
+
+  (is (thrown?
+       HttpParserException
+       (parsing
+        (str "POST / HTTP/1.1\r\n"
+             "Transfer-Encoding: chunked\r\n"
+             "\r\n"
+             "8000000000000000AA\r\n")))))
 
 (deftest parsing-upgraded-connections
   (is (parsed-as
        (str "GET / HTTP/1.1\r\n"
             "Connection: Upgrade\r\n\r\n"
             "ZOMGHI2U\r\n")
-       :request [(assoc get-request "connection" "upgrade") nil]
+       :request [(assoc get-request "connection" "upgrade") :upgraded]
        :message "ZOMGHI2U\r\n"))
 
   (is (parsed-as
        ["GET / HTTP/1.1\r\n"
         "Connection: UPGRADE\r\n\r\n"
         "GET / HTTP/1.1\r\n\r\n"]
-       :request [(assoc get-request "connection" "upgrade") nil]
+       :request [(assoc get-request "connection" "upgrade") :upgraded]
        :message "GET / HTTP/1.1\r\n\r\n"))
 
   (is (parsed-as
        (str "CONNECT / HTTP/1.1\r\n\r\n"
             "Hello world")
-       :request [(assoc get-request :request-method "CONNECT") nil]
+       :request [(assoc get-request :request-method "CONNECT") :upgraded]
        :message "Hello world"))
 
   (is (parsed-as
@@ -476,7 +488,7 @@
                    "sec-websocket-protocol" "sample"
                    "upgrade" "WebSocket"
                    "sec-websocket-key-1" "4 @1  46546xW%01 1 5"
-                   "origin" "http://example.com") nil]
+                   "origin" "http://example.com") :upgraded]
        :message "Hot diggity dogg")))
 
 (deftest keepalive-requests
@@ -544,4 +556,11 @@
        (parsing
         (concat
          ["GET / HTTP/1.1\r\n"]
-         (repeat "Zomg: HI2U\r\n"))))))
+         (repeat "Zomg: HI2U\r\n")))))
+
+  (is (thrown?
+       HttpParserException
+       (parsing
+        (concat
+         ["GET / HTTP/1.1\r\n"
+          "Zomg: "] (repeat 15 "a"))))))

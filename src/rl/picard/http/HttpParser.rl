@@ -9,7 +9,6 @@ import java.nio.ByteBuffer;
  * TODO:
  *   - Limit the number of times marks can be bridged.
  *   - Unify HeaderValue and marks.
- *   - Check for overflows in the chunk size
  *   - Improve the handling of Connection header values
  *   - Handle full URIs in the request line
  *   - Limit the maximum number of URI characters
@@ -475,6 +474,10 @@ public final class HttpParser extends AFn {
         }
 
         action count_chunk_size {
+            if (contentLength >= ALMOST_MAX_LONG_HEX) {
+                throw new HttpParserException("The content-length is WAY too big");
+            }
+
             contentLength *= 16;
             contentLength += HEX_MAP[fc];
         }
@@ -506,7 +509,9 @@ public final class HttpParser extends AFn {
         include "http.rl";
     }%%
 
-    public static final long ALMOST_MAX_LONG = Long.MAX_VALUE / 10 - 10;
+    public static final long ALMOST_MAX_LONG     = Long.MAX_VALUE / 10;
+    public static final long ALMOST_MAX_LONG_HEX = Long.MAX_VALUE / 16;
+
     public static final int  MAX_HEADER_SIZE = 100 * 1024;
     public static final int  PARSING_HEAD    = 1 << 0;
     public static final int  IDENTITY_BODY   = 1 << 1;

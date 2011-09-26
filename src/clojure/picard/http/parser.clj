@@ -41,7 +41,15 @@
 
      (^void message [_ ^HttpParser parser ^Object hdrs ^ByteBuffer body]
        (let [hdrs (request-headers parser hdrs)
-             body (or body (when (.hasBody parser) :chunked))]
+             body (cond
+                   body
+                   body
+
+                   (.hasBody parser)
+                   :chunked
+
+                   (.isUpgrade parser)
+                   :upgraded)]
          (f :request [hdrs body])))
 
      (^void body [_ ^HttpParser parser ^ByteBuffer buf]

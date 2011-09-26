@@ -1,9 +1,10 @@
-package picard.http;
+ package picard.http;
 
 import java.nio.ByteBuffer;
 
 public class HeaderValue {
 
+    private int  bridgeCount;
     private Mark complete;
     private Mark current;
     private Mark tenative;
@@ -42,6 +43,11 @@ public class HeaderValue {
     }
 
     public void bridge(ByteBuffer buf) {
+        if (++bridgeCount > 10) {
+            String msg = "HTTP header is being broken into too many pieces";
+            throw new HttpParserException(msg);
+        }
+
         // If current is null, then there is no line in progress so we
         // can just discard the new buffer.
         if (current == null) {

@@ -151,10 +151,12 @@ public final class HttpParser extends AFn {
     }
 
     
-// line 507 "src/rl/picard/http/HttpParser.rl"
+// line 511 "src/rl/picard/http/HttpParser.rl"
 
 
-    public static final long ALMOST_MAX_LONG = Long.MAX_VALUE / 10 - 10;
+    public static final long ALMOST_MAX_LONG     = Long.MAX_VALUE / 10;
+    public static final long ALMOST_MAX_LONG_HEX = Long.MAX_VALUE / 16;
+
     public static final int  MAX_HEADER_SIZE = 100 * 1024;
     public static final int  PARSING_HEAD    = 1 << 0;
     public static final int  IDENTITY_BODY   = 1 << 1;
@@ -166,7 +168,7 @@ public final class HttpParser extends AFn {
 
 
     
-// line 170 "src/java/picard/http/HttpParser.java"
+// line 172 "src/java/picard/http/HttpParser.java"
 private static byte[] init__http_actions_0()
 {
 	return new byte [] {
@@ -2579,7 +2581,7 @@ static final int http_en_upgraded = 726;
 static final int http_en_main = 1;
 
 
-// line 521 "src/rl/picard/http/HttpParser.rl"
+// line 527 "src/rl/picard/http/HttpParser.rl"
 
     // Variable used by ragel to represent the current state of the
     // parser. This must be an integer and it should persist across
@@ -2645,12 +2647,12 @@ static final int http_en_main = 1;
 
     public HttpParser(HttpParserCallback callback) {
         
-// line 2649 "src/java/picard/http/HttpParser.java"
+// line 2651 "src/java/picard/http/HttpParser.java"
 	{
 	cs = http_start;
 	}
 
-// line 586 "src/rl/picard/http/HttpParser.rl"
+// line 592 "src/rl/picard/http/HttpParser.rl"
 
         this.callback = callback;
         reset();
@@ -2755,9 +2757,9 @@ static final int http_en_main = 1;
         try {
             parseLoop: {
                 
-// line 690 "src/rl/picard/http/HttpParser.rl"
+// line 696 "src/rl/picard/http/HttpParser.rl"
                 
-// line 2761 "src/java/picard/http/HttpParser.java"
+// line 2763 "src/java/picard/http/HttpParser.java"
 	{
 	int _klen;
 	int _trans = 0;
@@ -3503,12 +3505,16 @@ case 1:
 	case 112:
 // line 477 "src/rl/picard/http/HttpParser.rl"
 	{
+            if (contentLength >= ALMOST_MAX_LONG_HEX) {
+                throw new HttpParserException("The content-length is WAY too big");
+            }
+
             contentLength *= 16;
             contentLength += HEX_MAP[( buf.get(p))];
         }
 	break;
 	case 113:
-// line 482 "src/rl/picard/http/HttpParser.rl"
+// line 486 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 throw new HttpParserException("Invalid chunk size");
@@ -3516,7 +3522,7 @@ case 1:
         }
 	break;
 	case 114:
-// line 492 "src/rl/picard/http/HttpParser.rl"
+// line 496 "src/rl/picard/http/HttpParser.rl"
 	{
             if (++hread > MAX_HEADER_SIZE) {
                 throw new HttpParserException("The HTTP message head is too large");
@@ -3524,7 +3530,7 @@ case 1:
         }
 	break;
 	case 115:
-// line 498 "src/rl/picard/http/HttpParser.rl"
+// line 502 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 String msg = parseErrorMsg(buf, p);
@@ -3532,7 +3538,7 @@ case 1:
             }
         }
 	break;
-// line 3536 "src/java/picard/http/HttpParser.java"
+// line 3542 "src/java/picard/http/HttpParser.java"
 			}
 		}
 	}
@@ -3563,7 +3569,7 @@ case 4:
         }
 	break;
 	case 113:
-// line 482 "src/rl/picard/http/HttpParser.rl"
+// line 486 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 throw new HttpParserException("Invalid chunk size");
@@ -3571,7 +3577,7 @@ case 4:
         }
 	break;
 	case 115:
-// line 498 "src/rl/picard/http/HttpParser.rl"
+// line 502 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 String msg = parseErrorMsg(buf, p);
@@ -3579,7 +3585,7 @@ case 4:
             }
         }
 	break;
-// line 3583 "src/java/picard/http/HttpParser.java"
+// line 3589 "src/java/picard/http/HttpParser.java"
 		}
 	}
 	}
@@ -3589,7 +3595,7 @@ case 5:
 	break; }
 	}
 
-// line 691 "src/rl/picard/http/HttpParser.rl"
+// line 697 "src/rl/picard/http/HttpParser.rl"
             }
         }
         catch (RuntimeException e) {
