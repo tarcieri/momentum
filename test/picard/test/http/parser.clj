@@ -73,6 +73,23 @@
                     :query-string   ""
                     :http-version   [1 1]} nil]))))
 
+(deftest parsing-some-request-line-edge-cases
+  (is (parsed-as
+       "GET  / HTTP/1.1\r\n\r\n"
+       :request [request-line nil]))
+
+  (is (parsed-as
+       "GET /  HTTP/1.1\r\n\r\n"
+       :request [request-line nil]))
+
+  (is (parsed-as
+       "GET / Http/1.1\r\n\r\n"
+       :request [request-line nil]))
+
+  (is (parsed-as
+       "GET / HTTP/1.1\r\n\r\n"
+       :request [request-line nil])))
+
 (deftest parsing-various-valid-request-uris
   (doseq [[uri hdrs] valid-uris]
     (let [raw (str "GET " uri " HTTP/1.1\r\n\r\n")]
@@ -219,6 +236,17 @@
           (->> hdrs keys (filter #(= expected %)) first)]
 
       (is (identical? expected actual)))))
+
+(deftest parsing-special-case-headers
+  (is (parsed-as
+       (str "GET / HTTP/1.1\r\n"
+            "Connection:  CLOSE\r\n\r\n")
+       :request [(assoc request-line "connection" "close") nil]))
+
+  (is (parsed-as
+       (str "GET / HTTP/1.1\r\n"
+            "Transfer-Encoding: CHUNKED\r\n\r\n")
+       :request [(assoc request-line "transfer-encoding" "chunked") :chunked])))
 
 (deftest parsing-content-lengths
   (is (parsed-as

@@ -9,6 +9,7 @@ import java.nio.ByteBuffer;
  *   - Unify HeaderValue and marks.
  *   - Limit the size of the head
  *   - Check for overflows in the chunk size
+ *   - CONNECT and Upgrade should upgrade the connection
  */
 public class HttpParser extends AFn {
     public enum MessageType {
@@ -135,6 +136,7 @@ public class HttpParser extends AFn {
 
     public static final String VAL_CHUNKED = "chunked";
     public static final String VAL_CLOSE   = "close";
+    public static final String VAL_UPGRADE = "upgrade";
 
     public static boolean isWhiteSpace(byte b) {
         return b == SP || b == HT;
@@ -352,11 +354,18 @@ public class HttpParser extends AFn {
             callback.header(headers, HDR_TRANSFER_ENCODING, VAL_CHUNKED);
         }
 
-        action end_connection {
+        action end_connection_close {
             flags |= CONN_CLOSE;
 
             headerValue = null;
             callback.header(headers, HDR_CONNECTION, VAL_CLOSE);
+        }
+
+        action end_connection_upgrade {
+            flags |= UPGRADE;
+
+            headerValue = null;
+            callback.header(headers, HDR_CONNECTION, VAL_UPGRADE);
         }
 
         action start_head {

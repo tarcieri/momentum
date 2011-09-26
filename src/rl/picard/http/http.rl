@@ -51,8 +51,8 @@
   request_uri = ( "*" | uri );
 
   # === HTTP version
-  http_version = "HTTP/" ( digit + $ http_major ) "."
-                         ( digit + $ http_minor );
+  http_version = "HTTP/"i ( digit + $ http_major ) "."
+                          ( digit + $ http_minor );
 
 
   # === HTTP headers
@@ -168,6 +168,7 @@
   transfer_encoding = "transfer-encoding"i
                       header_sep
                       "chunked"i
+                        % end_transfer_encoding_chunked
                       header_eol;
 
   # Header: Connection
@@ -178,19 +179,20 @@
   #
   connection = "connection"i
                header_sep
-               "close"i
+               ( "close"i   % end_connection_close
+               | "upgrade"i % end_connection_upgrade )
                header_eol;
 
   header = content_length
-         | transfer_encoding   % end_transfer_encoding_chunked
-         | connection          % end_connection
+         | transfer_encoding
+         | connection
          | generic_header
          ;
 
   headers = header *;
 
   # === HTTP head
-  request_line  = method " " request_uri " " http_version CRLF;
+  request_line  = method " " + request_uri " " + http_version CRLF;
   exchange_head = ( request_line headers CRLF ) > start_head @ end_head;
 
   # === HTTP chunked body
