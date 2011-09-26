@@ -23,7 +23,10 @@
    {:path-info "/forums/1/topics/2375" :query-string "page=1"}
 
    "/test.cgi?foo=bar?baz"
-   {:path-info "/test.cgi" :query-string "foo=bar?baz"}})
+   {:path-info "/test.cgi" :query-string "foo=bar?baz"}
+
+   "/with_\"stupid\"_quotes?foo=\"bar\""
+   {:path-info "/with_\"stupid\"_quotes" :query-string "foo=\"bar\""}})
 
 
 (def get-request  {:request-method "GET"  :path-info "/" :query-string "" :http-version [1 1]})
@@ -82,6 +85,10 @@
 
   (is (parsed-as
        "GET / HTTP/1.1\r\n\r\n"
+       :request [get-request nil]))
+
+  (is (parsed-as
+       "\r\nGET / HTTP/1.1\r\n\r\n"
        :request [get-request nil])))
 
 (deftest parsing-various-valid-request-uris
@@ -213,7 +220,22 @@
        ["GET / HTTP/1.1\r\n"
         "Zomg: HI   \r\n"
         "   2U\r\n\r\n"]
-       :request [(assoc get-request "zomg" "HI 2U") nil])))
+       :request [(assoc get-request "zomg" "HI 2U") nil]))
+
+  (is (parsed-as
+       ["GET / HTTP/1.1\r\n"
+        "Zomg:\r\n\r\n"]
+       :request [(assoc get-request "zomg" "") nil]))
+
+  (is (parsed-as
+       ["GET / HTTP/1.1\r\n"
+        "Zomg:" "\r\n\r\n"]
+       :request [(assoc get-request "zomg" "") nil]))
+
+  (is (parsed-as
+       ["GET / HTTP/1.1\r\n"
+        "ZOMG" "  " " : " "      " "\r\n\r\n"]
+       :request [(assoc get-request "zomg" "") nil])))
 
 (def header-to-test-val
   {"content-length" "1000"})
@@ -343,7 +365,7 @@
             "CONTENT-LENGTH: 11\r\n\r\nHello World")
        :request [(assoc get-request "content-length" "11") "Hello World"])))
 
-(deftest ^{:focus true} parsing-chunked-bodies
+(deftest parsing-chunked-bodies
   (is (parsed-as
        (str "POST / HTTP/1.1\r\n"
             "Transfer-Encoding: chunked\r\n\r\n"
@@ -406,7 +428,29 @@
        (str "CONNECT / HTTP/1.1\r\n\r\n"
             "Hello world")
        :request [(assoc get-request :request-method "CONNECT") nil]
-       :message "Hello world")))
+       :message "Hello world"))
+
+  (is (parsed-as
+       (str "GET /demo HTTP/1.1\r\n"
+            "Host: example.com\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Key2: 12998 5 Y3 1  .P00\r\n"
+            "Sec-WebSocket-Protocol: sample\r\n"
+            "Upgrade: WebSocket\r\n"
+            "Sec-WebSocket-Key-1: 4 @1  46546xW%01 1 5\r\n"
+            "Origin: http://example.com\r\n"
+            "\r\n"
+            "Hot diggity dogg")
+       :request [(assoc get-request
+                   :path-info "/demo"
+                   "host" "example.com"
+                   "connection" "upgrade"
+                   "sec-websocket-key2" "12998 5 Y3 1  .P00"
+                   "sec-websocket-protocol" "sample"
+                   "upgrade" "WebSocket"
+                   "sec-websocket-key-1" "4 @1  46546xW%01 1 5"
+                   "origin" "http://example.com") nil]
+       :message "Hot diggity dogg")))
 
 (deftest keepalive-requests
   (is (parsed-as
@@ -451,6 +495,10 @@
        :request [get-request nil])))
 
 (deftest insanity-requests
+  (is (thrown?
+       HttpParserException
+       (parsing (repeat "\r\n"))))
+
   (is (thrown?
        HttpParserException
        (parsing

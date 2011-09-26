@@ -193,7 +193,9 @@
 
   # === HTTP head
   request_line  = method " " + request_uri " " + http_version CRLF;
-  exchange_head = ( request_line headers CRLF ) > start_head @ end_head;
+  exchange_head = ( CRLF * request_line headers CRLF )
+                    > start_head
+                    @ end_head;
 
   # === HTTP chunked body
   chunk_ext  = ";" TEXT *;

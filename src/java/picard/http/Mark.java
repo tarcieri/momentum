@@ -11,6 +11,8 @@ import java.nio.ByteBuffer;
 // mark and then start up a new one when the next chunk is
 // received.
 public class Mark {
+    public static final String EMPTY_STRING = new String("");
+
     // The previous mark in the stack
     protected final Mark previous;
 
@@ -34,6 +36,7 @@ public class Mark {
     public Mark(ByteBuffer buf, int from, Mark previous) {
         this.buf      = buf;
         this.from     = from;
+        this.to       = from;
         this.previous = previous;
     }
 
@@ -82,6 +85,10 @@ public class Mark {
     }
 
     public String materialize() {
+        if (total() == 0) {
+            return EMPTY_STRING;
+        }
+
         byte [] buf = new byte[total()];
         Mark    cur = this;
         int     pos = 0;
