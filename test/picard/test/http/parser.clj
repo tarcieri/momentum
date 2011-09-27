@@ -45,9 +45,9 @@
 
 
 (def get-request  {:request-method "GET"  :path-info "/"
-                   :query-string   ""     :http-version [1 1]})
-(def post-request {:request-method "POST" :path-info "/"
-                   :query-string   ""     :http-version [1 1]})
+                   :script-name    ""     :query-string ""
+                   :http-version [1 1]})
+(def post-request (assoc get-request :request-method "POST"))
 
 ;; ==== REQUEST LINE TESTS
 
@@ -55,10 +55,7 @@
   (doseq [method valid-methods]
     (is (parsed-as
          (str method " / HTTP/1.1\r\n\r\n")
-         :request [{:request-method method
-                    :path-info      "/"
-                    :query-string   ""
-                    :http-version   [1 1]}
+         :request [(assoc get-request :request-method method)
                    (when (= "CONNECT" method)
                      :upgraded)])))
 
@@ -68,26 +65,17 @@
 
   (is (parsed-as
        "GET / HTTP/0.9\r\n\r\n"
-       :request [{:request-method "GET"
-                  :path-info      "/"
-                  :query-string   ""
-                  :http-version   [0 9]} nil]))
+       :request [(assoc get-request :http-version [0 9]) nil]))
 
   (is (parsed-as
        "GET / HTTP/90.23\r\n\r\n"
-       :request [{:request-method "GET"
-                  :path-info      "/"
-                  :query-string   ""
-                  :http-version   [90 23]} nil])))
+       :request [(assoc get-request :http-version [90 23]) nil])))
 
 (deftest parsing-normal-request-lines-in-chunks
   (doseq [method valid-methods]
     (is (parsed-as
          (str/split (str method " / HTTP/1.1\r\n\r\n") #"")
-         :request [{:request-method method
-                    :path-info      "/"
-                    :query-string   ""
-                    :http-version   [1 1]}
+         :request [(assoc get-request :request-method method)
                    (when (= "CONNECT" method)
                      :upgraded)]))))
 
@@ -121,25 +109,21 @@
     (let [raw (str "GET " uri " HTTP/1.1\r\n\r\n")]
       (is (parsed-as
            raw
-           :request [(merge hdrs {:request-method "GET" :http-version [1 1]}) nil]))
+           :request [(merge get-request hdrs) nil]))
 
       (is (parsed-as
            (str/split raw #"")
-           :request [(merge hdrs {:request-method "GET" :http-version [1 1]}) nil]))))
+           :request [(merge get-request hdrs) nil]))))
 
   (is (parsed-as
        ["GET /hello" "/world HTTP/1.1\r\n\r\n"]
-       :request [{:request-method "GET"
-                  :http-version   [1 1]
-                  :path-info      "/hello/world"
-                  :query-string   ""} nil]))
+       :request [(assoc get-request :path-info "/hello/world") nil]))
 
   (is (parsed-as
        ["GET /hello/world?zomg" "whatsup HTTP/1.1\r\n\r\n"]
-       :request [{:request-method "GET"
-                  :http-version   [1 1]
-                  :path-info      "/hello/world"
-                  :query-string   "zomgwhatsup"} nil])))
+       :request [(assoc get-request
+                   :path-info    "/hello/world"
+                   :query-string "zomgwhatsup") nil])))
 
 (deftest parsing-single-headers
   (is (parsed-as

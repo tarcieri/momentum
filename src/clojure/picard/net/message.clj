@@ -1,5 +1,7 @@
 (ns picard.net.message
   (:import
+   [java.nio
+    ByteBuffer]
    [org.jboss.netty.buffer
     ChannelBuffer
     ChannelBuffers]))
@@ -24,6 +26,9 @@
   (decode [_] [:message nil]))
 
 (extend-protocol EncodeMessage
+  ByteBuffer
+  (encode [buf] (ChannelBuffers/wrappedBuffer buf))
+
   String
   (encode [msg] (to-channel-buffer msg))
 
@@ -37,6 +42,7 @@
   ChannelBuffer
   (to-channel-buffer [buf]
     buf)
+
   String
   (to-channel-buffer [str]
     (ChannelBuffers/wrappedBuffer (.getBytes str))))

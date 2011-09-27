@@ -1,10 +1,15 @@
 (ns picard.http.core
+  (:use
+   picard.utils.buffer
+   picard.utils.conversions
+   picard.http.parser)
   (:require
    [clojure.string     :as str]
    [picard.net.message :as msg])
   (:import
    [org.jboss.netty.buffer
-    ChannelBuffer]
+    ChannelBuffer
+    ChannelBuffers]
    [org.jboss.netty.handler.codec.http
     DefaultHttpChunk
     DefaultHttpRequest
@@ -22,9 +27,63 @@
    [java.net
     URI]))
 
+(def SP         " ")
+(def CRLF       "\r\n")
 (def http-1-0   [1 0])
 (def http-1-1   [1 1])
 (def last-chunk HttpChunk/LAST_CHUNK)
+(def response-status-reasons
+  {100 "Continue"
+   101 "Switching Protocols"
+   102 "Processing"
+   200 "OK"
+   201 "Created"
+   202 "Accepted"
+   203 "Non-Authoritative Information"
+   204 "No Content"
+   205 "Reset Content"
+   206 "Partial Content"
+   207 "Multi-Status"
+   226 "IM Used"
+   300 "Multiple Choices"
+   301 "Moved Permanently"
+   302 "Found"
+   303 "See Other"
+   304 "Not Modified"
+   305 "Use Proxy"
+   306 "Reserved"
+   307 "Temporary Redirect"
+   400 "Bad Request"
+   401 "Unauthorized"
+   402 "Payment Required"
+   403 "Forbidden"
+   404 "Not Found"
+   405 "Method Not Allowed"
+   406 "Not Acceptable"
+   407 "Proxy Authentication Required"
+   408 "Request Timeout"
+   409 "Conflict"
+   410 "Gone"
+   411 "Length Required"
+   412 "Precondition Failed"
+   413 "Request Entity Too Large"
+   414 "Request-URI Too Long"
+   415 "Unsupported Media Type"
+   416 "Request Range Not Satisfiable"
+   417 "Expectation Failed"
+   422 "Unprocessable Entity"
+   423 "Locked"
+   424 "Failed Dependency"
+   426 "Upgrade Required"
+   500 "Internal Server Error"
+   501 "Not Implemented"
+   502 "Bad Gateway"
+   503 "Service Unavailable"
+   504 "Gateway Timeout"
+   505 "HTTP Version Not Supported"
+   506 "Variant Also Negotiates"
+   507 "Insufficient Storage"
+   510 "Not Extended"})
 
 (defn- maybe-lower-case
   [s]
@@ -90,6 +149,66 @@
 
    :else
    false))
+
+(defn request-parser
+  "Wraps an upstream function with the basic HTTP parser."
+  [f]
+  (let [p (parser f)]
+    (fn [evt val]
+      (if (= :message evt)
+        (parse p (to-byte-buffer val))
+        (f evt val)))))
+
+;; Converting HTTP messages to buffers
+
+(def http-version-str
+  {http-1-0 "HTTP/1.0"
+   http-1-1 "HTTP/1.1"})
+
+(defn- http-version-to-str
+  [v]
+  (or (http-version-str (or v http-1-1))
+      (throw (Exception. (str "Invalid HTTP version: " v)))))
+
+(defn- status-to-reason
+  [s]
+  (or (response-status-reasons s)
+      (throw (Exception. (str "Invalid HTTP status: " s)))))
+
+(defn- send-message-header
+  [b name val]
+  (when-not (or (nil? val) (= "" val))
+    (b name ": " val CRLF)))
+
+(defn- send-message-headers
+  [b hdrs]
+  (doseq [[name v-or-vals] hdrs]
+    (when (string? name)
+      (if (sequential? v-or-vals)
+        (doseq [val v-or-vals]
+          (send-message-header b name val))
+        (send-message-header b name v-or-vals))))
+
+  ;; Send the final CRLF
+  (b CRLF))
+
+(defn send-response
+  [dn status {version :http-version :as hdrs} body]
+  (batch
+   1024
+   (fn [b]
+     ;; First send the response line
+     (b (http-version-to-str version) SP
+        (str status) SP
+        (status-to-reason status) CRLF)
+     ;; Then send the headers
+     (send-message-headers b hdrs))
+   #(dn :message %))
+
+  (when (and body (not (keyword? body)))
+    (dn :message body)))
+
+;; ==== Most of the code below is deprecated
 
 (defn- netty-assoc-hdrs
   [^HttpMessage msg hdrs]

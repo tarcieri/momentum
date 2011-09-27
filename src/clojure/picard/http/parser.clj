@@ -6,6 +6,8 @@
     HttpParser
     HttpParserCallback]))
 
+(def BLANK "")
+
 (defn- request-headers
   [parser hdrs]
   (persistent!
@@ -13,6 +15,7 @@
     hdrs
     :request-method (.. parser getMethod toString)
     :path-info      (.. parser getPathInfo)
+    :script-name    BLANK
     :query-string   (.. parser getQueryString)
     :http-version   [(.getHttpMajor parser) (.getHttpMinor parser)])))
 

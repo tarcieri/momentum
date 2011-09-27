@@ -11,7 +11,11 @@
     HttpResponseEncoder]))
 
 ;; TODO:
-;; * Count the bytes in the request body
+;;   - Add more checks for invalid header / body combinations
+;;     - Transfer-Encoding w/o :chunked (unless HEAD request)
+;;     - Content-Length w/o body or :chunked
+;;     - :upgraded w/o upgrade handshake
+;;   - Count the bytes in the request body
 
 (declare
  handle-request
@@ -276,11 +280,10 @@
        (when (.upgraded? current-state)
          (clear-timeout state current-state))
 
-       (let [downstream (.downstream current-state)
-             message    (response->netty-response status hdrs body)]
+       (let [downstream (.downstream current-state)]
          (maybe-finalizing-exchange
           state current-state
-          (downstream :message message)))))))
+          (send-response downstream status hdrs body)))))))
 
 (defn- stream-or-finalize-request
   [state evt chunk current-state]
@@ -373,24 +376,24 @@
     ;; on all other events.
     (fn [evt val]
       (let [current-state @state]
-       (cond
-        (#{:request :body} evt)
-        (let [next-up-fn (.next-up-fn current-state)]
-          (bump-timeout state current-state)
-          (next-up-fn state evt val current-state))
+        (cond
+         (#{:request :body} evt)
+         (let [next-up-fn (.next-up-fn current-state)]
+           (bump-timeout state current-state)
+           (next-up-fn state evt val current-state))
 
-        (= :close evt)
-        (do
-          (clear-timeout state current-state)
-          (throw-connection-reset-by-peer))
+         (= :close evt)
+         (do
+           (clear-timeout state current-state)
+           (throw-connection-reset-by-peer))
 
-        (= :abort evt)
-        (do
-          (clear-timeout state current-state)
-          (next-up evt val))
+         (= :abort evt)
+         (do
+           (clear-timeout state current-state)
+           (next-up evt val))
 
-        :else
-        (next-up evt val))))))
+         :else
+         (next-up evt val))))))
 
 (defn- throw-http-pipelining-exception
   []
@@ -403,44 +406,41 @@
   [app opts]
   (fn [dn]
     (let [state (atom (initial-connection-state dn opts))]
-      (fn [evt val]
-        (let [current-state @state
-              next-up (.upstream current-state)]
-          (cond
-           ;; Check if an exchange is currently in progress. If there
-           ;; is one, then throw an exception since pipelining is not
-           ;; currently supported.
-           (= :request evt)
-           (if next-up
-             (throw-http-pipelining-exception)
-             (do
-               (clear-timeout state current-state)
-               (let [address-info (.address-info current-state)
-                     next-up      (exchange app dn state address-info opts)]
-                 (swap! state #(assoc % :upstream next-up))
-                 (next-up evt val))))
+      (request-parser
+       (fn [evt val]
+         (when (= :abort evt)
+           (.printStackTrace val))
+         (let [current-state @state
+               next-up (.upstream current-state)]
+           (cond
+            ;; Check if an exchange is currently in progress. If there
+            ;; is one, then throw an exception since pipelining is not
+            ;; currently supported.
+            (= :request evt)
+            (if next-up
+              (throw-http-pipelining-exception)
+              (do
+                (clear-timeout state current-state)
+                (let [address-info (.address-info current-state)
+                      next-up      (exchange app dn state address-info opts)]
+                  (swap! state #(assoc % :upstream next-up))
+                  (next-up evt val))))
 
-           next-up
-           (next-up evt val)
+            next-up
+            (next-up evt val)
 
-           (= :close evt)
-           (clear-timeout state current-state)
+            (= :close evt)
+            (clear-timeout state current-state)
 
-           (= :open evt)
-           (do
-             (bump-timeout state current-state)
-             (swap! state #(assoc % :address-info val)))
+            (= :open evt)
+            (do
+              (bump-timeout state current-state)
+              (swap! state #(assoc % :address-info val)))
 
-           (not (#{:body :pause :resume :abort} evt))
-           (throw
-            (Exception.
-             (str "Not expecting a message right now: " [evt val])))))))))
-
-(defn- http-pipeline
-  [p _]
-  (doto p
-    (.addLast "encoder" (HttpResponseEncoder.))
-    (.addLast "decoder" (HttpRequestDecoder.))))
+            (not (#{:body :pause :resume :abort} evt))
+            (throw
+             (Exception.
+              (str "Not expecting a message right now: " [evt val]))))))))))
 
 (def default-options
   {:keepalive 60
@@ -449,7 +449,7 @@
 (defn start
   ([app] (start app {}))
   ([app opts]
-     (let [opts (merge default-options opts {:pipeline-fn http-pipeline})]
+     (let [opts (merge default-options opts)]
        (net/start (proto app opts) opts))))
 
 (defn stop
