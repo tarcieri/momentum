@@ -427,10 +427,7 @@ public final class HttpParser extends AFn {
         }
 
         action handle_body {
-            int toRead;
-
-            toRead = (int) Math.min((long) Integer.MAX_VALUE, contentLength);
-            toRead = Math.min(buf.remaining(), toRead);
+            int toRead = min(contentLength, buf.limit() - fpc);
 
             if (toRead > 0) {
                 contentLength -= toRead;
@@ -450,10 +447,7 @@ public final class HttpParser extends AFn {
         }
 
         action handle_chunk {
-            int toRead;
-
-            toRead = (int) Math.min((long) Integer.MAX_VALUE, contentLength);
-            toRead = Math.min(buf.remaining(), toRead);
+            int toRead = min(contentLength, buf.limit() - fpc);
 
             if (toRead > 0) {
                 contentLength -= toRead;
@@ -754,6 +748,11 @@ public final class HttpParser extends AFn {
         retval.limit(to);
 
         return retval;
+    }
+
+    private int min(long a, int b) {
+        long cappedA = Math.min((long) Integer.MAX_VALUE, a);
+        return Math.min((int) cappedA, b);
     }
 
     private String parseErrorMsg(ByteBuffer buf, int fpc) {

@@ -389,7 +389,14 @@
                    "content-length" "5"
                    "expect" "100-continue") :chunked]
        :body "Hello"
-       :body nil)))
+       :body nil))
+
+  (is (parsed-as
+       (str "POST / HTTP/1.1\r\n"
+            "Content-Length: 10000\r\n\r\n"
+            "TROLLOLOLOLOLLLOLOLOLLOL")
+       :request [(assoc post-request "content-length" "10000") :chunked]
+       :body    "TROLLOLOLOLOLLLOLOLOLLOL")))
 
 (deftest parsing-chunked-bodies
   (is (parsed-as

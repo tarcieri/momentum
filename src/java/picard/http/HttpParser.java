@@ -151,7 +151,7 @@ public final class HttpParser extends AFn {
     }
 
     
-// line 518 "src/rl/picard/http/HttpParser.rl"
+// line 512 "src/rl/picard/http/HttpParser.rl"
 
 
     public static final long ALMOST_MAX_LONG     = Long.MAX_VALUE / 10;
@@ -2610,7 +2610,7 @@ static final int http_en_upgraded = 740;
 static final int http_en_main = 1;
 
 
-// line 534 "src/rl/picard/http/HttpParser.rl"
+// line 528 "src/rl/picard/http/HttpParser.rl"
 
     // Variable used by ragel to represent the current state of the
     // parser. This must be an integer and it should persist across
@@ -2681,7 +2681,7 @@ static final int http_en_main = 1;
 	cs = http_start;
 	}
 
-// line 599 "src/rl/picard/http/HttpParser.rl"
+// line 593 "src/rl/picard/http/HttpParser.rl"
 
         this.callback = callback;
         reset();
@@ -2790,7 +2790,7 @@ static final int http_en_main = 1;
         try {
             parseLoop: {
                 
-// line 707 "src/rl/picard/http/HttpParser.rl"
+// line 701 "src/rl/picard/http/HttpParser.rl"
                 
 // line 2796 "src/java/picard/http/HttpParser.java"
 	{
@@ -3482,10 +3482,7 @@ case 1:
 	case 108:
 // line 429 "src/rl/picard/http/HttpParser.rl"
 	{
-            int toRead;
-
-            toRead = (int) Math.min((long) Integer.MAX_VALUE, contentLength);
-            toRead = Math.min(buf.remaining(), toRead);
+            int toRead = min(contentLength, buf.limit() - p);
 
             if (toRead > 0) {
                 contentLength -= toRead;
@@ -3505,12 +3502,9 @@ case 1:
         }
 	break;
 	case 109:
-// line 452 "src/rl/picard/http/HttpParser.rl"
+// line 449 "src/rl/picard/http/HttpParser.rl"
 	{
-            int toRead;
-
-            toRead = (int) Math.min((long) Integer.MAX_VALUE, contentLength);
-            toRead = Math.min(buf.remaining(), toRead);
+            int toRead = min(contentLength, buf.limit() - p);
 
             if (toRead > 0) {
                 contentLength -= toRead;
@@ -3522,7 +3516,7 @@ case 1:
         }
 	break;
 	case 110:
-// line 467 "src/rl/picard/http/HttpParser.rl"
+// line 461 "src/rl/picard/http/HttpParser.rl"
 	{
             int remaining = buf.limit() - p;
 
@@ -3533,19 +3527,19 @@ case 1:
         }
 	break;
 	case 111:
-// line 476 "src/rl/picard/http/HttpParser.rl"
+// line 470 "src/rl/picard/http/HttpParser.rl"
 	{
             callback.body(this, null);
         }
 	break;
 	case 112:
-// line 480 "src/rl/picard/http/HttpParser.rl"
+// line 474 "src/rl/picard/http/HttpParser.rl"
 	{
             contentLength = 0;
         }
 	break;
 	case 113:
-// line 484 "src/rl/picard/http/HttpParser.rl"
+// line 478 "src/rl/picard/http/HttpParser.rl"
 	{
             if (contentLength >= ALMOST_MAX_LONG_HEX) {
                 throw new HttpParserException("The content-length is WAY too big");
@@ -3556,7 +3550,7 @@ case 1:
         }
 	break;
 	case 114:
-// line 493 "src/rl/picard/http/HttpParser.rl"
+// line 487 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 throw new HttpParserException("Invalid chunk size");
@@ -3564,7 +3558,7 @@ case 1:
         }
 	break;
 	case 115:
-// line 503 "src/rl/picard/http/HttpParser.rl"
+// line 497 "src/rl/picard/http/HttpParser.rl"
 	{
             if (++hread > MAX_HEADER_SIZE) {
                 throw new HttpParserException("The HTTP message head is too large");
@@ -3572,7 +3566,7 @@ case 1:
         }
 	break;
 	case 116:
-// line 509 "src/rl/picard/http/HttpParser.rl"
+// line 503 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 String msg = parseErrorMsg(buf, p);
@@ -3580,7 +3574,7 @@ case 1:
             }
         }
 	break;
-// line 3584 "src/java/picard/http/HttpParser.java"
+// line 3578 "src/java/picard/http/HttpParser.java"
 			}
 		}
 	}
@@ -3611,7 +3605,7 @@ case 4:
         }
 	break;
 	case 114:
-// line 493 "src/rl/picard/http/HttpParser.rl"
+// line 487 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 throw new HttpParserException("Invalid chunk size");
@@ -3619,7 +3613,7 @@ case 4:
         }
 	break;
 	case 116:
-// line 509 "src/rl/picard/http/HttpParser.rl"
+// line 503 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 String msg = parseErrorMsg(buf, p);
@@ -3627,7 +3621,7 @@ case 4:
             }
         }
 	break;
-// line 3631 "src/java/picard/http/HttpParser.java"
+// line 3625 "src/java/picard/http/HttpParser.java"
 		}
 	}
 	}
@@ -3637,7 +3631,7 @@ case 5:
 	break; }
 	}
 
-// line 708 "src/rl/picard/http/HttpParser.rl"
+// line 702 "src/rl/picard/http/HttpParser.rl"
             }
         }
         catch (RuntimeException e) {
@@ -3687,6 +3681,11 @@ case 5:
         retval.limit(to);
 
         return retval;
+    }
+
+    private int min(long a, int b) {
+        long cappedA = Math.min((long) Integer.MAX_VALUE, a);
+        return Math.min((int) cappedA, b);
     }
 
     private String parseErrorMsg(ByteBuffer buf, int fpc) {
