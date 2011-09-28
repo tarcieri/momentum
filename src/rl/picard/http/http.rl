@@ -228,6 +228,7 @@
   chunk = chunk_head chunk_body * <: CRLF;
 
   chunked_body := ( chunk + chunk_tail CRLF )
+                    %to(reset)
                     $! something_went_wrong;
 
   # === HTTP identity body

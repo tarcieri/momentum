@@ -166,13 +166,13 @@
 
 ;; Converting HTTP messages to buffers
 
-(def http-version-str
-  {http-1-0 "HTTP/1.0"
-   http-1-1 "HTTP/1.1"})
+(def http-version-bytes
+  {http-1-0 (to-bytes "HTTP/1.0")
+   http-1-1 (to-bytes "HTTP/1.1")})
 
-(defn- http-version-to-str
+(defn- http-version-to-bytes
   [v]
-  (or (http-version-str (or v http-1-1))
+  (or (http-version-bytes (or v http-1-1))
       (throw (Exception. (str "Invalid HTTP version: " v)))))
 
 (defn- status-to-reason
@@ -203,7 +203,7 @@
    1024
    (fn [b]
      ;; First send the response line
-     (b (http-version-to-str version) SP
+     (b (http-version-to-bytes version) SP
         (str status) SP
         (status-to-reason status) CRLF)
      ;; Then send the headers
@@ -219,7 +219,7 @@
     (cond
      (and chunked? chunk)
      (let [size (hex (remaining chunk))]
-       (dn :message (wrap (buffer size CRLF) chunk)))
+       (dn :message (wrap (buffer size CRLF) chunk CRLF)))
 
      chunked?
      (dn :message last-chunk*)

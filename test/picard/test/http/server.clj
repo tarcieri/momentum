@@ -765,6 +765,7 @@
     (is (next-msgs
          ch1
          :request [:dont-care :chunked]
+         :body    "TROLLOLOLOLOLOLLLOLOLOLLOL"
          :abort   #(instance? Exception %))))
 
   (is (no-msgs ch1)))
@@ -1182,35 +1183,38 @@
 
     (is (no-msgs ch1))))
 
-(defcoretest  pausing-te-chunked-request
-  [ch1 ch2]
-  (start
-   (fn [dn]
-     (receive ch2 #(dn % nil))
-     (fn [evt val]
-       (enqueue ch1 [evt val])
-       (when (= :request evt)
-         (dn :pause nil))
-       (when (= [:body nil] [evt val])
-         (dn :response [204 {} ""])))))
+;; TODO: Figure out if this functionality should be removed. It
+;; probably should.
+;; ===
+;; (defcoretest  pausing-te-chunked-request
+;;   [ch1 ch2]
+;;   (start
+;;    (fn [dn]
+;;      (receive ch2 #(dn % nil))
+;;      (fn [evt val]
+;;        (enqueue ch1 [evt val])
+;;        (when (= :request evt)
+;;          (dn :pause nil))
+;;        (when (= [:body nil] [evt val])
+;;          (dn :response [204 {} ""])))))
 
-  (with-socket
-    (write-socket
-     "POST / HTTP/1.1\r\n"
-     "Transfer-Encoding: chunked\r\n\r\n"
-     "5\r\nHello\r\n5\r\nWorld\r\n0\r\n\r\n")
+;;   (with-socket
+;;     (write-socket
+;;      "POST / HTTP/1.1\r\n"
+;;      "Transfer-Encoding: chunked\r\n\r\n"
+;;      "5\r\nHello\r\n5\r\nWorld\r\n0\r\n\r\n")
 
-    (is (next-msgs ch1 :request :dont-care))
-    (is (no-msgs ch1))
+;;     (is (next-msgs ch1 :request :dont-care))
+;;     (is (no-msgs ch1))
 
-    (enqueue ch2 :resume)
+;;     (enqueue ch2 :resume)
 
-    (is (next-msgs
-         ch1
-         :body "Hello"
-         :body "World"
-         :body  nil
-         :done  nil))))
+;;     (is (next-msgs
+;;          ch1
+;;          :body "Hello"
+;;          :body "World"
+;;          :body  nil
+;;          :done  nil))))
 
 (defcoretest hard-closing-socket-before-response
   [ch1]

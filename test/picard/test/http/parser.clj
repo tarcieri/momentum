@@ -533,7 +533,23 @@
        :body    "world"
        :body    nil
        :request [(assoc post-request "content-length" "11") "Hello world"]
-       :request [get-request nil])))
+       :request [get-request nil]))
+
+  (is (parsed-as
+       [(str "POST / HTTP/1.1\r\n"
+             "Transfer-Encoding: chunked\r\n\r\n"
+             "5\r\nHello\r\n6\r\n World\r\n0\r\n\r\n")
+        (str "POST / HTTP/1.1\r\n"
+             "Transfer-Encoding: chunked\r\n\r\n"
+             "6\r\nZomg!!\r\n9\r\nINCEPTION\r\n0\r\n\r\n")]
+       :request [(assoc post-request "transfer-encoding" "chunked") :chunked]
+       :body    "Hello"
+       :body    " World"
+       :body    nil
+       :request [(assoc post-request "transfer-encoding" "chunked") :chunked]
+       :body    "Zomg!!"
+       :body    "INCEPTION"
+       :body    nil)))
 
 (deftest insanity-requests
   (is (thrown?

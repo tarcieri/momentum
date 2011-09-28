@@ -26,6 +26,9 @@
   (decode [_] [:message nil]))
 
 (extend-protocol EncodeMessage
+  (class (byte-array 0))
+  (encode [bytes] (ChannelBuffers/wrappedBuffer bytes))
+
   ByteBuffer
   (encode [buf] (ChannelBuffers/wrappedBuffer buf))
 

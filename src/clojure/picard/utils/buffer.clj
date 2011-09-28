@@ -1,6 +1,4 @@
 (ns picard.utils.buffer
-  (:use
-   picard.utils.conversions)
   (:import
    [java.nio
     ByteBuffer]
@@ -143,7 +141,9 @@
 
 (defn wrap
   [& bufs]
-  (ChannelBuffers/wrappedBuffer (into-array bufs)))
+  (ChannelBuffers/wrappedBuffer
+   (into-array
+    (map to-buffer bufs))))
 
 (defn batch
   "Takes an initial buffer size, a function that creates the buffers
@@ -167,7 +167,7 @@
        (builder
         (fn batcher
           ([data]
-             (let [data (to-byte-buffer data)]
+             (let [data (to-buffer data)]
                (loop [buf @state]
                  (when (remaining? data)
                    (if (transfer data buf)
