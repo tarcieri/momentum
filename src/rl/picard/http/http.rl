@@ -146,9 +146,9 @@
                % end_header_value
                ;
 
-  generic_header = header_name
-                   header_sep <:
-                   header_value;
+  hdr_generic = header_name
+                header_sep <:
+                header_value;
 
   # Header: Content-Length
   # ===
@@ -158,19 +158,19 @@
                      % end_content_length
                      ;
 
-  content_length = "content-length"i
-                   header_sep
-                   content_length_val $lerr(content_length_err)
-                   header_eol;
+  hdr_content_length = "content-length"i
+                       header_sep
+                       content_length_val $lerr(content_length_err)
+                       header_eol;
 
   # Header: Transfer-Encoding
   # ===
   #
-  transfer_encoding = "transfer-encoding"i
-                      header_sep
-                      "chunked"i
-                        % end_transfer_encoding_chunked
-                      header_eol;
+  hdr_transfer_encoding = "transfer-encoding"i
+                          header_sep
+                          "chunked"i
+                            % end_transfer_encoding_chunked
+                          header_eol;
 
   # Header: Connection
   # ===
@@ -178,16 +178,26 @@
   # are permitted in the Connection header.
   # http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.10
   #
-  connection = "connection"i
+  hdr_connection = "connection"i
+                   header_sep
+                   ( "close"i   % end_connection_close
+                   | "upgrade"i % end_connection_upgrade )
+                   header_eol;
+
+  # Header: Expect
+  # ===
+  #
+  hdr_expect = "expect"i
                header_sep
-               ( "close"i   % end_connection_close
-               | "upgrade"i % end_connection_upgrade )
+               "100-continue"i
+                 % end_expect_continue
                header_eol;
 
-  header = content_length
-         | transfer_encoding
-         | connection
-         | generic_header
+  header = hdr_content_length
+         | hdr_transfer_encoding
+         | hdr_connection
+         | hdr_expect
+         | hdr_generic
          ;
 
   headers = header *;

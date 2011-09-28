@@ -74,74 +74,75 @@ public final class HttpParser extends AFn {
     };
 
     // Listing out all of the headers that we are going to use
-    public static final String HDR_ACCEPT                    = "accept";
-    public static final String HDR_ACCEPT_CHARSET            = "accept-charset";
-    public static final String HDR_ACCEPT_ENCODING           = "accept-encoding";
-    public static final String HDR_ACCEPT_LANGUAGE           = "accept-language";
-    public static final String HDR_ACCEPT_RANGES             = "accept-ranges";
-    public static final String HDR_AGE                       = "age";
-    public static final String HDR_ALLOW                     = "allow";
-    public static final String HDR_AUTHORIZATION             = "authorization";
-    public static final String HDR_CACHE_CONTROL             = "cache-control";
-    public static final String HDR_CONNECTION                = "connection";
-    public static final String HDR_CONTENT_ENCODING          = "content-encoding";
-    public static final String HDR_CONTENT_LANGUAGE          = "content-language";
-    public static final String HDR_CONTENT_LENGTH            = "content-length";
-    public static final String HDR_CONTENT_LOCATION          = "content-location";
-    public static final String HDR_CONTENT_MD5               = "content-md5";
-    public static final String HDR_CONTENT_DISPOSITION       = "content-disposition";
-    public static final String HDR_CONTENT_RANGE             = "content-range";
-    public static final String HDR_CONTENT_TYPE              = "content-type";
-    public static final String HDR_COOKIE                    = "cookie";
-    public static final String HDR_DATE                      = "date";
-    public static final String HDR_DNT                       = "dnt";
-    public static final String HDR_ETAG                      = "etag";
-    public static final String HDR_EXPECT                    = "expect";
-    public static final String HDR_EXPIRES                   = "expires";
-    public static final String HDR_FROM                      = "from";
-    public static final String HDR_HOST                      = "host";
-    public static final String HDR_IF_MATCH                  = "if-match";
-    public static final String HDR_IF_MODIFIED_SINCE         = "if-modified-since";
-    public static final String HDR_IF_NONE_MATCH             = "if-none-match";
-    public static final String HDR_IF_RANGE                  = "if-range";
-    public static final String HDR_IF_UNMODIFIED_SINCE       = "if-unmodified-since";
-    public static final String HDR_KEEP_ALIVE                = "keep-alive";
-    public static final String HDR_LAST_MODIFIED             = "last-modified";
-    public static final String HDR_LINK                      = "link";
-    public static final String HDR_LOCATION                  = "location";
-    public static final String HDR_MAX_FORWARDS              = "max-forwards";
-    public static final String HDR_P3P                       = "p3p";
-    public static final String HDR_PRAGMA                    = "pragma";
-    public static final String HDR_PROXY_AUTHENTICATE        = "proxy-authenticate";
-    public static final String HDR_PROXY_AUTHORIZATION       = "proxy-authorization";
-    public static final String HDR_RANGE                     = "range";
-    public static final String HDR_REFERER                   = "referer";
-    public static final String HDR_REFRESH                   = "refresh";
-    public static final String HDR_RETRY_AFTER               = "retry-after";
-    public static final String HDR_SERVER                    = "server";
-    public static final String HDR_SET_COOKIE                = "set-cookie";
-    public static final String HDR_STRICT_TRANSPORT_SECURITY = "strict-transport-security";
-    public static final String HDR_TE                        = "te";
-    public static final String HDR_TRAILER                   = "trailer";
-    public static final String HDR_TRANSFER_ENCODING         = "transfer-encoding";
-    public static final String HDR_UPGRADE                   = "upgrade";
-    public static final String HDR_USER_AGENT                = "user-agent";
-    public static final String HDR_VARY                      = "vary";
-    public static final String HDR_VIA                       = "via";
-    public static final String HDR_WARNING                   = "warning";
-    public static final String HDR_WWW_AUTHENTICATE          = "www-authenticate";
-    public static final String HDR_X_CONTENT_TYPE_OPTIONS    = "x-content-type-options";
-    public static final String HDR_X_DO_NOT_TRACK            = "x-do-not-track";
-    public static final String HDR_X_FORWARDED_FOR           = "x-forwarded-for";
-    public static final String HDR_X_FORWARDED_PROTO         = "x-forwarded-proto";
-    public static final String HDR_X_FRAME_OPTIONS           = "x-frame-options";
-    public static final String HDR_X_POWERED_BY              = "x-powered-by";
-    public static final String HDR_X_REQUESTED_WITH          = "x-requested-with";
-    public static final String HDR_X_XSS_PROTECTION          = "x-xss-protection";
+    public static final String HDR_ACCEPT                    = "accept".intern();
+    public static final String HDR_ACCEPT_CHARSET            = "accept-charset".intern();
+    public static final String HDR_ACCEPT_ENCODING           = "accept-encoding".intern();
+    public static final String HDR_ACCEPT_LANGUAGE           = "accept-language".intern();
+    public static final String HDR_ACCEPT_RANGES             = "accept-ranges".intern();
+    public static final String HDR_AGE                       = "age".intern();
+    public static final String HDR_ALLOW                     = "allow".intern();
+    public static final String HDR_AUTHORIZATION             = "authorization".intern();
+    public static final String HDR_CACHE_CONTROL             = "cache-control".intern();
+    public static final String HDR_CONNECTION                = "connection".intern();
+    public static final String HDR_CONTENT_ENCODING          = "content-encoding".intern();
+    public static final String HDR_CONTENT_LANGUAGE          = "content-language".intern();
+    public static final String HDR_CONTENT_LENGTH            = "content-length".intern();
+    public static final String HDR_CONTENT_LOCATION          = "content-location".intern();
+    public static final String HDR_CONTENT_MD5               = "content-md5".intern();
+    public static final String HDR_CONTENT_DISPOSITION       = "content-disposition".intern();
+    public static final String HDR_CONTENT_RANGE             = "content-range".intern();
+    public static final String HDR_CONTENT_TYPE              = "content-type".intern();
+    public static final String HDR_COOKIE                    = "cookie".intern();
+    public static final String HDR_DATE                      = "date".intern();
+    public static final String HDR_DNT                       = "dnt".intern();
+    public static final String HDR_ETAG                      = "etag".intern();
+    public static final String HDR_EXPECT                    = "expect".intern();
+    public static final String HDR_EXPIRES                   = "expires".intern();
+    public static final String HDR_FROM                      = "from".intern();
+    public static final String HDR_HOST                      = "host".intern();
+    public static final String HDR_IF_MATCH                  = "if-match".intern();
+    public static final String HDR_IF_MODIFIED_SINCE         = "if-modified-since".intern();
+    public static final String HDR_IF_NONE_MATCH             = "if-none-match".intern();
+    public static final String HDR_IF_RANGE                  = "if-range".intern();
+    public static final String HDR_IF_UNMODIFIED_SINCE       = "if-unmodified-since".intern();
+    public static final String HDR_KEEP_ALIVE                = "keep-alive".intern();
+    public static final String HDR_LAST_MODIFIED             = "last-modified".intern();
+    public static final String HDR_LINK                      = "link".intern();
+    public static final String HDR_LOCATION                  = "location".intern();
+    public static final String HDR_MAX_FORWARDS              = "max-forwards".intern();
+    public static final String HDR_P3P                       = "p3p".intern();
+    public static final String HDR_PRAGMA                    = "pragma".intern();
+    public static final String HDR_PROXY_AUTHENTICATE        = "proxy-authenticate".intern();
+    public static final String HDR_PROXY_AUTHORIZATION       = "proxy-authorization".intern();
+    public static final String HDR_RANGE                     = "range".intern();
+    public static final String HDR_REFERER                   = "referer".intern();
+    public static final String HDR_REFRESH                   = "refresh".intern();
+    public static final String HDR_RETRY_AFTER               = "retry-after".intern();
+    public static final String HDR_SERVER                    = "server".intern();
+    public static final String HDR_SET_COOKIE                = "set-cookie".intern();
+    public static final String HDR_STRICT_TRANSPORT_SECURITY = "strict-transport-security".intern();
+    public static final String HDR_TE                        = "te".intern();
+    public static final String HDR_TRAILER                   = "trailer".intern();
+    public static final String HDR_TRANSFER_ENCODING         = "transfer-encoding".intern();
+    public static final String HDR_UPGRADE                   = "upgrade".intern();
+    public static final String HDR_USER_AGENT                = "user-agent".intern();
+    public static final String HDR_VARY                      = "vary".intern();
+    public static final String HDR_VIA                       = "via".intern();
+    public static final String HDR_WARNING                   = "warning".intern();
+    public static final String HDR_WWW_AUTHENTICATE          = "www-authenticate".intern();
+    public static final String HDR_X_CONTENT_TYPE_OPTIONS    = "x-content-type-options".intern();
+    public static final String HDR_X_DO_NOT_TRACK            = "x-do-not-track".intern();
+    public static final String HDR_X_FORWARDED_FOR           = "x-forwarded-for".intern();
+    public static final String HDR_X_FORWARDED_PROTO         = "x-forwarded-proto".intern();
+    public static final String HDR_X_FRAME_OPTIONS           = "x-frame-options".intern();
+    public static final String HDR_X_POWERED_BY              = "x-powered-by".intern();
+    public static final String HDR_X_REQUESTED_WITH          = "x-requested-with".intern();
+    public static final String HDR_X_XSS_PROTECTION          = "x-xss-protection".intern();
 
-    public static final String VAL_CHUNKED = "chunked";
-    public static final String VAL_CLOSE   = "close";
-    public static final String VAL_UPGRADE = "upgrade";
+    public static final String VAL_100_CONTINUE = "100-continue".intern();
+    public static final String VAL_CHUNKED      = "chunked".intern();
+    public static final String VAL_CLOSE        = "close".intern();
+    public static final String VAL_UPGRADE      = "upgrade".intern();
 
     public static boolean isWhiteSpace(byte b) {
         return b == SP || b == HT;
@@ -373,6 +374,13 @@ public final class HttpParser extends AFn {
             callback.header(headers, HDR_CONNECTION, VAL_UPGRADE);
         }
 
+        action end_expect_continue {
+            flags |= EXPECT_CONTINUE;
+
+            headerValue = null;
+            callback.header(headers, HDR_EXPECT, VAL_100_CONTINUE);
+        }
+
         action start_head {
             reset();
 
@@ -393,7 +401,7 @@ public final class HttpParser extends AFn {
                 int remaining = buf.limit() - fpc;
                 // If the remaining content length is present in the
                 // buffer, just include it in the callback.
-                if (remaining >= contentLength) {
+                if (remaining >= contentLength && !isExpectingContinue()) {
                     int toRead = (int) contentLength;
                     ++fpc;
                     body = slice(buf, fpc, fpc + toRead);
@@ -519,8 +527,8 @@ public final class HttpParser extends AFn {
     public static final int  CONN_CLOSE      = 1 << 3;
     public static final int  KEEP_ALIVE      = 1 << 4;
     public static final int  UPGRADE         = 1 << 5;
-    public static final int  ERROR           = 1 << 6;
-
+    public static final int  EXPECT_CONTINUE = 1 << 6;
+    public static final int  ERROR           = 1 << 7;
 
     %% write data;
 
@@ -623,6 +631,10 @@ public final class HttpParser extends AFn {
 
     public boolean isUpgrade() {
         return ( flags & UPGRADE ) == UPGRADE || method == HttpMethod.CONNECT;
+    }
+
+    public boolean isExpectingContinue() {
+        return ( flags & EXPECT_CONTINUE ) == EXPECT_CONTINUE;
     }
 
     public boolean isError() {

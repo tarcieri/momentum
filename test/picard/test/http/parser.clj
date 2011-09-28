@@ -378,7 +378,18 @@
   (is (parsed-as
        (str "GET / HTTP/1.1\r\n"
             "CONTENT-LENGTH: 11\r\n\r\nHello World")
-       :request [(assoc get-request "content-length" "11") "Hello World"])))
+       :request [(assoc get-request "content-length" "11") "Hello World"]))
+
+  (is (parsed-as
+       (str "POST / HTTP/1.1\r\n"
+            "Content-Length: 5\r\n"
+            "Expect: 100-continue\r\n\r\n"
+            "Hello")
+       :request [(assoc post-request
+                   "content-length" "5"
+                   "expect" "100-continue") :chunked]
+       :body "Hello"
+       :body nil)))
 
 (deftest parsing-chunked-bodies
   (is (parsed-as
