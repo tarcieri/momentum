@@ -48,7 +48,6 @@
 (defn- mk-downstream
   [pool conn next-dn]
   (fn current [evt val]
-    ;; (println "(P) DN: " [evt val])
     (cond
      (not (current-exchange? conn current))
      (throw (Exception. "Current exchange is complete"))
@@ -98,8 +97,11 @@
          (maybe-bind-app pool conn app))
 
        (= :close evt)
-       (when-let [exchange-up (finalize-exchange conn)]
-         (exchange-up :close val))
+       (do
+         (sync-set conn isOpen false)
+         (if-let [exchange-up (finalize-exchange conn)]
+           (exchange-up :close val)
+           (.. pool queue (remove conn))))
 
        ;; If the connection has not been bound, bind it here.
        (= :abort evt)

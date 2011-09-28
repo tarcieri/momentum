@@ -57,6 +57,12 @@ public class ConnectionQueue {
         }
     }
 
+    public void remove(Connection node) {
+        synchronized (this) {
+            removeNode(node, node.addr());
+        }
+    }
+
     private Connection popChannelByAddr(InetSocketAddress addr) {
         Connection retval = localHeadByAddr.get(addr);
 
