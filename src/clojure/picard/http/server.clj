@@ -406,8 +406,6 @@
     (let [state (atom (initial-connection-state dn opts))]
       (request-parser
        (fn [evt val]
-         (when (= :abort evt)
-           (.printStackTrace val))
          (let [current-state @state
                next-up (.upstream current-state)]
            (cond

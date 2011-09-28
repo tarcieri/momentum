@@ -392,6 +392,24 @@
        :body nil))
 
   (is (parsed-as
+       (str "POST / HTTP/1.0\r\n"
+            "Content-Length: 5\r\n"
+            "Expect: 100-continue\r\n\r\n"
+            "Hello")
+       :request [(assoc post-request
+                   :http-version    [1 0]
+                   "content-length" "5"
+                   "expect" "100-continue") "Hello"]))
+
+  (is (parsed-as
+       (str "POST /blah HTTP/1.1\r\n"
+            "Content-Length: 5\r\n\r\n"
+            "Hello")
+       :request [(assoc post-request
+                   :path-info "/blah"
+                   "content-length" "5") "Hello"]))
+
+  (is (parsed-as
        (str "POST / HTTP/1.1\r\n"
             "Content-Length: 10000\r\n\r\n"
             "TROLLOLOLOLOLLLOLOLOLLOL")
@@ -549,7 +567,17 @@
        :request [(assoc post-request "transfer-encoding" "chunked") :chunked]
        :body    "Zomg!!"
        :body    "INCEPTION"
-       :body    nil)))
+       :body    nil))
+
+  (is (parsed-as
+       [(str "GET / HTTP/1.1\r\n\r\n")
+        (str "POST /blah HTTP/1.1\r\n"
+             "Content-Length: 5\r\n\r\n"
+             "Hello")]
+       :request [get-request nil]
+       :request [(assoc post-request
+                   :path-info "/blah"
+                   "content-length" "5") "Hello"])))
 
 (deftest insanity-requests
   (is (thrown?

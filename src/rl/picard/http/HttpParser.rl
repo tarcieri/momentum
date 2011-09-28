@@ -375,7 +375,9 @@ public final class HttpParser extends AFn {
         }
 
         action end_expect_continue {
-            flags |= EXPECT_CONTINUE;
+            if (isHttp11()) {
+                flags |= EXPECT_CONTINUE;
+            }
 
             headerValue = null;
             callback.header(headers, HDR_EXPECT, VAL_100_CONTINUE);
@@ -399,6 +401,7 @@ public final class HttpParser extends AFn {
             }
             else if (isIdentityBody()) {
                 int remaining = buf.limit() - fpc;
+
                 // If the remaining content length is present in the
                 // buffer, just include it in the callback.
                 if (remaining >= contentLength && !isExpectingContinue()) {
@@ -593,6 +596,10 @@ public final class HttpParser extends AFn {
 
         this.callback = callback;
         reset();
+    }
+
+    public boolean isHttp11() {
+        return httpMajor == 1 && httpMinor == 1;
     }
 
     public boolean isRequest() {

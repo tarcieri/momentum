@@ -151,7 +151,7 @@ public final class HttpParser extends AFn {
     }
 
     
-// line 512 "src/rl/picard/http/HttpParser.rl"
+// line 515 "src/rl/picard/http/HttpParser.rl"
 
 
     public static final long ALMOST_MAX_LONG     = Long.MAX_VALUE / 10;
@@ -2682,7 +2682,7 @@ static final int http_en_upgraded = 740;
 static final int http_en_main = 1;
 
 
-// line 528 "src/rl/picard/http/HttpParser.rl"
+// line 531 "src/rl/picard/http/HttpParser.rl"
 
     // Variable used by ragel to represent the current state of the
     // parser. This must be an integer and it should persist across
@@ -2753,10 +2753,14 @@ static final int http_en_main = 1;
 	cs = http_start;
 	}
 
-// line 593 "src/rl/picard/http/HttpParser.rl"
+// line 596 "src/rl/picard/http/HttpParser.rl"
 
         this.callback = callback;
         reset();
+    }
+
+    public boolean isHttp11() {
+        return httpMajor == 1 && httpMinor == 1;
     }
 
     public boolean isRequest() {
@@ -2862,9 +2866,9 @@ static final int http_en_main = 1;
         try {
             parseLoop: {
                 
-// line 701 "src/rl/picard/http/HttpParser.rl"
+// line 708 "src/rl/picard/http/HttpParser.rl"
                 
-// line 2868 "src/java/picard/http/HttpParser.java"
+// line 2872 "src/java/picard/http/HttpParser.java"
 	{
 	int _klen;
 	int _trans = 0;
@@ -2907,7 +2911,7 @@ case 1:
 	case 0: {
 		_widec = 65536 + (( buf.get(p)) - 0);
 		if ( 
-// line 425 "src/rl/picard/http/HttpParser.rl"
+// line 428 "src/rl/picard/http/HttpParser.rl"
 
             contentLength > 0
          ) _widec += 65536;
@@ -3500,14 +3504,16 @@ case 1:
 	case 105:
 // line 377 "src/rl/picard/http/HttpParser.rl"
 	{
-            flags |= EXPECT_CONTINUE;
+            if (isHttp11()) {
+                flags |= EXPECT_CONTINUE;
+            }
 
             headerValue = null;
             callback.header(headers, HDR_EXPECT, VAL_100_CONTINUE);
         }
 	break;
 	case 106:
-// line 384 "src/rl/picard/http/HttpParser.rl"
+// line 386 "src/rl/picard/http/HttpParser.rl"
 	{
             reset();
 
@@ -3516,7 +3522,7 @@ case 1:
         }
 	break;
 	case 107:
-// line 391 "src/rl/picard/http/HttpParser.rl"
+// line 393 "src/rl/picard/http/HttpParser.rl"
 	{
             // Not parsing the HTTP message head anymore
             flags ^= PARSING_HEAD;
@@ -3528,6 +3534,7 @@ case 1:
             }
             else if (isIdentityBody()) {
                 int remaining = buf.limit() - p;
+
                 // If the remaining content length is present in the
                 // buffer, just include it in the callback.
                 if (remaining >= contentLength && !isExpectingContinue()) {
@@ -3552,7 +3559,7 @@ case 1:
         }
 	break;
 	case 108:
-// line 429 "src/rl/picard/http/HttpParser.rl"
+// line 432 "src/rl/picard/http/HttpParser.rl"
 	{
             int toRead = min(contentLength, buf.limit() - p);
 
@@ -3574,7 +3581,7 @@ case 1:
         }
 	break;
 	case 109:
-// line 449 "src/rl/picard/http/HttpParser.rl"
+// line 452 "src/rl/picard/http/HttpParser.rl"
 	{
             int toRead = min(contentLength, buf.limit() - p);
 
@@ -3588,7 +3595,7 @@ case 1:
         }
 	break;
 	case 110:
-// line 461 "src/rl/picard/http/HttpParser.rl"
+// line 464 "src/rl/picard/http/HttpParser.rl"
 	{
             int remaining = buf.limit() - p;
 
@@ -3599,19 +3606,19 @@ case 1:
         }
 	break;
 	case 111:
-// line 470 "src/rl/picard/http/HttpParser.rl"
+// line 473 "src/rl/picard/http/HttpParser.rl"
 	{
             callback.body(this, null);
         }
 	break;
 	case 112:
-// line 474 "src/rl/picard/http/HttpParser.rl"
+// line 477 "src/rl/picard/http/HttpParser.rl"
 	{
             contentLength = 0;
         }
 	break;
 	case 113:
-// line 478 "src/rl/picard/http/HttpParser.rl"
+// line 481 "src/rl/picard/http/HttpParser.rl"
 	{
             if (contentLength >= ALMOST_MAX_LONG_HEX) {
                 throw new HttpParserException("The content-length is WAY too big");
@@ -3622,7 +3629,7 @@ case 1:
         }
 	break;
 	case 114:
-// line 487 "src/rl/picard/http/HttpParser.rl"
+// line 490 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 throw new HttpParserException("Invalid chunk size");
@@ -3630,7 +3637,7 @@ case 1:
         }
 	break;
 	case 116:
-// line 497 "src/rl/picard/http/HttpParser.rl"
+// line 500 "src/rl/picard/http/HttpParser.rl"
 	{
             if (++hread > MAX_HEADER_SIZE) {
                 throw new HttpParserException("The HTTP message head is too large");
@@ -3638,7 +3645,7 @@ case 1:
         }
 	break;
 	case 117:
-// line 503 "src/rl/picard/http/HttpParser.rl"
+// line 506 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 String msg = parseErrorMsg(buf, p);
@@ -3646,7 +3653,7 @@ case 1:
             }
         }
 	break;
-// line 3650 "src/java/picard/http/HttpParser.java"
+// line 3657 "src/java/picard/http/HttpParser.java"
 			}
 		}
 	}
@@ -3657,12 +3664,12 @@ case 2:
 	while ( _nacts-- > 0 ) {
 		switch ( _http_actions[_acts++] ) {
 	case 115:
-// line 493 "src/rl/picard/http/HttpParser.rl"
+// line 496 "src/rl/picard/http/HttpParser.rl"
 	{
             cs = 1;
         }
 	break;
-// line 3666 "src/java/picard/http/HttpParser.java"
+// line 3673 "src/java/picard/http/HttpParser.java"
 		}
 	}
 
@@ -3691,7 +3698,7 @@ case 4:
         }
 	break;
 	case 114:
-// line 487 "src/rl/picard/http/HttpParser.rl"
+// line 490 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 throw new HttpParserException("Invalid chunk size");
@@ -3699,7 +3706,7 @@ case 4:
         }
 	break;
 	case 117:
-// line 503 "src/rl/picard/http/HttpParser.rl"
+// line 506 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 String msg = parseErrorMsg(buf, p);
@@ -3707,7 +3714,7 @@ case 4:
             }
         }
 	break;
-// line 3711 "src/java/picard/http/HttpParser.java"
+// line 3718 "src/java/picard/http/HttpParser.java"
 		}
 	}
 	}
@@ -3717,7 +3724,7 @@ case 5:
 	break; }
 	}
 
-// line 702 "src/rl/picard/http/HttpParser.rl"
+// line 709 "src/rl/picard/http/HttpParser.rl"
             }
         }
         catch (RuntimeException e) {

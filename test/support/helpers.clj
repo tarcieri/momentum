@@ -81,12 +81,20 @@
   []
   (not (open-socket?)))
 
+(defn- read-byte
+  [in]
+  (try
+    (.get (future (.read in))
+          200 TimeUnit/MILLISECONDS)
+    (catch java.util.concurrent.TimeoutException _
+      -1)))
+
 (defn read-socket
   ([] (read-socket in))
   ([in] (read-socket in 1000))
   ([in timeout]
      (lazy-seq
-      (let [byte (.read in)]
+      (let [byte (read-byte in)]
         (if (<= 0 byte)
           (cons byte (read-socket in))
           [])))))
@@ -103,8 +111,7 @@
 
 (defn write-socket
   [& strs]
-  (doseq [s strs]
-    (.write out (.getBytes s)))
+  (.write out (.getBytes (apply str strs)))
   (.flush out))
 
 (defn next-msg
@@ -196,11 +203,10 @@
   (let [expected (rest form)]
     `(let [in#       in
            expected# (str ~@expected)
-           actual#   (.get (future (->> (read-socket in#)
-                                        (take (count expected#))
-                                        (map char)
-                                        (apply str)))
-                           200 TimeUnit/MILLISECONDS)]
+           actual#   (->> (read-socket in#)
+                          (take (count expected#))
+                          (map char)
+                          (apply str))]
        (if (= expected# actual#)
          (do-report {:type :pass :message ~msg
                      :expected expected# :actual actual#})
