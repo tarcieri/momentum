@@ -10,8 +10,8 @@
                      [lamina        "0.4.0-SNAPSHOT"]
                      [robert/hooke  "1.1.0"]]
 
-  :source-path      "src/clojure"
-  :java-source-path "src/java"
+  :source-path      "src/clj"
+  :java-source-path "src/jvm"
   :javac-options    {:debug "true"}
   :aot              [picard.log4j.CommonLogFormatLayout
                      picard.log4j.VerboseLayout
