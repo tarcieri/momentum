@@ -4,217 +4,304 @@
    support.helpers
    picard.net.client)
   (:require
+   [picard.net.pool   :as pool]
    [picard.net.server :as server]))
 
-(defn- start-echo-server
-  ([] (start-echo-server nil))
-  ([ch]
-     (server/start
-      (fn [dn]
-        (fn [evt val]
-          (when (= :abort evt)
-            (.printStackTrace val))
-          (when ch (enqueue ch [evt val]))
-          (when (= :message evt)
-            (dn :message val)))))))
+;; === Data structure tests
 
-(def server-addr-info
-  {:local-addr  ["127.0.0.1" 4040]
-   :remote-addr ["127.0.0.1" :dont-care]})
+(deftest adding-and-removing-a-single-connection
+  (let [pool (pool/mk-pool {})
+        conn (pool/mk-connection ["a.com" 80])]
+    (is (= conn (pool/put pool conn)))
+    (is (nil? (pool/poll pool ["b.com" 80])))
+    (is (= conn (pool/poll pool ["a.com" 80])))
+    (is (nil? (pool/poll pool ["a.com" 80])))))
 
-(def client-addr-info
-  {:local-addr     ["127.0.0.1" :dont-care]
-   :remote-addr    ["127.0.0.1" 4040]
-   :exchange-count :dont-care})
+(deftest adding-and-removing-multiple-unrelated-connections
+  (let [pool  (pool/mk-pool {})
+        conn1 (pool/mk-connection ["a.com" 80])
+        conn2 (pool/mk-connection ["b.com" 80])]
+    (pool/put pool conn1)
+    (pool/put pool conn2)
 
-(defcoretest simple-exchanges
-  [ch1 ch2]
-  (start-echo-server ch1)
+    (is (= conn1 (pool/poll pool ["a.com" 80])))
+    (pool/put pool conn1)
 
-  (let [connect (client {:pool true})]
-    (dotimes [i 2]
-      (Thread/sleep 50)
-      (connect
-       (fn [dn]
-         (enqueue ch2 [:binding nil])
-         (fn [evt val]
-           (enqueue ch2 [evt val])
-           (when (= :abort evt)
-             (.printStackTrace val))
-           (when (= :open evt)
-             (dn :message (str "ZOMG! " i)))
-           (when (= :message evt)
-             (dn :close true))))
-       {:host "localhost" :port 4040})
+    (is (= conn2 (pool/poll pool ["b.com" 80])))))
 
-      (is (next-msgs
-           ch1
-           :open    server-addr-info
-           :message (str "ZOMG! " i)
-           :close   nil))
+(deftest adding-and-removing-multiple-related-connections
+  (let [pool  (pool/mk-pool {})
+        conn1 (pool/mk-connection ["a.com" 80])
+        conn2 (pool/mk-connection ["a.com" 80])]
+    (pool/put pool conn1)
+    (pool/put pool conn2)
 
-      (is (next-msgs
-           ch2
-           :binding nil
-           :open    (assoc client-addr-info :exchange-count 1)
-           :message (str "ZOMG! " i)
-           :close   nil)))))
+    (is (= conn2 (pool/poll pool ["a.com" 80])))
 
-(defn- run-echo-client
-  [ch connect msg]
-  (connect
-   (fn [dn]
-     (enqueue ch [:binding nil])
-     (fn [evt val]
-       (enqueue ch [evt val])
-       (when (= :open evt)
-         (dn :message msg))
-       (when (= :message evt)
-         (dn :close nil))))
-   {:host "localhost" :port 4040}))
+    (pool/put pool conn2)
 
-(defcoretest simple-pooled-client
-  [ch1 ch2]
-  (start-echo-server ch1)
+    (is (= conn2 (pool/poll pool ["a.com" 80])))
+    (is (= conn1 (pool/poll pool ["a.com" 80])))))
 
-  (let [pool (client {:pool true})]
-    (run-echo-client ch2 pool "Hello world")
+(deftest doesnt-return-closed-connections
+  (let [pool  (pool/mk-pool {})
+        conn1 (pool/mk-connection ["a.com" 80])
+        conn2 (pool/mk-connection ["a.com" 80])
+        conn3 (pool/mk-connection ["a.com" 80])]
+    (pool/put pool conn1)
+    (pool/close! conn1)
+    (is (nil? (pool/poll pool ["a.com" 80])))
 
-    (is (next-msgs
-         ch1
-         :open    server-addr-info
-         :message "Hello world"))
+    (pool/put pool conn2)
+    (pool/put pool conn3)
 
-    (is (next-msgs
-         ch2
-         :binding nil
-         :open    (assoc client-addr-info :exchange-count 1)
-         :message "Hello world"
-         :close   nil))
+    (pool/close! conn3)
 
-    (Thread/sleep 50)
+    (is (= conn2 (pool/poll pool ["a.com" 80])))))
 
-    (run-echo-client ch2 pool "Goodbye world")
+(deftest dropping-connection-multiple-times
+  (let [pool  (pool/mk-pool {})
+        conn1 (pool/mk-connection ["a.com" 80])
+        conn2 (pool/mk-connection ["a.com" 80])
+        conn3 (pool/mk-connection ["a.com" 80])]
+    (pool/put pool conn1)
+    (pool/put pool conn2)
+    (pool/put pool conn3)
 
-    (is (next-msgs ch1 :message "Goodbye world"))
+    ;; Drop twice
+    (pool/drop pool conn2)
+    (pool/drop pool conn2)
 
-    (is (next-msgs
-         ch2
-         :binding nil
-         :open    (assoc client-addr-info :exchange-count 2)
-         :message "Goodbye world"
-         :close   nil))))
+    (is (= conn3 (pool/poll pool ["a.com" 80])))
+    (is (= conn1 (pool/poll pool ["a.com" 80])))))
 
-(defcoretest requests-to-the-same-host-in-parallel
-  [ch1 ch2 ch3]
-  (server/start
-   (fn [dn]
-     (enqueue ch1 [:binding nil])
-     (fn [evt val]
-       (when (= :message evt)
-         (future
-           (Thread/sleep 10)
-           (dn :message val))))))
+(deftest purging-connections
+  (let [pool  (pool/mk-pool {})
+        conn1 (pool/mk-connection ["a.com" 80])
+        conn2 (pool/mk-connection ["a.com" 80])
+        conn3 (pool/mk-connection ["b.com" 80])]
 
-  (let [connect (client {:pool true})]
-    (doseq [ch [ch2 ch3]]
-      (connect
-       (fn [dn]
-         (fn [evt val]
-           (enqueue ch [evt val])
-           (when (= :open evt)
-             (dn :message "ZOMG!"))
-           (when (= :message evt)
-             (dn :close nil))))
-       {:host "localhost" :port 4040}))
+    (is (nil? (pool/purge pool)))
 
-    (is (next-msgs
-         ch1
-         :binding nil
-         :binding nil))
+    (pool/put pool conn1)
+    (pool/put pool conn2)
+    (pool/put pool conn3)
 
-    (is (next-msgs
-           ch2
-           :open    (assoc client-addr-info :exchange-count 1)
-           :message "ZOMG!"
-           :close   nil))
+    (is (= conn1 (pool/purge pool)))
+    (is (= conn2 (pool/purge pool)))
+    (is (= conn3 (pool/purge pool)))))
 
-    (is (next-msgs
-           ch3
-           :open    (assoc client-addr-info :exchange-count 1)
-           :message "ZOMG!"
-           :close   nil))))
+;; === Full stack tests
 
-(defcoretest connecting-to-a-server-that-closes-the-connection
-  [ch1 ch2]
-  (server/start
-   (fn [dn]
-     (enqueue ch1 [:binding nil])
-     (fn [evt val]
-       (enqueue ch1 [evt val])
-       (when (= :message evt)
-         (dn :message val)
-         (dn :close nil)))))
+;; (defn- start-echo-server
+;;   ([] (start-echo-server nil))
+;;   ([ch]
+;;      (server/start
+;;       (fn [dn]
+;;         (fn [evt val]
+;;           (when (= :abort evt)
+;;             (.printStackTrace val))
+;;           (when ch (enqueue ch [evt val]))
+;;           (when (= :message evt)
+;;             (dn :message val)))))))
 
-  (let [connect (client {:pool true})]
-    (dotimes [i 2]
-      (Thread/sleep 50)
-      (connect
-       (fn [dn]
-         (fn [evt val]
-           (enqueue ch2 [evt val])
-           (when (= :open evt)
-             (dn :message (str "Zomg! " i)))))
-       {:host "localhost" :port 4040})
+;; (def server-addr-info
+;;   {:local-addr  ["127.0.0.1" 4040]
+;;    :remote-addr ["127.0.0.1" :dont-care]})
 
-      (is (next-msgs
-           ch1
-           :binding nil
-           :open    server-addr-info
-           :message (str "Zomg! " i)
-           :close   nil))
+;; (def client-addr-info
+;;   {:local-addr     ["127.0.0.1" :dont-care]
+;;    :remote-addr    ["127.0.0.1" 4040]
+;;    :exchange-count :dont-care})
 
-      (is (next-msgs
-           ch2
-           :open    (assoc client-addr-info :exchange-count 1)
-           :message (str "Zomg! " i)
-           :close   nil)))))
+;; (defcoretest simple-exchanges
+;;   [ch1 ch2]
+;;   (start-echo-server ch1)
 
-(defcoretest closed-connections-are-removed-from-pool
-  [ch1 ch2 ch3]
-  (server/start
-   (fn [dn]
-     (enqueue ch1 [:binding nil])
-     (fn [evt val]
-       (when (= :message evt)
-         (dn :message val)
-         (future
-           (Thread/sleep 10)
-           (dn :close nil))))))
+;;   (let [connect (client {:pool true})]
+;;     (dotimes [i 2]
+;;       (Thread/sleep 50)
+;;       (connect
+;;        (fn [dn]
+;;          (enqueue ch2 [:binding nil])
+;;          (fn [evt val]
+;;            (enqueue ch2 [evt val])
+;;            (when (= :abort evt)
+;;              (.printStackTrace val))
+;;            (when (= :open evt)
+;;              (dn :message (str "ZOMG! " i)))
+;;            (when (= :message evt)
+;;              (dn :close true))))
+;;        {:host "localhost" :port 4040})
 
-  (let [connect (client {:pool true})]
-    (dotimes [_ 2]
-      (Thread/sleep 50)
+;;       (is (next-msgs
+;;            ch1
+;;            :open    server-addr-info
+;;            :message (str "ZOMG! " i)
+;;            :close   nil))
 
-      (connect
-       (fn [dn]
-         (fn [evt val]
-           (when (= :abort evt)
-             (enqueue ch3 [evt val])
-             (.printStackTrace val))
+;;       (is (next-msgs
+;;            ch2
+;;            :binding nil
+;;            :open    (assoc client-addr-info :exchange-count 1)
+;;            :message (str "ZOMG! " i)
+;;            :close   nil)))))
 
-           (when (= :open evt)
-             (dn :message "ZOMG"))
+;; (defn- run-echo-client
+;;   [ch connect msg]
+;;   (connect
+;;    (fn [dn]
+;;      (enqueue ch [:binding nil])
+;;      (fn [evt val]
+;;        (enqueue ch [evt val])
+;;        (when (= :open evt)
+;;          (dn :message msg))
+;;        (when (= :message evt)
+;;          (dn :close nil))))
+;;    {:host "localhost" :port 4040}))
 
-           (when (= :message evt)
-             (enqueue ch2 [:success nil])
-             (dn :close nil))))
-       {:host "localhost" :port 4040})
+;; (defcoretest simple-pooled-client
+;;   [ch1 ch2]
+;;   (start-echo-server ch1)
 
-      (is (next-msgs ch2 :success nil))))
+;;   (let [pool (client {:pool true})]
+;;     (run-echo-client ch2 pool "Hello world")
 
-  (is (next-msgs ch1 :binding nil :binding nil))
-  (is (no-msgs ch3)))
+;;     (is (next-msgs
+;;          ch1
+;;          :open    server-addr-info
+;;          :message "Hello world"))
+
+;;     (is (next-msgs
+;;          ch2
+;;          :binding nil
+;;          :open    (assoc client-addr-info :exchange-count 1)
+;;          :message "Hello world"
+;;          :close   nil))
+
+;;     (Thread/sleep 50)
+
+;;     (run-echo-client ch2 pool "Goodbye world")
+
+;;     (is (next-msgs ch1 :message "Goodbye world"))
+
+;;     (is (next-msgs
+;;          ch2
+;;          :binding nil
+;;          :open    (assoc client-addr-info :exchange-count 2)
+;;          :message "Goodbye world"
+;;          :close   nil))))
+
+;; (defcoretest requests-to-the-same-host-in-parallel
+;;   [ch1 ch2 ch3]
+;;   (server/start
+;;    (fn [dn]
+;;      (enqueue ch1 [:binding nil])
+;;      (fn [evt val]
+;;        (when (= :message evt)
+;;          (future
+;;            (Thread/sleep 10)
+;;            (dn :message val))))))
+
+;;   (let [connect (client {:pool true})]
+;;     (doseq [ch [ch2 ch3]]
+;;       (connect
+;;        (fn [dn]
+;;          (fn [evt val]
+;;            (enqueue ch [evt val])
+;;            (when (= :open evt)
+;;              (dn :message "ZOMG!"))
+;;            (when (= :message evt)
+;;              (dn :close nil))))
+;;        {:host "localhost" :port 4040}))
+
+;;     (is (next-msgs
+;;          ch1
+;;          :binding nil
+;;          :binding nil))
+
+;;     (is (next-msgs
+;;            ch2
+;;            :open    (assoc client-addr-info :exchange-count 1)
+;;            :message "ZOMG!"
+;;            :close   nil))
+
+;;     (is (next-msgs
+;;            ch3
+;;            :open    (assoc client-addr-info :exchange-count 1)
+;;            :message "ZOMG!"
+;;            :close   nil))))
+
+;; (defcoretest connecting-to-a-server-that-closes-the-connection
+;;   [ch1 ch2]
+;;   (server/start
+;;    (fn [dn]
+;;      (enqueue ch1 [:binding nil])
+;;      (fn [evt val]
+;;        (enqueue ch1 [evt val])
+;;        (when (= :message evt)
+;;          (dn :message val)
+;;          (dn :close nil)))))
+
+;;   (let [connect (client {:pool true})]
+;;     (dotimes [i 2]
+;;       (Thread/sleep 50)
+;;       (connect
+;;        (fn [dn]
+;;          (fn [evt val]
+;;            (enqueue ch2 [evt val])
+;;            (when (= :open evt)
+;;              (dn :message (str "Zomg! " i)))))
+;;        {:host "localhost" :port 4040})
+
+;;       (is (next-msgs
+;;            ch1
+;;            :binding nil
+;;            :open    server-addr-info
+;;            :message (str "Zomg! " i)
+;;            :close   nil))
+
+;;       (is (next-msgs
+;;            ch2
+;;            :open    (assoc client-addr-info :exchange-count 1)
+;;            :message (str "Zomg! " i)
+;;            :close   nil)))))
+
+;; (defcoretest closed-connections-are-removed-from-pool
+;;   [ch1 ch2 ch3]
+;;   (server/start
+;;    (fn [dn]
+;;      (enqueue ch1 [:binding nil])
+;;      (fn [evt val]
+;;        (when (= :message evt)
+;;          (dn :message val)
+;;          (future
+;;            (Thread/sleep 10)
+;;            (dn :close nil))))))
+
+;;   (let [connect (client {:pool true})]
+;;     (dotimes [_ 2]
+;;       (Thread/sleep 50)
+
+;;       (connect
+;;        (fn [dn]
+;;          (fn [evt val]
+;;            (when (= :abort evt)
+;;              (enqueue ch3 [evt val])
+;;              (.printStackTrace val))
+
+;;            (when (= :open evt)
+;;              (dn :message "ZOMG"))
+
+;;            (when (= :message evt)
+;;              (enqueue ch2 [:success nil])
+;;              (dn :close nil))))
+;;        {:host "localhost" :port 4040})
+
+;;       (is (next-msgs ch2 :success nil))))
+
+;;   (is (next-msgs ch1 :binding nil :binding nil))
+;;   (is (no-msgs ch3)))
 
 ;; (defcoretest race-conditions-with-server-closing-connection
 ;;   [_ ch2 ch3]
