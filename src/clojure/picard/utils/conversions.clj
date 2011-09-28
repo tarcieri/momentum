@@ -36,4 +36,10 @@
   (to-byte-buffer [str]
     (ByteBuffer/wrap (.getBytes str)))
   (to-byte-array [str]
-    (.getBytes str)))
+    (.getBytes str))
+
+  Object
+  (to-byte-buffer [o]
+    (to-byte-buffer (str o)))
+  (to-byte-array [o]
+    (to-byte-array (str o))))

@@ -3,11 +3,84 @@
    picard.utils.conversions)
   (:import
    [java.nio
-    ByteBuffer]))
+    ByteBuffer]
+   [org.jboss.netty.buffer
+    ChannelBuffer
+    ChannelBuffers]))
 
-(defn allocate
-  [size]
-  (ByteBuffer/allocate size))
+(declare
+ flip
+ transfer
+ transfer!
+ remaining)
+
+(defprotocol Buffer
+  (to-buffer [_])
+  (to-bytes [_]))
+
+(extend-protocol Buffer
+  (class (byte-array 0))
+  (to-buffer [bytes]
+    (ByteBuffer/wrap bytes))
+  (to-bytes [bytes]
+    bytes)
+
+  ByteBuffer
+  (to-buffer [buf] buf)
+  (to-bytes [buf]
+    (let [arr (byte-array (.remaining buf))]
+      (.get buf arr)
+      arr))
+
+  ChannelBuffer
+  (to-buffer [buf]
+    (.toByteBuffer buf))
+  (to-bytes [buf]
+    (let [arr (byte-array (.readableBytes buf))]
+      (.readBytes buf arr)
+      arr))
+
+  String
+  (to-buffer [str]
+    (ByteBuffer/wrap (.getBytes str)))
+  (to-bytes [str]
+    (.getBytes str))
+
+  nil
+  (to-buffer [_] nil)
+  (to-bytes [_] nil)
+
+  Object
+  (to-buffer [o]
+    (to-buffer (str o)))
+  (to-bytes [o]
+    (to-bytes (str o))))
+
+(defn buffer
+  ([]
+     (ByteBuffer/allocate 1024))
+
+  ([int-or-buf]
+     (if (number? int-or-buf)
+       (ByteBuffer/allocate int-or-buf)
+       (to-buffer int-or-buf)))
+
+  ([int-or-buf & bufs]
+     (if (number? int-or-buf)
+
+       ;; Specific buffer size, allocate and transfer
+       (let [buf (ByteBuffer/allocate int-or-buf)]
+         (doseq [src bufs]
+           (transfer! (to-buffer src) buf))
+         (flip buf))
+
+       ;; We just have buffers, so calculate the buffer size then
+       ;; transfer
+       (let [bufs (map to-buffer (concat [int-or-buf] bufs))]
+         (apply
+          buffer
+          (reduce (fn [size buf] (+ size (remaining buf))) 0 bufs)
+          bufs)))))
 
 (defn capacity
   [^ByteBuffer buf]
@@ -50,11 +123,6 @@
   [^ByteBuffer buf]
   (.rewind buf))
 
-(defn transfer!
-  [^ByteBuffer src ^ByteBuffer dst]
-  (.put dst src)
-  true)
-
 (defn transfer
   "Transfers the contents of one buffer to the other. If the
   destionation buffer is not able to contain the source buffer, then
@@ -67,6 +135,15 @@
       (transfer! src dst)
       (.limit src src-limit)
       false)))
+
+(defn transfer!
+  [^ByteBuffer src ^ByteBuffer dst]
+  (.put dst src)
+  true)
+
+(defn wrap
+  [& bufs]
+  (ChannelBuffers/wrappedBuffer (into-array bufs)))
 
 (defn batch
   "Takes an initial buffer size, a function that creates the buffers
@@ -86,7 +163,7 @@
      (batch 4096 builder callback))
 
   ([size builder callback]
-     (let [state (atom (allocate size))]
+     (let [state (atom (buffer size))]
        (builder
         (fn batcher
           ([data]
@@ -97,7 +174,7 @@
                      (recur buf)
                      (do
                        (-> buf flip callback)
-                       (recur (reset! state (allocate size)))))))))
+                       (recur (reset! state (buffer size)))))))))
           ([data & rest]
              (batcher data)
              (doseq [data rest]

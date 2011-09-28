@@ -1,7 +1,6 @@
 (ns picard.http.core
   (:use
    picard.utils.buffer
-   picard.utils.conversions
    picard.http.parser)
   (:require
    [clojure.string     :as str]
@@ -27,11 +26,13 @@
    [java.net
     URI]))
 
-(def SP         " ")
-(def CRLF       "\r\n")
-(def http-1-0   [1 0])
-(def http-1-1   [1 1])
-(def last-chunk HttpChunk/LAST_CHUNK)
+(def SP          (to-bytes " "))
+(def CRLF        (to-bytes "\r\n"))
+(def http-1-0    [1 0])
+(def http-1-1    [1 1])
+(def last-chunk  HttpChunk/LAST_CHUNK)
+(def last-chunk* (to-bytes "0\r\n\r\n"))
+
 (def response-status-reasons
   {100 "Continue"
    101 "Switching Protocols"
@@ -88,6 +89,10 @@
 (defn- maybe-lower-case
   [s]
   (and s (str/lower-case s)))
+
+(defn- hex
+  [i]
+  (Integer/toHexString i))
 
 (defn throw-connection-reset-by-peer
   []
@@ -156,7 +161,7 @@
   (let [p (parser f)]
     (fn [evt val]
       (if (= :message evt)
-        (parse p (to-byte-buffer val))
+        (parse p (to-buffer val))
         (f evt val)))))
 
 ;; Converting HTTP messages to buffers
@@ -207,6 +212,20 @@
 
   (when (and body (not (keyword? body)))
     (dn :message body)))
+
+(defn send-chunk
+  [dn chunked? chunk]
+  (let [chunk (buffer chunk)]
+    (cond
+     (and chunked? chunk)
+     (let [size (hex (remaining chunk))]
+       (dn :message (wrap (buffer size CRLF) chunk)))
+
+     chunked?
+     (dn :message last-chunk*)
+
+     chunk
+     (dn :message chunk))))
 
 ;; ==== Most of the code below is deprecated
 

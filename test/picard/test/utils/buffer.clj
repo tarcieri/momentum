@@ -2,24 +2,52 @@
   (:use
    picard.utils.buffer
    picard.utils.conversions
-   clojure.test))
+   clojure.test)
+  (:import
+   [java.nio
+    BufferOverflowException]))
+
+(deftest making-buffer
+  (is (= 1024 (capacity (buffer))))
+
+  (is (= 10 (capacity (buffer 10))))
+
+  (is (= (to-buffer "Hello")
+         (buffer "Hello")))
+
+  (is (= (to-buffer "Hello")
+         (buffer "Hel" "lo")))
+
+  (is (= (to-buffer "Hello world")
+         (buffer "Hello" " " "world")))
+
+  (is (= 100 (capacity (buffer 100 "Hello"))))
+  (is (= 100 (capacity (buffer 100 "Hello" "World"))))
+
+  (is (thrown?
+       BufferOverflowException
+       (buffer 5 "Hello world"))))
 
 (deftest buffer-transfer
-  (let [src (to-byte-buffer "Hello")
-        dst (allocate 5)]
+  (let [src (buffer "Hello")
+        dst (buffer 5)]
     (is (transfer src dst))
     (is (= src dst)))
 
-  (let [src (to-byte-buffer "Hello")
-        dst (allocate 10)]
+  (let [src (buffer "Hello")
+        dst (buffer 10)]
     (is (transfer src dst))
     (is (= (rewind src)
            (-> dst rewind (focus 5)))))
 
-  (let [src (to-byte-buffer "Hello")
-        dst (allocate 3)]
+  (let [src (buffer "Hello")
+        dst (buffer 3)]
     (is (not (transfer src dst)))
-    (is (= (rewind dst) (to-byte-buffer "Hel")))))
+    (is (= (rewind dst) (buffer "Hel")))))
+
+(deftest buffer-wrap
+  (is (= (buffer "Hello world")
+         (buffer (wrap (buffer "Hello " (buffer "world")))))))
 
 (deftest buffer-batch
   (let [bufs (atom [])

@@ -209,9 +209,7 @@
            downstream (.downstream current-state)]
        (maybe-finalizing-exchange
         state current-state
-        (cond
-         chunk    (downstream :message (chunk->netty-chunk chunk))
-         chunked? (downstream :message last-chunk)))))))
+        (send-chunk downstream chunked? chunk))))))
 
 (defn- handle-response
   [state evt response current-state]
