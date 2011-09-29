@@ -11,7 +11,7 @@
 
 (deftest adding-and-removing-a-single-connection
   (let [pool (pool/mk-pool {})
-        conn (pool/mk-connection ["a.com" 80])]
+        conn (pool/mk-connection pool ["a.com" 80])]
     (is (= conn (pool/put pool conn)))
     (is (nil? (pool/poll pool ["b.com" 80])))
     (is (= conn (pool/poll pool ["a.com" 80])))
@@ -19,8 +19,8 @@
 
 (deftest adding-and-removing-multiple-unrelated-connections
   (let [pool  (pool/mk-pool {})
-        conn1 (pool/mk-connection ["a.com" 80])
-        conn2 (pool/mk-connection ["b.com" 80])]
+        conn1 (pool/mk-connection pool ["a.com" 80])
+        conn2 (pool/mk-connection pool ["b.com" 80])]
     (pool/put pool conn1)
     (pool/put pool conn2)
 
@@ -31,8 +31,8 @@
 
 (deftest adding-and-removing-multiple-related-connections
   (let [pool  (pool/mk-pool {})
-        conn1 (pool/mk-connection ["a.com" 80])
-        conn2 (pool/mk-connection ["a.com" 80])]
+        conn1 (pool/mk-connection pool ["a.com" 80])
+        conn2 (pool/mk-connection pool ["a.com" 80])]
     (pool/put pool conn1)
     (pool/put pool conn2)
 
@@ -43,27 +43,11 @@
     (is (= conn2 (pool/poll pool ["a.com" 80])))
     (is (= conn1 (pool/poll pool ["a.com" 80])))))
 
-(deftest doesnt-return-closed-connections
-  (let [pool  (pool/mk-pool {})
-        conn1 (pool/mk-connection ["a.com" 80])
-        conn2 (pool/mk-connection ["a.com" 80])
-        conn3 (pool/mk-connection ["a.com" 80])]
-    (pool/put pool conn1)
-    (pool/close! conn1)
-    (is (nil? (pool/poll pool ["a.com" 80])))
-
-    (pool/put pool conn2)
-    (pool/put pool conn3)
-
-    (pool/close! conn3)
-
-    (is (= conn2 (pool/poll pool ["a.com" 80])))))
-
 (deftest dropping-connection-multiple-times
   (let [pool  (pool/mk-pool {})
-        conn1 (pool/mk-connection ["a.com" 80])
-        conn2 (pool/mk-connection ["a.com" 80])
-        conn3 (pool/mk-connection ["a.com" 80])]
+        conn1 (pool/mk-connection pool ["a.com" 80])
+        conn2 (pool/mk-connection pool ["a.com" 80])
+        conn3 (pool/mk-connection pool ["a.com" 80])]
     (pool/put pool conn1)
     (pool/put pool conn2)
     (pool/put pool conn3)
@@ -77,9 +61,9 @@
 
 (deftest purging-connections
   (let [pool  (pool/mk-pool {})
-        conn1 (pool/mk-connection ["a.com" 80])
-        conn2 (pool/mk-connection ["a.com" 80])
-        conn3 (pool/mk-connection ["b.com" 80])]
+        conn1 (pool/mk-connection pool ["a.com" 80])
+        conn2 (pool/mk-connection pool ["a.com" 80])
+        conn3 (pool/mk-connection pool ["b.com" 80])]
 
     (is (nil? (pool/purge pool)))
 
@@ -355,3 +339,41 @@
          :close   nil))
 
     (is (next-msgs ch2 :abort #(instance? Exception %)))))
+
+(defcoretest pool-count-decrements-when-connections-expire
+  [ch1 ch2]
+  (server/start
+   (fn [dn]
+     (fn [evt val]
+       (when (= :message evt)
+         (dn :message val)
+         (future
+           (Thread/sleep 50)
+           (dn :close nil))))))
+
+  (let [connect (client {:pool {:max-conns 1}})]
+    (doseq [ch [ch1 ch2]]
+      (connect
+       (fn [dn]
+         (fn [evt val]
+           (enqueue ch [evt val])
+           (when (= :open evt)
+             (dn :message "Hello"))
+
+           (when (= :message evt)
+             (dn :close nil))))
+       {:host "localhost" :port 4040})
+
+      (Thread/sleep 100))
+
+    (is (next-msgs
+         ch1
+         :open    #(includes-hdrs {:exchange-count 1} %)
+         :message "Hello"
+         :close   nil))
+
+    (is (next-msgs
+         ch2
+         :open    #(includes-hdrs {:exchange-count 1} %)
+         :message "Hello"
+         :close   nil))))

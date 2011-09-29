@@ -4,14 +4,15 @@
   (:use
    [picard.utils :only [swap-then!]])
   (:import
-   java.util.HashMap
-   picard.net.StaleConnectionException))
+   [java.util
+    HashMap]))
 
 (declare
- open?
  maybe-bind-app)
 
 (defprotocol IConnection
+  (open?  [_])
+  (close! [_])
   (next-global [_] [_ _])
   (prev-global [_] [_ _])
   (next-local  [_] [_ _])
@@ -20,7 +21,6 @@
 (defrecord ConnectionState
     [addrs
      dn
-     open?
      exchange-up
      exchange-dn
      exchange-cnt])
@@ -30,6 +30,7 @@
      pool
      addr
      connect-fn
+     ^{:unsynchronized-mutable true} open
      ;; Gotta use different names for the fields vs. the accessors to
      ;; get around a clojure bug.
      ^{:unsynchronized-mutable true} nxt-global
@@ -38,6 +39,9 @@
      ^{:unsynchronized-mutable true} prv-local]
 
   IConnection
+  (open? [this] (.open this))
+  (close! [this] (set! open false))
+
   (next-global [this] (.nxt-global this))
   (next-global [this val] (set! nxt-global val))
 
@@ -54,8 +58,9 @@
   (put   [this conn])
   (drop  [this conn])
   (poll  [this addr])
-  (purge [this])
-  (count [this addr]))
+  (count [this addr])
+  (clean [this conn])
+  (purge [this]))
 
 (deftype Pool
     [keepalive
@@ -132,14 +137,7 @@
         (let [lookup (.lookup this)]
           (when-let [conn (.get lookup addr)]
             (drop this conn)
-            (if-not (open? conn)
-              (recur)
-              conn))))))
-
-  (purge [this]
-    (locking this
-      (if-let [conn (.tail this)]
-        (drop this conn))))
+            conn)))))
 
   (count [this addr]
     (locking this
@@ -155,32 +153,44 @@
         (set! conns (inc (.conns this)))
         (.put (.conns-for-addr this) addr (inc (or conns-for-addr 0)))
 
-        true))))
+        true)))
 
-(defn- open?
-  [^Connection conn]
-  (let [state (.state conn)]
-    (.open? @state)))
+  (clean [this conn]
+    (locking this
+      (when (.open? conn)
+        (set! conns (dec (.conns this)))
 
-(defn close!
-  [^Connection conn]
-  (swap! (.state conn) #(assoc % :open? false)))
+        (let [addr       (.addr conn)
+              addr-count (.get (.conns-for-addr this) addr)]
+          (if (> addr-count 1)
+            (.put (.conns-for-addr this) addr (dec addr-count))
+            (.remove (.conns-for-addr this) addr)))
+
+        (close! conn)
+
+        (drop this conn))))
+
+  (purge [this]
+    (locking this
+      (if-let [conn (.tail this)]
+        (clean this conn)))))
 
 (defn mk-connection
-  ([addr] (mk-connection nil addr nil))
+  ([pool addr] (mk-connection pool addr nil))
   ([pool addr connect-fn]
+     (count pool addr)
      (Connection.
       (atom
        (ConnectionState.
         nil      ;; addrs
         nil      ;; dn
-        true     ;; open?
         nil      ;; exchange-up
         nil      ;; exchange-dn
         0))      ;; exchange-cnt
       pool       ;; pool
       addr       ;; addr
       connect-fn ;; connect-fn
+      true       ;; open?
       nil        ;; nxt-global
       nil        ;; prv-global
       nil        ;; nxt-local
@@ -243,11 +253,10 @@
 
          (#{:close :abort} evt)
          (do
-           (drop (.pool conn) conn)
+           (clean (.pool conn) conn)
            (swap!
             (.state conn)
             #(assoc %
-               :open?       false
                :exchange-up nil
                :exchange-dn nil))
            (if-let [exchange-up (.exchange-up current-state)]
@@ -259,30 +268,22 @@
   [conn current-state app]
   (when-not (.exchange-up current-state)
     (when-let [addrs (.addrs current-state)]
-      (if (.open? current-state)
-        (let [next-dn     (.dn current-state)
-              exchange-dn (mk-downstream conn next-dn)
-              exchange-up (app exchange-dn)]
-          (swap-then!
-           (.state conn)
-           (fn [current-state]
-             (assoc current-state
-               :exchange-dn exchange-dn
-               :exchange-up exchange-up
-               :exchange-cnt (inc (.exchange-cnt current-state))))
-           (fn [current-state]
-             (let [count (.exchange-cnt current-state)]
-               (exchange-up :open (assoc addrs :exchange-count count))))))
-
-        (abort-app
-         app
-         (StaleConnectionException.
-          "The connection has been closed"))))))
+      (let [next-dn     (.dn current-state)
+            exchange-dn (mk-downstream conn next-dn)
+            exchange-up (app exchange-dn)]
+        (swap-then!
+         (.state conn)
+         (fn [current-state]
+           (assoc current-state
+             :exchange-dn exchange-dn
+             :exchange-up exchange-up
+             :exchange-cnt (inc (.exchange-cnt current-state))))
+         (fn [current-state]
+           (let [count (.exchange-cnt current-state)]
+             (exchange-up :open (assoc addrs :exchange-count count)))))))))
 
 (defn- establish
   [pool addr app connect-fn]
-  ;; First count the new connection
-  (count pool addr)
   (let [conn (mk-connection pool addr connect-fn)]
     (connect-fn (mk-handler conn app))
     conn))
