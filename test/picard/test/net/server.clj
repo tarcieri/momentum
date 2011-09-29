@@ -78,7 +78,10 @@
        (when (= :open evt)
          (future
           (Thread/sleep 30)
-          (dn :message "Hello"))))))
+          (try
+            (dn :message "Hello")
+            (catch Exception err
+              (enqueue ch1 [:abort err]))))))))
 
   (with-socket
     (close-socket)

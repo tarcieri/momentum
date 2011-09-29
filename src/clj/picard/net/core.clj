@@ -25,6 +25,8 @@
     DefaultChannelGroup]
    [java.net
     InetSocketAddress]
+   [java.nio.channels
+    ClosedChannelException]
    [java.util
     LinkedList]
    [java.util.concurrent
@@ -246,16 +248,16 @@
   [state]
   (fn [evt val]
     (let [current-state ^State @state]
+      (when-not (.upstream current-state)
+        (throw (Exception. "Not callbable yet")))
+
       (cond
        (= :message evt)
-       (if-not (.upstream current-state)
-         (throw (Exception.
-                 (str "Not callable until request is sent.\n"
-                      "  Event: " evt "\n"
-                      "  Value: " val)))
-         (let [val        (encode val)
-               ch         (.ch current-state)
-               last-write (.write ch val)]
+       (let [ch (.ch current-state)]
+         (when-not (.isOpen ch)
+           (throw (ClosedChannelException.)))
+
+         (let [last-write (.write ch (encode val))]
            (swap! state #(assoc % :last-write last-write))))
 
        (= :close evt)

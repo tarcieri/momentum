@@ -73,7 +73,10 @@
        (when (= :open evt)
          (future
            (Thread/sleep 60)
-           (dn :message "Hello")))))
+           (try
+             (dn :message "Hello")
+             (catch Exception err
+               (enqueue ch1 [:abort err])))))))
    {:host "localhost" :port 4040})
 
   (is (next-msgs
@@ -94,7 +97,7 @@
    ;; Hopefully this is an invalid IP address and port
    {:host "192.168.32.123" :port 13845})
 
-  (Thread/sleep 1100)
+  (Thread/sleep 2100)
   (is (next-msgs
        ch1
        :binding nil

@@ -87,6 +87,14 @@
     (do-release (.basic-client client)))
 
   clojure.lang.IFn
+  (invoke [_]
+    (throw (IllegalArgumentException. "Must specify a bind fn and opts")))
+  (invoke [_ app?]
+    (throw
+     (IllegalArgumentException.
+      (if (map? app?)
+        "Must specify a bind fn then opts"
+        "Must specify an options map containing at least :host and :port"))))
   (invoke [this app {host :host port :port :as opts}]
     (do-connect this app (mk-socket-addr [host port]) opts)
     true))
