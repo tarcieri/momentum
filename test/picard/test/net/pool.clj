@@ -90,8 +90,12 @@
             (dn :message val)))))))
 
 (defn- start-slow-echo-server
-  ([] (start-slow-echo-server nil))
-  ([ch]
+  ([] (start-slow-echo-server nil {}))
+  ([ch-or-opts]
+     (if (map? ch-or-opts)
+       (start-slow-echo-server nil ch-or-opts)
+       (start-slow-echo-server ch-or-opts {})))
+  ([ch opts]
      (server/start
       (fn [dn]
         (fn [evt val]
@@ -99,7 +103,8 @@
           (when (= :message evt)
             (future
               (Thread/sleep 100)
-              (dn :message val))))))))
+              (dn :message val)))))
+      opts)))
 
 (def server-addr-info
   {:local-addr  ["127.0.0.1" 4040]
@@ -377,3 +382,67 @@
          :open    #(includes-hdrs {:exchange-count 1} %)
          :message "Hello"
          :close   nil))))
+
+(defcoretest doesnt-double-increment-connection-counting
+  [ch1 ch2 ch3]
+  (start-slow-echo-server)
+
+  (let [connect (client {:pool {:max-conns 2}})]
+    (doseq [ch [ch1 ch2 ch3]]
+      (connect
+       (fn [dn]
+         (fn [evt val]
+           (enqueue ch [evt val])
+           (when (= :open evt)
+             (dn :message "Hello"))
+           (when (= :message evt)
+             (dn :close nil))))
+       {:host "localhost" :port 4040}))
+
+    (is (next-msgs
+         ch1
+         :open    :dont-care
+         :message "Hello"
+         :close   nil))
+
+    (is (next-msgs
+         ch2
+         :open    :dont-care
+         :message "Hello"
+         :close   nil))
+
+    (is (next-msgs ch3 :abort #(instance? Exception %)))))
+
+(defcoretest observing-max-connections-per-address
+  [ch1 ch2 ch3]
+  (vector
+   (start-slow-echo-server {:port 4040})
+   (start-slow-echo-server {:port 4041}))
+
+  (let [connect (client {:pool {:max-conns-per-addr 1}})]
+    (doseq [ch [ch1 ch2 ch3]]
+      (connect
+       (fn [dn]
+         (fn [evt val]
+           (enqueue ch [evt val])
+           (when (= :open evt)
+             (dn :message "Hello"))
+           (when (= :message evt)
+             (dn :close nil))))
+       {:host "localhost" :port (if (= ch3 ch) 4040 4041)}))
+
+    (is (next-msgs
+         ch1
+         :open    :dont-care
+         :message "Hello"
+         :close   nil))
+
+    (is (next-msgs
+         ch3
+         :open    :dont-care
+         :message "Hello"
+         :close   nil))
+
+    (is (next-msgs ch2 :abort #(instance? Exception %)))))
+
+;; TODO: Test purging unused connections

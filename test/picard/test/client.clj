@@ -748,7 +748,7 @@
 
     (picard/shutdown-pool pool)))
 
-(defcoretest ^{:network true} observing-max-per-address-connections
+(defcoretest observing-max-per-address-connections
   [_ ch1 ch2 ch3]
   :slow-hello-world
 

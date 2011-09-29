@@ -21,6 +21,13 @@
 (def enqueue l/enqueue)
 (def receive l/receive)
 
+(defn- stop-servers
+  [servers]
+  (if (sequential? servers)
+    (doseq [server servers]
+      (server/stop server))
+    (server/stop servers)))
+
 (defn with-core-test-context
   [name start-server f]
   (println name)
@@ -29,7 +36,8 @@
       (try
         (binding [server server]
           (f))
-        (finally (server/stop server)))
+        (finally
+         (stop-servers server)))
       (f))))
 
 (defmacro defcoretest
