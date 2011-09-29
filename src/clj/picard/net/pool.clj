@@ -141,14 +141,17 @@
 
   (count [this addr]
     (locking this
-      (let [max-conns      (.max-conns this)
-            max-per-addr   (.max-conns-per-addr this)
+      (let [max-per-addr   (.max-conns-per-addr this)
             conns-for-addr (.get (.conns-for-addr this) addr)]
+
         (when (and conns-for-addr (>= conns-for-addr max-per-addr))
           (throw (Exception. (str "Reached maximum connections for: " addr))))
 
-        (when (>= (.conns this) max-conns)
-          (throw (Exception. "Reached maximum total connections for the pool.")))
+        (loop [max-conns (.max-conns this)]
+          (when (>= (.conns this) max-conns)
+            (if (purge this)
+              (recur (.max-conns this))
+              (throw (Exception. "Reached maximum total connections for the pool.")))))
 
         (set! conns (inc (.conns this)))
         (.put (.conns-for-addr this) addr (inc (or conns-for-addr 0)))

@@ -77,34 +77,33 @@
 
 ;; === Full stack tests
 
-(defn- start-echo-server
-  ([] (start-echo-server nil))
-  ([ch]
-     (server/start
-      (fn [dn]
-        (fn [evt val]
-          (when (= :abort evt)
-            (.printStackTrace val))
-          (when ch (enqueue ch [evt val]))
-          (when (= :message evt)
-            (dn :message val)))))))
+(defn- echo-server
+  [ch]
+  (fn [dn]
+    (fn [evt val]
+      (when (= :abort evt)
+        (.printStackTrace val))
+      (when ch (enqueue ch [evt val]))
+      (when (= :message evt)
+        (dn :message val)))))
 
-(defn- start-slow-echo-server
-  ([] (start-slow-echo-server nil {}))
-  ([ch-or-opts]
+(defn- slow-echo-server
+  [ch]
+  (fn [dn]
+    (fn [evt val]
+      (when ch (enqueue ch [evt val]))
+      (when (= :message evt)
+        (future
+          (Thread/sleep 100)
+          (dn :message val))))))
+
+(defn- start
+  ([server] (start server nil {}))
+  ([server ch-or-opts]
      (if (map? ch-or-opts)
-       (start-slow-echo-server nil ch-or-opts)
-       (start-slow-echo-server ch-or-opts {})))
-  ([ch opts]
-     (server/start
-      (fn [dn]
-        (fn [evt val]
-          (when ch (enqueue ch [evt val]))
-          (when (= :message evt)
-            (future
-              (Thread/sleep 100)
-              (dn :message val)))))
-      opts)))
+       (start server nil ch-or-opts)
+       (start server ch-or-opts {})))
+  ([server ch opts] (server/start (server ch) opts)))
 
 (def server-addr-info
   {:local-addr  ["127.0.0.1" 4040]
@@ -117,7 +116,7 @@
 
 (defcoretest simple-exchanges
   [ch1 ch2]
-  (start-echo-server ch1)
+  (start echo-server ch1)
 
   (let [connect (client {:pool true})]
     (dotimes [i 2]
@@ -163,7 +162,7 @@
 
 (defcoretest simple-pooled-client
   [ch1 ch2]
-  (start-echo-server ch1)
+  (start echo-server ch1)
 
   (let [pool (client {:pool true})]
     (run-echo-client ch2 pool "Hello world")
@@ -323,7 +322,7 @@
 
 (defcoretest observing-max-connections
   [ch1 ch2]
-  (start-slow-echo-server)
+  (start slow-echo-server)
 
   (let [connect (client {:pool {:max-conns 1}})]
     (doseq [ch [ch1 ch2]]
@@ -385,7 +384,7 @@
 
 (defcoretest doesnt-double-increment-connection-counting
   [ch1 ch2 ch3]
-  (start-slow-echo-server)
+  (start slow-echo-server)
 
   (let [connect (client {:pool {:max-conns 2}})]
     (doseq [ch [ch1 ch2 ch3]]
@@ -416,8 +415,8 @@
 (defcoretest observing-max-connections-per-address
   [ch1 ch2 ch3]
   (vector
-   (start-slow-echo-server {:port 4040})
-   (start-slow-echo-server {:port 4041}))
+   (start slow-echo-server {:port 4040})
+   (start slow-echo-server {:port 4041}))
 
   (let [connect (client {:pool {:max-conns-per-addr 1}})]
     (doseq [ch [ch1 ch2 ch3]]
@@ -445,4 +444,26 @@
 
     (is (next-msgs ch2 :abort #(instance? Exception %)))))
 
-;; TODO: Test purging unused connections
+(defcoretest purging-unused-connections
+  [ch1 ch2]
+  (vector
+   (start echo-server {:port 4040})
+   (start echo-server {:port 4041}))
+
+  (let [connect (client {:pool {:max-conns 1}})]
+    (doseq [ch [ch1 ch2]]
+      (connect
+       (fn [dn]
+         (fn [evt val]
+           (enqueue ch [evt val])
+           (when (= :open evt)
+             (dn :message "Hello"))
+           (when (= :message evt)
+             (dn :close nil))))
+       {:host "localhost" :port (if (= ch1 ch) 4040 4041)})
+
+      (is (next-msgs
+           ch
+           :open    :dont-care
+           :message "Hello"
+           :close   nil)))))
