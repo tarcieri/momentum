@@ -81,8 +81,6 @@
   [ch]
   (fn [dn]
     (fn [evt val]
-      (when (= :abort evt)
-        (.printStackTrace val))
       (when ch (enqueue ch [evt val]))
       (when (= :message evt)
         (dn :message val)))))
@@ -126,8 +124,6 @@
          (enqueue ch2 [:binding nil])
          (fn [evt val]
            (enqueue ch2 [evt val])
-           (when (= :abort evt)
-             (.printStackTrace val))
            (when (= :open evt)
              (dn :message (str "ZOMG! " i)))
            (when (= :message evt)
@@ -287,8 +283,7 @@
        (fn [dn]
          (fn [evt val]
            (when (= :abort evt)
-             (enqueue ch3 [evt val])
-             (.printStackTrace val))
+             (enqueue ch3 [evt val]))
 
            (when (= :open evt)
              (dn :message "ZOMG"))
