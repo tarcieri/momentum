@@ -3,16 +3,20 @@
    :exclude [count drop])
   (:use
    [picard.utils :only [swap-then!]])
+  (:require
+   [picard.core.timer :as timer])
   (:import
    [java.util
     HashMap]))
 
 (declare
+ handle-keepalive-timeout
  maybe-bind-app)
 
 (defprotocol IConnection
-  (open?  [_])
-  (close! [_])
+  (open?   [_])
+  (close!  [_])
+  (timeout [_ _])
   (next-global [_] [_ _])
   (prev-global [_] [_ _])
   (next-local  [_] [_ _])
@@ -30,6 +34,7 @@
      pool
      addr
      connect-fn
+     ^{:unsynchronized-mutable true} timeout
      ^{:unsynchronized-mutable true} open
      ;; Gotta use different names for the fields vs. the accessors to
      ;; get around a clojure bug.
@@ -41,6 +46,13 @@
   IConnection
   (open? [this] (.open this))
   (close! [this] (set! open false))
+
+  (timeout [this new-timeout]
+    (locking this
+      (when-let [existing (.timeout this)]
+        (timer/cancel existing))
+
+      (set! timeout new-timeout)))
 
   (next-global [this] (.nxt-global this))
   (next-global [this val] (set! nxt-global val))
@@ -94,10 +106,20 @@
           (next-local conn local-head))
 
         (.put lookup addr conn)
+
+        ;; Register the keepalive timeout
+        (timeout
+         conn
+         (timer/register
+          (.keepalive this)
+          #(handle-keepalive-timeout this conn)))
+
         conn)))
 
   (drop [this conn]
     (locking this
+      (timeout conn nil)
+
       (when (= (.head this) conn)
         (set! head (next-global conn)))
 
@@ -193,6 +215,7 @@
       pool       ;; pool
       addr       ;; addr
       connect-fn ;; connect-fn
+      nil        ;; timeout
       true       ;; open?
       nil        ;; nxt-global
       nil        ;; prv-global
@@ -200,16 +223,26 @@
       nil)))     ;; prv-local
 
 (defn mk-pool
-  [{:keys [keepalive max-conns max-conns-per-addr] :as opts}]
+  [{:keys [keepalive max-conns max-conns-per-addr]}]
   (Pool.
-   (or keepalive 60)
-   (or max-conns 2000)
-   (or max-conns-per-addr 200)
-   (HashMap.)
-   (HashMap.)  ;; conns-per-addr
-   0           ;; conns
-   nil
-   nil))
+   (* 1000 (or keepalive 60)) ;; keepalive in ms
+   (or max-conns 2000)          ;; max number of total connections
+   (or max-conns-per-addr 200)  ;; max number of per address connections
+   (HashMap.)                   ;; per address linked list head
+   (HashMap.)                   ;; # of connections per addrress
+   0                            ;; # of total connections
+   nil                          ;; global linked list head
+   nil))                        ;; global linked list tail
+
+(defn- close-connection
+  [conn]
+  (let [current-state @(.state conn)]
+    ((.dn current-state) :close nil)))
+
+(defn- handle-keepalive-timeout
+  [pool conn]
+  (clean pool conn)
+  (close-connection conn))
 
 (defn- mk-downstream
   [conn next-dn]

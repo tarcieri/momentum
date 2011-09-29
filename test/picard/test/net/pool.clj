@@ -467,3 +467,27 @@
            :open    :dont-care
            :message "Hello"
            :close   nil)))))
+
+(defcoretest timing-out-stale-connections-after-keepalve
+  [ch1 ch2]
+  (server/start
+   (fn [dn]
+     (enqueue ch1 [:binding nil])
+     (fn [evt val]
+       (when (= :message evt)
+         (dn :message val)))))
+
+  (let [connect (client {:pool {:keepalive 1}})]
+    (dotimes [_ 2]
+      (run-echo-client ch2 connect "Hello")
+
+      (is (next-msgs
+           ch2
+           :binding nil
+           :open    :dont-care
+           :message "Hello"
+           :close   nil))
+
+      (Thread/sleep 2000)))
+
+  (is (next-msgs ch1 :binding nil :binding nil)))
