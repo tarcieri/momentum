@@ -1,7 +1,6 @@
 (ns picard.test.utils.buffer
   (:use
    picard.utils.buffer
-   picard.utils.conversions
    clojure.test)
   (:import
    [java.nio
@@ -61,7 +60,7 @@
        (b "World"))
      callback)
 
-    (is (= @bufs [(to-byte-buffer "HelloWorld")]))
+    (is (= @bufs [(buffer "HelloWorld")]))
     (reset! bufs [])
 
     (batch
@@ -71,7 +70,7 @@
        (b "World"))
      callback)
 
-    (is (= @bufs [(to-byte-buffer "HelloWorld")]))
+    (is (= @bufs [(buffer "HelloWorld")]))
     (reset! bufs [])
 
     (batch
@@ -81,8 +80,8 @@
        (b "World"))
      callback)
 
-    (is (= @bufs [(to-byte-buffer "HelloWor")
-                  (to-byte-buffer "ld")]))
+    (is (= @bufs [(buffer "HelloWor")
+                  (buffer "ld")]))
     (reset! bufs [])
 
     (batch
@@ -92,10 +91,10 @@
        (b "World"))
      callback)
 
-    (is (= @bufs [(to-byte-buffer "Hel")
-                  (to-byte-buffer "loW")
-                  (to-byte-buffer "orl")
-                  (to-byte-buffer "d")]))
+    (is (= @bufs [(buffer "Hel")
+                  (buffer "loW")
+                  (buffer "orl")
+                  (buffer "d")]))
     (reset! bufs [])
 
     (batch
@@ -104,4 +103,4 @@
        (b " " "Goodbye"))
      callback)
 
-    (is (= @bufs [(to-byte-buffer "Hello World Goodbye")]))))
+    (is (= @bufs [(buffer "Hello World Goodbye")]))))

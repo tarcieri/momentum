@@ -1,17 +1,15 @@
 (ns picard.net.pool
   (:refer-clojure
-   :exclude [remove drop])
+   :exclude [count drop])
   (:use
    [picard.utils :only [swap-then!]])
-  ;; (:import
-  ;;  [picard.net
-  ;;   Connection
-  ;;   ConnectionQueue
-  ;;   StaleConnectionException])
-  )
+  (:import
+   java.util.HashMap
+   picard.net.StaleConnectionException))
 
 (declare
- open?)
+ open?
+ maybe-bind-app)
 
 (defprotocol IConnection
   (next-global [_] [_ _])
@@ -29,7 +27,9 @@
 
 (deftype Connection
     [state
+     pool
      addr
+     connect-fn
      ;; Gotta use different names for the fields vs. the accessors to
      ;; get around a clojure bug.
      ^{:unsynchronized-mutable true} nxt-global
@@ -54,13 +54,16 @@
   (put   [this conn])
   (drop  [this conn])
   (poll  [this addr])
-  (purge [this]))
+  (purge [this])
+  (count [this addr]))
 
 (deftype Pool
     [keepalive
      max-conns
      max-conns-per-addr
      lookup
+     conns-for-addr
+     ^{:unsynchronized-mutable true} conns
      ^{:unsynchronized-mutable true} head
      ^{:unsynchronized-mutable true} tail]
 
@@ -81,11 +84,11 @@
           (set! tail conn))
 
         ;; Update the lookup map
-        (when-let [local-head (lookup addr)]
+        (when-let [local-head (.get lookup addr)]
           (prev-local local-head conn)
           (next-local conn local-head))
 
-        (assoc! lookup addr conn)
+        (.put lookup addr conn)
         conn)))
 
   (drop [this conn]
@@ -110,11 +113,11 @@
 
       (let [addr   (.addr conn)
             lookup (.lookup this)]
-        (when (= (lookup addr) conn)
+        (when (= (.get lookup addr) conn)
           (if-let [next (next-local conn)]
             (do (prev-local next nil)
-                (assoc! lookup addr next))
-            (dissoc! lookup addr))))
+                (.put lookup addr next))
+            (.remove lookup addr))))
 
       (next-global conn nil)
       (prev-global conn nil)
@@ -127,7 +130,7 @@
     (locking this
       (loop []
         (let [lookup (.lookup this)]
-          (when-let [conn (lookup addr)]
+          (when-let [conn (.get lookup addr)]
             (drop this conn)
             (if-not (open? conn)
               (recur)
@@ -136,7 +139,23 @@
   (purge [this]
     (locking this
       (if-let [conn (.tail this)]
-        (drop this conn)))))
+        (drop this conn))))
+
+  (count [this addr]
+    (locking this
+      (let [max-conns      (.max-conns this)
+            max-per-addr   (.max-conns-per-addr this)
+            conns-for-addr (.get (.conns-for-addr this) addr)]
+        (when (and conns-for-addr (>= conns-for-addr max-per-addr))
+          (throw (Exception. (str "Reached maximum connections for: " addr))))
+
+        (when (>= (.conns this) max-conns)
+          (throw (Exception. "Reached maximum total connections for the pool.")))
+
+        (set! conns (inc (.conns this)))
+        (.put (.conns-for-addr this) addr (inc (or conns-for-addr 0)))
+
+        true))))
 
 (defn- open?
   [^Connection conn]
@@ -148,172 +167,138 @@
   (swap! (.state conn) #(assoc % :open? false)))
 
 (defn mk-connection
-  [addr]
-  (Connection.
-   (atom
-    (ConnectionState.
-     nil   ;; addrs
-     nil   ;; dn
-     true  ;; open?
-     nil   ;; exchange-up
-     nil   ;; exchange-dn
-     0))   ;; exchange-cnt
-   addr    ;; addr
-   nil     ;; nxt-global
-   nil     ;; prv-global
-   nil     ;; nxt-local
-   nil))   ;; prv-local
+  ([addr] (mk-connection nil addr nil))
+  ([pool addr connect-fn]
+     (Connection.
+      (atom
+       (ConnectionState.
+        nil      ;; addrs
+        nil      ;; dn
+        true     ;; open?
+        nil      ;; exchange-up
+        nil      ;; exchange-dn
+        0))      ;; exchange-cnt
+      pool       ;; pool
+      addr       ;; addr
+      connect-fn ;; connect-fn
+      nil        ;; nxt-global
+      nil        ;; prv-global
+      nil        ;; nxt-local
+      nil)))     ;; prv-local
 
 (defn mk-pool
-  [{:keys [keepalive max-conns max-conns-per-addr]}]
+  [{:keys [keepalive max-conns max-conns-per-addr] :as opts}]
   (Pool.
    (or keepalive 60)
    (or max-conns 2000)
    (or max-conns-per-addr 200)
-   (transient {})
+   (HashMap.)
+   (HashMap.)  ;; conns-per-addr
+   0           ;; conns
    nil
    nil))
 
+(defn- mk-downstream
+  [conn next-dn]
+  (fn current [evt val]
+    (let [current-state @(.state conn)]
+      (cond
+       (not= current (.exchange-dn current-state))
+       (throw (Exception. "Current exchange is complete"))
+
+       (= [:close nil] [evt val])
+       (let [exchange-up (.exchange-up current-state)]
+         (swap!
+          (.state conn)
+          #(assoc % :exchange-up nil :exchange-dn nil))
+         (exchange-up :close nil)
+         (put (.pool conn) conn))
 
 
-;; (defmacro sync-get
-;;   [conn field]
-;;   `(locking ~conn
-;;      (. ~conn ~field)))
+       :else
+       (next-dn evt val)))))
 
-;; (defmacro sync-set
-;;   [conn & fields-and-vals]
-;;   (when-not (= (mod (count fields-and-vals) 2) 0)
-;;     (throw (IllegalArgumentException. "Need to pass an even number of fields / vals")))
+(defn- abort-app
+  [app err]
+  (let [upstream (app (fn [_ _]))]
+    (upstream :abort err)))
 
-;;   `(locking ~conn
-;;      ~@(map
-;;         (fn [[field val]] `(set! (. ~conn ~field) ~val))
-;;         (partition 2 fields-and-vals))))
+(defn mk-handler
+  [conn app]
+  (fn [dn]
+    (swap! (.state conn) #(assoc % :dn dn))
+    (fn [evt val]
+      (let [current-state @(.state conn)]
+        (cond
+         (= :message evt)
+         (when-let [exchange-up (.exchange-up current-state)]
+           (exchange-up :message val))
 
-;; (defn- mk-connection
-;;   [addr connect-fn]
-;;   (Connection. addr connect-fn))
+         (= :open evt)
+         (swap-then!
+          (.state conn)
+          #(assoc % :addrs val)
+          (fn [current-state]
+            (maybe-bind-app conn current-state app)))
 
-;; (defn- current-exchange?
-;;   [conn dn]
-;;   (locking conn
-;;     (= (. conn exchangeDn) dn)))
+         (#{:close :abort} evt)
+         (do
+           (drop (.pool conn) conn)
+           (swap!
+            (.state conn)
+            #(assoc %
+               :open?       false
+               :exchange-up nil
+               :exchange-dn nil))
+           (if-let [exchange-up (.exchange-up current-state)]
+             (exchange-up evt val)
+             (when (and (= :abort evt) (not (.addrs current-state)))
+               (abort-app app val)))))))))
 
-;; (defn- finalize-exchange
-;;   [conn]
-;;   (locking conn
-;;     (let [exchange-up (. conn exchangeUp)]
-;;       (set! (. conn exchangeUp) nil)
-;;       (set! (. conn exchangeDn) nil)
-;;       exchange-up)))
+(defn- maybe-bind-app
+  [conn current-state app]
+  (when-not (.exchange-up current-state)
+    (when-let [addrs (.addrs current-state)]
+      (if (.open? current-state)
+        (let [next-dn     (.dn current-state)
+              exchange-dn (mk-downstream conn next-dn)
+              exchange-up (app exchange-dn)]
+          (swap-then!
+           (.state conn)
+           (fn [current-state]
+             (assoc current-state
+               :exchange-dn exchange-dn
+               :exchange-up exchange-up
+               :exchange-cnt (inc (.exchange-cnt current-state))))
+           (fn [current-state]
+             (let [count (.exchange-cnt current-state)]
+               (exchange-up :open (assoc addrs :exchange-count count))))))
 
-;; (defn- mk-downstream
-;;   [pool conn next-dn]
-;;   (fn current [evt val]
-;;     (cond
-;;      (not (current-exchange? conn current))
-;;      (throw (Exception. "Current exchange is complete"))
+        (abort-app
+         app
+         (StaleConnectionException.
+          "The connection has been closed"))))))
 
-;;      (= [:close nil] [evt val])
-;;      (let [exchange-up (finalize-exchange conn)]
-;;        (exchange-up :close nil)
-;;        (.. pool queue (checkin conn)))
+(defn- establish
+  [pool addr app connect-fn]
+  ;; First count the new connection
+  (count pool addr)
+  (let [conn (mk-connection pool addr connect-fn)]
+    (connect-fn (mk-handler conn app))
+    conn))
 
-;;      :else
-;;      (next-dn evt val))))
-
-;; (defn- abort-app
-;;   [app err]
-;;   (let [upstream (app (fn [_ _]))]
-;;     (upstream :abort err)))
-
-;; ;; Ideally, if the connection is closed, it should retry
-;; (defn- maybe-bind-app
-;;   [pool conn app]
-;;   (when-not (sync-get conn exchangeUp)
-;;     (when-let [addrs (sync-get conn addrs)]
-;;       (if (sync-get conn isOpen)
-;;         (let [next-dn     (. conn downstream)
-;;               exchange-dn (mk-downstream pool conn next-dn)
-;;               exchange-up (app exchange-dn)]
-;;           (sync-set conn exchangeDn exchange-dn exchangeUp exchange-up)
-;;           (exchange-up :open (assoc addrs :exchange-count (. conn inc))))
-;;         ;; TODO: Handle when the connection is closed.
-;;         (abort-app app (StaleConnectionException.
-;;                         "The connection has been closed"))))))
-
-;; (defn mk-handler
-;;   [pool conn app]
-;;   (fn [dn]
-;;     (locking conn (set! (. conn downstream) dn))
-;;     (fn [evt val]
-;;       ;; (println "(P) UP: " [evt val])
-;;       (cond
-;;        (= :message evt)
-;;        (when-let [exchange-up (locking conn (. conn exchangeUp))]
-;;          (exchange-up :message val))
-
-;;        (= :open evt)
-;;        (do
-;;          (locking conn (set! (. conn addrs) val))
-;;          (maybe-bind-app pool conn app))
-
-;;        (= :close evt)
-;;        (do
-;;          (sync-set conn isOpen false)
-;;          (if-let [exchange-up (finalize-exchange conn)]
-;;            (exchange-up :close val)
-;;            (.. pool queue (remove conn))))
-
-;;        ;; If the connection has not been bound, bind it here.
-;;        (= :abort evt)
-;;        (let [exchange-up (finalize-exchange conn)]
-;;          (cond
-;;           exchange-up
-;;           (exchange-up :abort val)
-
-;;           (nil? (locking conn (. conn addrs)))
-;;           (abort-app app val)))))))
-
-;; (defn- schedule-bind-app
-;;   [pool conn app]
-;;   (let [dn (sync-get conn downstream)]
-;;     (dn :schedule #(maybe-bind-app pool conn app))))
-
-;; (defn- create
-;;   [pool addr app connect-fn]
-;;   (let [conn (mk-connection addr connect-fn)]
-;;     (connect-fn (mk-handler pool conn app))
-;;     conn))
-
-;; (defn- get-connection
-;;   [pool addr app connect-fn]
-;;   (or (.. pool queue (checkout addr))
-;;       (create pool addr app connect-fn)))
-
-;; (defn connect
-;;   [pool app addr connect-fn]
-;;   (let [conn (get-connection pool addr app connect-fn)]
-;;     (schedule-bind-app pool conn app)))
-
-;; (def default-opts
-;;   {:keepalive                   60
-;;    :max-connections             1000
-;;    :max-connections-per-address 200})
-
-;; (defn- merge-default-opts
-;;   [opts]
-;;   (merge default-opts (if (map? opts) opts {})))
-
-;; (defn mk-pool
-;;   [opts]
-;;   (let [opts (merge-default-opts opts)]
-;;     (Pool.
-;;      (ConnectionQueue.)
-;;      (opts :keepalive)
-;;      (opts :max-connections)
-;;      (opts :max-connections-per-address))))
+(defn- connection
+  [pool addr app connect-fn]
+  (or (poll pool addr)
+      (establish pool addr app connect-fn)))
 
 (defn connect
-  [& args])
+  [pool app addr connect-fn]
+  (try
+    (let [conn (connection pool addr app connect-fn)
+          current-state @(.state conn)
+          downstream    (.dn current-state)]
+      (downstream :schedule #(maybe-bind-app conn @(.state conn) app))
+      conn)
+    (catch Exception err
+      (abort-app app err))))
