@@ -5,6 +5,7 @@
   (:use
    clojure.test
    support.helpers
+   picard.utils.helpers
    picard.http.client))
 
 (defn- start-hello-world-app
@@ -193,18 +194,17 @@
 
 (defcoretest simple-keep-alive-requests
   [ch1 ch2]
-  (let [tracker (fn [app]
-                  (fn [dn]
-                    (enqueue ch1 [:binding nil])
-                    (app dn)))]
-   (net/start
-    (->
-     (fn [dn]
-       (fn [evt val]
-         (when (= :request evt)
-           (dn :response [200 {"content-length" "5"} "Hello"]))))
-     server/proto
-     tracker)))
+  (net/start
+   (build-stack
+    (fn [app]
+      (fn [dn]
+        (enqueue ch1 [:binding nil])
+        (app dn)))
+    server/proto
+    (fn [dn]
+      (fn [evt val]
+        (when (= :request evt)
+          (dn :response [200 {"content-length" "5"} "Hello"]))))))
 
   (dotimes [_ 2]
     (connect
