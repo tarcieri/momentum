@@ -112,10 +112,11 @@
       (Long. (str content-length)))))
 
 (defn keepalive-request?
-  [[{version :http-version connection "connection"}]]
+  [[{version :http-version connection "connection"} body]]
   (let [connection (maybe-lower-case connection)]
     (if (= http-1-1 version)
-      (not (#{"close" "upgrade"} connection))
+      (and (not (#{"close" "upgrade"} connection))
+           (not (= :upgraded body)))
       (= "keep-alive" connection))))
 
 (defn keepalive-response?

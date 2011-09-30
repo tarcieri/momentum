@@ -15,6 +15,7 @@
 ;;     - Transfer-Encoding w/o :chunked (unless HEAD request)
 ;;     - Content-Length w/o body or :chunked
 ;;     - :upgraded w/o upgrade handshake
+;;   - Handle CONNECT requests
 ;;   - Count the bytes in the request body
 
 (declare
@@ -57,8 +58,8 @@
      keepalive?
      chunked?
      head?
-     upgraded?
      responded?
+     upgrade
      bytes-expected
      bytes-to-send
      timeout
@@ -66,7 +67,7 @@
 
   Timeout
   (track-timeout? [current-state]
-    (not (.upgraded? current-state)))
+    (not= :upgraded (.upgrade current-state)))
   (get-timeout-ms [current-state]
     (* (-> current-state .opts :timeout) 1000))
   (get-timeout [current-state]
@@ -96,8 +97,8 @@
    true             ;; keepalive?
    false            ;; chunked?
    false            ;; head?
-   false            ;; upgraded?
    false            ;; responded?
+   nil              ;; upgrade
    nil              ;; bytes-expected
    0                ;; bytes-to-send
    nil              ;; timeout
@@ -143,7 +144,8 @@
 
 (defn- awaiting-response?
   [current-state]
-  (= waiting-for-response (.next-up-fn current-state)))
+  (or (= waiting-for-response (.next-up-fn current-state))
+      (= upstream-pass-through (.next-dn-fn current-state))))
 
 (defn- exchange-finished?
   [current-state]
@@ -239,6 +241,9 @@
     (when (and (= 100 status) (not (awaiting-100-continue? current-state)))
       (throw (Exception. "Not expecting a 100 Continue response.")))
 
+    (when (and (= 101 status) (not= :upgrading (.upgrade current-state)))
+      (throw (Exception. "Not expecting a 101 Switching Protocols response.")))
+
     ;; 100, 101, 204, and 304 responses MUST NOT have a response body,
     ;; so if we get one, throw an exception.
     (when (not (or (status-expects-body? status) (empty? body)))
@@ -254,7 +259,7 @@
         (= 101 status)
         (assoc current-state
           :keepalive? false
-          :upgraded?  true
+          :upgrade    :upgraded
           :next-up-fn upstream-pass-through
           :next-dn-fn downstream-pass-through)
 
@@ -275,7 +280,8 @@
      (fn [current-state]
        ;; If the connection is upgraded, we don't track timeouts
        ;; anymore.
-       (when (.upgraded? current-state)
+       ;; TODO: Have a separate option for this
+       (when (= :upgraded (.upgrade current-state))
          (clear-timeout state current-state))
 
        (let [downstream (.downstream current-state)]
@@ -310,6 +316,7 @@
         expects-100? (expecting-100? request)
         head?        (= "HEAD" (hdrs :request-method))
         chunked?     (= :chunked body)
+        upgrade      (when (= :upgraded body) :upgrading)
         next-up-fn   (cond
                       (not chunked?)  waiting-for-response
                       expects-100?    awaiting-100-continue
@@ -320,6 +327,7 @@
      #(assoc %
         :keepalive? keepalive?
         :head?      head?
+        :upgrade    upgrade
         :next-up-fn next-up-fn)
      (fn [current-state]
        (let [upstream (.upstream current-state)]
@@ -383,7 +391,9 @@
          (= :close evt)
          (do
            (clear-timeout state current-state)
-           (throw-connection-reset-by-peer))
+           (if (= :upgraded (.upgrade current-state))
+             (next-up evt val)
+             (throw-connection-reset-by-peer)))
 
          (= :abort evt)
          (do
