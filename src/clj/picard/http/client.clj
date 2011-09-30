@@ -201,13 +201,14 @@
       (swap! state #(assoc % :upstream next-up))
       ;; Return the protocol upstream function
       (fn [evt val]
-        (when (= :abort evt)
-          (.printStackTrace val))
         (let [current-state @state]
           (cond
            (#{:response :body} evt)
            (let [next-up-fn (.next-up-fn current-state)]
              (next-up-fn state evt val current-state))
+
+           (= :open evt)
+           (next-up evt (dissoc val :exchange-count))
 
            (= :close evt)
            (when (not= exchange-complete (.next-up-fn current-state))
@@ -234,12 +235,14 @@
   [opts]
   (merge default-options opts {:pipeline-fn http-pipeline}))
 
+(def default-client (net/client {:pool {:keepalive 60}}))
+
 (def release net/release)
 
 (defn connect
   ([app opts]
      (let [opts (merge-opts opts)]
-       (net/connect (proto app opts) opts)))
+       (net/connect default-client (proto app opts) opts)))
   ([client app opts]
      (let [opts (merge-opts opts)]
        (net/connect client (proto app opts) opts))))

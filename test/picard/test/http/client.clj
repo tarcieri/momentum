@@ -1,5 +1,6 @@
 (ns picard.test.http.client
   (:require
+   [picard.net.server  :as net]
    [picard.http.server :as server])
   (:use
    clojure.test
@@ -189,3 +190,56 @@
        :open     :dont-care
        :response [200 :dont-care "Hello"]
        :done     nil)))
+
+(defcoretest simple-keep-alive-requests
+  [ch1 ch2]
+  (let [tracker (fn [app]
+                  (fn [dn]
+                    (enqueue ch1 [:binding nil])
+                    (app dn)))]
+   (net/start
+    (->
+     (fn [dn]
+       (fn [evt val]
+         (when (= :request evt)
+           (dn :response [200 {"content-length" "5"} "Hello"]))))
+     server/proto
+     tracker)))
+
+  (dotimes [_ 2]
+    (connect
+     (fn [dn]
+       (fn [evt val]
+         (enqueue ch2 [evt val])
+         (when (= :open evt)
+           (dn :request [{:request-method "GET" :path-info "/"} nil]))))
+     {:host "localhost" :port 4040})
+
+    (is (next-msgs
+         ch2
+         :open     :dont-care
+         :response [200 {:http-version [1 1] "content-length" "5"} "Hello"]
+         :done     nil))
+
+    (Thread/sleep 100))
+
+  (connect
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch2 [evt val])
+       (when (= :open evt)
+         (dn :request [{:request-method "GET" :path-info "/zomg"
+                        "transfer-encoding" "chunked" "connection" "close"} :chunked])
+         (dn :body "HELLO")
+         (dn :body "WORLD")
+         (dn :body nil))))
+   {:host "localhost" :port 4040})
+
+  (is (next-msgs
+       ch2
+       :open     :dont-care
+       :response [200 :dont-care "Hello"]
+       :done     nil))
+
+  (is (next-msgs ch1 :binding nil))
+  (is (no-msgs ch1 ch2)))

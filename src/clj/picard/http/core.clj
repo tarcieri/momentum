@@ -114,7 +114,7 @@
 (defn keepalive-request?
   [[{version :http-version connection "connection"} body]]
   (let [connection (maybe-lower-case connection)]
-    (if (= http-1-1 version)
+    (if (or (nil? version) (= http-1-1 version))
       (and (not (#{"close" "upgrade"} connection))
            (not (= :upgraded body)))
       (= "keep-alive" connection))))
