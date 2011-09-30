@@ -1359,5 +1359,4 @@
 
     (is (closed-socket?))))
 
-;; (defcoretest connections-marked-as-upgrade-are-not-kept-alive)
 ;; (defcoretest upgraded-connections-do-not-timeout)
