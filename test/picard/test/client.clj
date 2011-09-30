@@ -607,7 +607,7 @@
                           "connection"     "close"} "Hello"]
          :done nil))))
 
-(defcoretest ^{:network true} defaults-to-port-80
+(defcoretest defaults-to-port-80
   [_ ch]
   nil
   (client/request

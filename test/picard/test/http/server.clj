@@ -1311,7 +1311,8 @@
 
     (is (next-msgs
          ch1
-         :request [#(includes-hdrs {"connection" "upgrade" "upgrade" "echo"} %) :upgraded]))
+         :request [#(includes-hdrs {"connection" "upgrade"
+                                    "upgrade" "echo"} %) :upgraded]))
 
     (is (receiving
          "HTTP/1.1 101 Switching Protocols\r\n"

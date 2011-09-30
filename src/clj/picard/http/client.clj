@@ -191,6 +191,9 @@
          (next-dn-fn state evt val current-state)
          (throw (Exception. "Not currently expecting an event.")))
 
+       (= :done evt)
+       nil
+
        :else
        (dn evt val)))))
 

@@ -28,15 +28,16 @@
             (dn :response [200 {"content-length" "5"} "Hello"]))))))
 
 (defn- start-hello-world-app
-  [ch]
-  (server/start
-   (fn [dn]
-     (fn [evt val]
-       (enqueue ch [evt val])
-       (when (= :request evt)
-         (dn :response [200 {"content-type"   "text/plain"
-                             "content-length" "5"
-                             "connection"     "close"} "Hello"]))))))
+  ([] (start-hello-world-app nil))
+  ([ch]
+     (server/start
+      (fn [dn]
+        (fn [evt val]
+          (when ch (enqueue ch [evt val]))
+          (when (= :request evt)
+            (dn :response [200 {"content-type"   "text/plain"
+                                "content-length" "5"
+                                "connection"     "close"} "Hello"])))))))
 
 (defcoretest simple-requests
   [ch1 ch2]
@@ -310,3 +311,124 @@
 
   (is (next-msgs ch1 :connect nil))
   (is (no-msgs ch1 ch2)))
+
+(defcoretest keepalive-204-responses
+  [ch1 ch2]
+  (tracking-connections
+   ch1 (fn [dn]
+         (fn [evt val]
+           (when (= :request evt)
+             (dn :response [204 {} nil])))))
+
+  (let [pool (client {:pool {:keepalive 1}})]
+    (dotimes [_ 3]
+      (connect
+       pool
+       (fn [dn]
+         (fn [evt val]
+           (enqueue ch2 [evt val])
+           (when (= :open evt)
+             (dn :request [{:request-method "GET" :path-info "/"}]))))
+       {:host "localhost" :port 4040})
+
+      (is (next-msgs
+           ch2
+           :open     :dont-care
+           :response [204 {:http-version [1 1]} nil]
+           :done     nil))
+
+      (Thread/sleep 50)))
+
+  (is (next-msgs ch1 :connect nil))
+  (is (no-msgs ch1 ch2)))
+
+(defcoretest keepalive-304-responses
+  [ch1 ch2]
+  (tracking-connections
+   ch1 (fn [dn]
+         (fn [evt val]
+           (when (= :request evt)
+             (dn :response [304 {"content-length" "10000"} nil])))))
+
+  (let [pool (client {:pool {:keepalive 1}})]
+    (dotimes [_ 3]
+      (connect
+       pool
+       (fn [dn]
+         (fn [evt val]
+           (enqueue ch2 [evt val])
+           (when (= :open evt)
+             (dn :request [{:request-method "GET" :path-info "/"}]))))
+       {:host "localhost" :port 4040})
+
+      (is (next-msgs
+           ch2
+           :open     :dont-care
+           :response [304 {:http-version [1 1] "content-length" "10000"} nil]
+           :done     nil))
+
+      (Thread/sleep 50)))
+
+  (is (next-msgs ch1 :connect nil))
+  (is (no-msgs ch1 ch2)))
+
+(defcoretest keepalive-304-responses-chunked
+  [ch1 ch2]
+  (tracking-connections
+   ch1 (fn [dn]
+         (fn [evt val]
+           (when (= :request evt)
+             (dn :response [304 {"transfer-encoding" "chunked"} nil])))))
+
+  (let [pool (client {:pool {:keepalive 1}})]
+    (dotimes [_ 3]
+      (connect
+       pool
+       (fn [dn]
+         (fn [evt val]
+           (enqueue ch2 [evt val])
+           (when (= :open evt)
+             (dn :request [{:request-method "GET" :path-info "/"}]))))
+       {:host "localhost" :port 4040})
+
+      (is (next-msgs
+           ch2
+           :open     :dont-care
+           :response [304 {:http-version [1 1]} nil]
+           :done     nil))
+
+      (Thread/sleep 50)))
+
+  (is (next-msgs ch1 :connect nil))
+  (is (no-msgs ch1 ch2)))
+
+(defcoretest sending-done-after-exchange
+  [ch]
+  (start-hello-world-app)
+
+  (connect
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch [evt val])
+       (when (= :open evt)
+         (dn :request [{:request-method "GET" :path-info "/"}]))
+       (when (= :done evt)
+         (try
+           (dn :done nil)
+           (catch Exception err
+             (enqueue ch [:abort err]))))))
+   {:host "localhost" :port 4040})
+
+  (is (next-msgs
+       ch
+       :open     :dont-care
+       :response [200 :dont-care "Hello"]
+       :done     nil))
+
+  (is (no-msgs ch)))
+
+;; (defcoretest handling-100-continue-requests-and-responses
+;; (defcoretest issuing-immediate-abort)
+;; (defcoretest defaults-to-port-80
+;; (defcoretest connecting-to-an-invalid-server
+
