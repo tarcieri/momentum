@@ -5,7 +5,9 @@
    picard.net.client)
   (:require
    [picard.net.pool   :as pool]
-   [picard.net.server :as server]))
+   [picard.net.server :as server])
+  (:import
+   java.nio.channels.ClosedChannelException))
 
 ;; === Data structure tests
 
@@ -486,3 +488,48 @@
       (Thread/sleep 2000)))
 
   (is (next-msgs ch1 :binding nil :binding nil)))
+
+(defcoretest reopening-connections-that-have-been-closed
+  [ch1 ch2]
+  (server/start
+   (fn [dn]
+     (fn [evt val]
+       (when (= :message evt)
+         (dn :message val)
+         (dn :close nil)))))
+
+  (let [connect (client {:pool true})]
+    (dotimes [_ 20]
+      (connect
+       (fn [dn]
+         (enqueue ch1 [:binding nil])
+         (let [reopened? (atom false)]
+           (fn [evt val]
+             (enqueue ch1 [evt val])
+
+             (cond
+              (= :open evt)
+              (try
+                (dn :message "Hello")
+                ;; If this doesn't throw an exception, put a fake
+                ;; :open event on the channel
+                (when-not @reopened?
+                  (enqueue ch1 [:open val]))
+                (catch ClosedChannelException err
+                  (if (>= (val :exchange-count) 1)
+                    (do
+                      (dn :reopen nil)
+                      (reset! reopened? true))
+                    (throw err))))
+
+              (= :message evt)
+              (dn :close nil)))))
+       {:host "localhost" :port 4040})
+
+      (is (next-msgs
+           ch1
+           :binding nil
+           :open    :dont-care
+           :open    :dont-care
+           :message "Hello"
+           :close   nil)))))
