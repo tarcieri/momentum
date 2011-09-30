@@ -190,6 +190,47 @@
          :message "Goodbye world"
          :close   nil))))
 
+(defcoretest simple-pooled-client-close-false
+  [ch1 ch2]
+  (start echo-server ch1)
+
+  (let [pool (client {:pool true})]
+    (pool
+     (fn [dn]
+       (enqueue ch2 [:binding nil])
+       (fn [evt val]
+         (enqueue ch2 [evt val])
+         (when (= :open evt)
+           (dn :message "Hello world"))
+         (when (= :message evt)
+           (dn :close false))))
+     {:host "localhost" :port 4040})
+
+    (is (next-msgs
+         ch1
+         :open    server-addr-info
+         :message "Hello world"))
+
+    (is (next-msgs
+         ch2
+         :binding nil
+         :open    (assoc client-addr-info :exchange-count 1)
+         :message "Hello world"
+         :close   nil))
+
+    (Thread/sleep 50)
+
+    (run-echo-client ch2 pool "Goodbye world")
+
+    (is (next-msgs ch1 :message "Goodbye world"))
+
+    (is (next-msgs
+         ch2
+         :binding nil
+         :open    (assoc client-addr-info :exchange-count 2)
+         :message "Goodbye world"
+         :close   nil))))
+
 (defcoretest requests-to-the-same-host-in-parallel
   [ch1 ch2 ch3]
   (server/start

@@ -257,7 +257,7 @@
        (not conn)
        (throw (Exception. "Not currently able to handle messages."))
 
-       (= [:close nil] [evt val])
+       (and (= :close evt) (not val))
        (do
          (finalize-exchange conn exchange)
          (put (.pool conn) conn)
@@ -310,11 +310,6 @@
       (let [current-state @(.state conn)
             upstream (current-upstream current-state)]
         (cond
-         (= :message evt)
-         (if upstream
-           (upstream :message val)
-           (throw (Exception. "Not in an exchange")))
-
          (= :open evt)
          (swap-then!
           (.state conn)
@@ -342,7 +337,12 @@
                     (upstream evt val)))
 
                 exchange
-                (reconnect conn exchange))))))))))
+                (reconnect conn exchange)))))
+
+         :else
+         (if upstream
+           (upstream evt val)
+           (throw (Exception. "Not in an exchange"))))))))
 
 (defn- establish
   [pool addr connect-fn exchange]
