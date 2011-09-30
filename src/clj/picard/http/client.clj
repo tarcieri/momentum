@@ -92,13 +92,15 @@
     (throw (Exception. "Not expecting a 100 Continue response.")))
 
   (let [[status hdrs body] response
+        body     (when-not (.head? current-state) body)
+        response [status hdrs body]
         upstream (.upstream current-state)]
     (swap-then!
      state
      (fn [current-state]
        (let [keepalive?
              (and (.keepalive? current-state)
-                  (keepalive-response? response))]
+                  (keepalive-response? response (.head? current-state)))]
          (cond
           (is-100? response)
           (assoc current-state :expects-100? false)

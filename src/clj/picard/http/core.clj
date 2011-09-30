@@ -120,19 +120,21 @@
       (= "keep-alive" connection))))
 
 (defn keepalive-response?
-  [[status {version           :http-version
-            connection        "connection"
-            content-length    "content-length"
-            transfer-encoding "transfer-encoding"}]]
-  (let [connection (maybe-lower-case connection)
-        version    (or version http-1-1)]
-    (and
-     (if (= http-1-1 version)
-       (not= "close" connection)
-       (= "keep-alive" connection))
-     (or content-length
-         (= "chunked" (maybe-lower-case transfer-encoding))
-         (not (status-expects-body? status))))))
+  ([request] (keepalive-response? request false))
+  ([[status {version           :http-version
+             connection        "connection"
+             content-length    "content-length"
+             transfer-encoding "transfer-encoding"}] head?]
+     (let [connection (maybe-lower-case connection)
+           version    (or version http-1-1)]
+       (and
+        (if (= http-1-1 version)
+          (not= "close" connection)
+          (= "keep-alive" connection))
+        (or head?
+            content-length
+            (= "chunked" (maybe-lower-case transfer-encoding))
+            (not (status-expects-body? status)))))))
 
 (defn is-100?
   [[status]]

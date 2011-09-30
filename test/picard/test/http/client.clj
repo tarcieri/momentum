@@ -8,6 +8,25 @@
    picard.utils.helpers
    picard.http.client))
 
+(defn- tracking-connections
+  [ch app]
+  (net/start
+   (build-stack
+    (fn [app]
+      (fn [dn]
+        (enqueue ch [:connect nil])
+        (app dn)))
+    server/proto
+    app)))
+
+(defn- start-conn-tracking-hello-world
+  [ch]
+  (tracking-connections
+   ch (fn [dn]
+        (fn [evt val]
+          (when (= :request evt)
+            (dn :response [200 {"content-length" "5"} "Hello"]))))))
+
 (defn- start-hello-world-app
   [ch]
   (server/start
@@ -28,8 +47,6 @@
      (fn [dn]
        (fn [evt val]
          (enqueue ch2 [evt val])
-         (when (= :abort evt)
-           (.printStackTrace val))
          (when (= :open evt)
            (dn :request [{:path-info "/" :request-method method} ""]))))
      {:host "localhost" :port 4040})
@@ -170,8 +187,8 @@
      (fn [evt val]
        (enqueue ch2 [evt val])
        (when (= :open evt)
-         (dn :request [{:request-method     "GET"
-                        :path-info          "/"
+         (dn :request [{:request-method "GET"
+                        :path-info      "/"
                         "transfer-encoding" "chunked"} :chunked])
          (dn :body "Foo!")
          (dn :body "Bar!")
@@ -194,17 +211,7 @@
 
 (defcoretest simple-keep-alive-requests
   [ch1 ch2]
-  (net/start
-   (build-stack
-    (fn [app]
-      (fn [dn]
-        (enqueue ch1 [:binding nil])
-        (app dn)))
-    server/proto
-    (fn [dn]
-      (fn [evt val]
-        (when (= :request evt)
-          (dn :response [200 {"content-length" "5"} "Hello"]))))))
+  (start-conn-tracking-hello-world ch1)
 
   (dotimes [_ 2]
     (connect
@@ -241,5 +248,65 @@
        :response [200 :dont-care "Hello"]
        :done     nil))
 
-  (is (next-msgs ch1 :binding nil))
+  (is (next-msgs ch1 :connect nil))
+  (is (no-msgs ch1 ch2)))
+
+(defcoretest keepalive-head-requests
+  [ch1 ch2]
+  (start-conn-tracking-hello-world ch1)
+
+  (let [pool (client {:pool {:keepalive 1}})]
+    (dotimes [_ 3]
+      (connect
+       pool
+       (fn [dn]
+         (fn [evt val]
+           (enqueue ch2 [evt val])
+           (when (= :open evt)
+             (dn :request [{:request-method "HEAD" :path-info "/"}]))))
+       {:host "localhost" :port 4040})
+
+      (is (next-msgs
+           ch2
+           :open     :dont-care
+           :response [200 {:http-version [1 1] "content-length" "5"} nil]
+           :done     nil))
+
+      (Thread/sleep 50)))
+
+  (is (next-msgs ch1 :connect nil))
+  (is (no-msgs ch1 ch2)))
+
+;; TODO: Netty strips some important headers during head requests,
+;; when the client is moved to the custom HTTP parser, this test is
+;; going to have to be fixed
+(defcoretest keepalive-head-requests-te-chunked
+  [ch1 ch2]
+  (tracking-connections
+   ch1 (fn [dn]
+         (fn [evt val]
+           (when (= :request evt)
+             (dn :response [200 {"transfer-encoding" "chunked"
+                                 "foo" "bar"} nil])))))
+
+  (let [pool (client {:pool {:keepalive 1}})]
+    (dotimes [_ 3]
+      (connect
+       pool
+       (fn [dn]
+         (fn [evt val]
+           (enqueue ch2 [evt val])
+           (when (= :open evt)
+             (dn :request [{:request-method "HEAD" :path-info "/"}]))))
+       {:host "localhost" :port 4040})
+
+      (is (next-msgs
+           ch2
+           :open     :dont-care
+           :response [200 {:http-version [1 1] "foo" "bar"} nil]
+           :done     nil))
+
+      (Thread/sleep 50)))
+
+  (is (next-msgs ch1 :connect nil))
   (is (no-msgs ch1 ch2)))
