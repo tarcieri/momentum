@@ -54,7 +54,7 @@
   (to-bytes [o]
     (to-bytes (str o))))
 
-(defn buffer
+(defn ^ByteBuffer buffer
   ([]
      (ByteBuffer/allocate 1024))
 
