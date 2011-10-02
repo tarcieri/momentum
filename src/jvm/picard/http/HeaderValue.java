@@ -2,7 +2,7 @@
 
 import java.nio.ByteBuffer;
 
-public class HeaderValue extends StringValue {
+public class HeaderValue extends ChunkedValue {
 
     public HeaderValue(ByteBuffer buf, int offset) {
         super(buf, offset);
