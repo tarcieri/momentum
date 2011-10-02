@@ -7,11 +7,8 @@ import java.nio.ByteBuffer;
 
 /**
  * TODO:
- *   - Limit the number of times marks can be bridged.
- *   - Unify HeaderValue and marks.
  *   - Improve the handling of Connection header values
  *   - Handle full URIs in the request line
- *   - Limit the maximum number of URI characters
  *   - Possibly handle quotes in URIs (old Mozilla bug)
  */
 public final class HttpParser extends AFn {
@@ -264,11 +261,11 @@ public final class HttpParser extends AFn {
         }
 
         action start_uri {
-            uriMark = new Mark(buf, fpc);
+            uriMark = new ChunkedValue(buf, fpc);
         }
 
         action end_uri {
-            uriMark.finalize(fpc);
+            uriMark.push(fpc);
 
             String uriStr = uriMark.materialize();
 
@@ -278,16 +275,17 @@ public final class HttpParser extends AFn {
             catch (URISyntaxException e) {
                 throw new HttpParserException("The URI is not valid: " + uriStr);
             }
+
             uriMark = null;
         }
 
         action start_header_name {
-            headerNameMark = new Mark(buf, fpc);
+            headerNameMark = new ChunkedValue(buf, fpc);
         }
 
         action end_header_name {
             if (headerNameMark != null) {
-                headerNameMark.finalize(fpc);
+                headerNameMark.push(fpc);
 
                 headerName     = headerNameMark.materialize().toLowerCase();
                 headerNameMark = null;
@@ -588,12 +586,11 @@ public final class HttpParser extends AFn {
     private short status;
 
     // Tracks the various message information
-    private URI    uri;
-    private Mark   uriMark;
-    private String headerName;
-    private Mark   headerNameMark;
-
-    private HeaderValue headerValue;
+    private URI          uri;
+    private ChunkedValue uriMark;
+    private String       headerName;
+    private ChunkedValue headerNameMark;
+    private HeaderValue  headerValue;
 
     // Track the content length of the HTTP message
     private long contentLength;
@@ -704,12 +701,9 @@ public final class HttpParser extends AFn {
         int eof = pe + 1;
 
         if (isParsingHead()) {
-            uriMark        = bridge(buf, uriMark);
-            headerNameMark = bridge(buf, headerNameMark);
-
-            if (headerValue != null) {
-                headerValue.bridge(buf);
-            }
+            bridge(buf, uriMark);
+            bridge(buf, headerNameMark);
+            bridge(buf, headerValue);
         }
 
         try {
@@ -731,12 +725,10 @@ public final class HttpParser extends AFn {
         headerNameMark = null;
     }
 
-    private Mark bridge(ByteBuffer buf, Mark mark) {
-        if (mark == null) {
-            return null;
+    private void bridge(ByteBuffer buf, ChunkedValue chunk) {
+        if (chunk != null) {
+            chunk.bridge(buf);
         }
-
-        return mark.bridge(buf);
     }
 
     private void reset() {

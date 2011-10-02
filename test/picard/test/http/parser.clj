@@ -112,7 +112,7 @@
            :request [(merge get-request hdrs) nil]))
 
       (is (parsed-as
-           (str/split raw #"")
+           (str/split raw #"" 14)
            :request [(merge get-request hdrs) nil]))))
 
   (is (parsed-as
@@ -609,4 +609,12 @@
        (parsing
         (concat
          ["GET / HTTP/1.1\r\n"
-          "Zomg: "] (repeat 15 "a"))))))
+          "Zomg: "] (repeat 15 "a")))))
+
+  (is (thrown?
+       HttpParserException
+       (parsing (concat ["GET /"] (repeat 15 "a")))))
+
+  (is (thrown?
+       HttpParserException
+       (parsing (concat ["GET / HTTP/1.1\r\n"] (repeat 15 "a"))))))

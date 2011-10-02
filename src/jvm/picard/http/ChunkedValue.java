@@ -2,13 +2,13 @@ package picard.http;
 
 import java.nio.ByteBuffer;
 
-public class StringValue {
+public class ChunkedValue {
     private   int  bridgeCount;
     protected Mark complete;
     protected Mark current;
     protected Mark tenative;
 
-    public StringValue(ByteBuffer buf, int offset) {
+    public ChunkedValue(ByteBuffer buf, int offset) {
         current = new Mark(buf, offset);
         current.mark(buf.limit());
     }
@@ -50,6 +50,11 @@ public class StringValue {
             current  = null;
             tenative = null;
         }
+    }
+
+    public void push(int offset) {
+        mark(offset);
+        push();
     }
 
     public String materialize() {

@@ -151,7 +151,7 @@ public final class HttpParser extends AFn {
     }
 
     
-// line 525 "src/rl/picard/http/HttpParser.rl"
+// line 526 "src/rl/picard/http/HttpParser.rl"
 
 
     public static final long ALMOST_MAX_LONG     = Long.MAX_VALUE / 10;
@@ -2676,7 +2676,7 @@ static final int http_en_upgraded = 736;
 static final int http_en_main = 1;
 
 
-// line 541 "src/rl/picard/http/HttpParser.rl"
+// line 542 "src/rl/picard/http/HttpParser.rl"
 
     // Variable used by ragel to represent the current state of the
     // parser. This must be an integer and it should persist across
@@ -2727,12 +2727,11 @@ static final int http_en_main = 1;
     private short status;
 
     // Tracks the various message information
-    private URI    uri;
-    private Mark   uriMark;
-    private String headerName;
-    private Mark   headerNameMark;
-
-    private HeaderValue headerValue;
+    private URI          uri;
+    private ChunkedValue uriMark;
+    private String       headerName;
+    private ChunkedValue headerNameMark;
+    private HeaderValue  headerValue;
 
     // Track the content length of the HTTP message
     private long contentLength;
@@ -2742,7 +2741,7 @@ static final int http_en_main = 1;
 
     public HttpParser(HttpParserCallback callback) {
         
-// line 2746 "src/jvm/picard/http/HttpParser.java"
+// line 2745 "src/jvm/picard/http/HttpParser.java"
 	{
 	cs = http_start;
 	}
@@ -2849,20 +2848,17 @@ static final int http_en_main = 1;
         int eof = pe + 1;
 
         if (isParsingHead()) {
-            uriMark        = bridge(buf, uriMark);
-            headerNameMark = bridge(buf, headerNameMark);
-
-            if (headerValue != null) {
-                headerValue.bridge(buf);
-            }
+            bridge(buf, uriMark);
+            bridge(buf, headerNameMark);
+            bridge(buf, headerValue);
         }
 
         try {
             parseLoop: {
                 
-// line 718 "src/rl/picard/http/HttpParser.rl"
+// line 715 "src/rl/picard/http/HttpParser.rl"
                 
-// line 2866 "src/jvm/picard/http/HttpParser.java"
+// line 2862 "src/jvm/picard/http/HttpParser.java"
 	{
 	int _klen;
 	int _trans = 0;
@@ -2905,7 +2901,7 @@ case 1:
 	case 0: {
 		_widec = 65536 + (( buf.get(p)) - 0);
 		if ( 
-// line 438 "src/rl/picard/http/HttpParser.rl"
+// line 439 "src/rl/picard/http/HttpParser.rl"
 
             contentLength > 0
          ) _widec += 65536;
@@ -3359,13 +3355,13 @@ case 1:
 	case 91:
 // line 266 "src/rl/picard/http/HttpParser.rl"
 	{
-            uriMark = new Mark(buf, p);
+            uriMark = new ChunkedValue(buf, p);
         }
 	break;
 	case 92:
 // line 270 "src/rl/picard/http/HttpParser.rl"
 	{
-            uriMark.finalize(p);
+            uriMark.push(p);
 
             String uriStr = uriMark.materialize();
 
@@ -3375,20 +3371,21 @@ case 1:
             catch (URISyntaxException e) {
                 throw new HttpParserException("The URI is not valid: " + uriStr);
             }
+
             uriMark = null;
         }
 	break;
 	case 93:
-// line 284 "src/rl/picard/http/HttpParser.rl"
+// line 285 "src/rl/picard/http/HttpParser.rl"
 	{
-            headerNameMark = new Mark(buf, p);
+            headerNameMark = new ChunkedValue(buf, p);
         }
 	break;
 	case 94:
-// line 288 "src/rl/picard/http/HttpParser.rl"
+// line 289 "src/rl/picard/http/HttpParser.rl"
 	{
             if (headerNameMark != null) {
-                headerNameMark.finalize(p);
+                headerNameMark.push(p);
 
                 headerName     = headerNameMark.materialize().toLowerCase();
                 headerNameMark = null;
@@ -3396,7 +3393,7 @@ case 1:
         }
 	break;
 	case 95:
-// line 297 "src/rl/picard/http/HttpParser.rl"
+// line 298 "src/rl/picard/http/HttpParser.rl"
 	{
             if (headerValue == null) {
                 headerValue = new HeaderValue(buf, p);
@@ -3407,7 +3404,7 @@ case 1:
         }
 	break;
 	case 96:
-// line 306 "src/rl/picard/http/HttpParser.rl"
+// line 307 "src/rl/picard/http/HttpParser.rl"
 	{
             if (headerValue != null) {
                 headerValue.mark(p);
@@ -3415,7 +3412,7 @@ case 1:
         }
 	break;
 	case 97:
-// line 312 "src/rl/picard/http/HttpParser.rl"
+// line 313 "src/rl/picard/http/HttpParser.rl"
 	{
             if (headerValue != null) {
                 headerValue.push();
@@ -3423,7 +3420,7 @@ case 1:
         }
 	break;
 	case 98:
-// line 318 "src/rl/picard/http/HttpParser.rl"
+// line 319 "src/rl/picard/http/HttpParser.rl"
 	{
             if (headerValue != null) {
                 callback.header(headers, headerName, headerValue.materialize());
@@ -3437,7 +3434,7 @@ case 1:
         }
 	break;
 	case 99:
-// line 330 "src/rl/picard/http/HttpParser.rl"
+// line 331 "src/rl/picard/http/HttpParser.rl"
 	{
             if (contentLength >= ALMOST_MAX_LONG) {
                 throw new HttpParserException("The content-length is WAY too big");
@@ -3448,7 +3445,7 @@ case 1:
         }
 	break;
 	case 100:
-// line 339 "src/rl/picard/http/HttpParser.rl"
+// line 340 "src/rl/picard/http/HttpParser.rl"
 	{
             // Hack to get Java to compile
             if (true) {
@@ -3457,7 +3454,7 @@ case 1:
         }
 	break;
 	case 101:
-// line 346 "src/rl/picard/http/HttpParser.rl"
+// line 347 "src/rl/picard/http/HttpParser.rl"
 	{
             if (isChunkedBody()) {
                 throw new HttpParserException("The message head is invalid");
@@ -3471,7 +3468,7 @@ case 1:
         }
 	break;
 	case 102:
-// line 358 "src/rl/picard/http/HttpParser.rl"
+// line 359 "src/rl/picard/http/HttpParser.rl"
 	{
             if (isIdentityBody()) {
                 throw new HttpParserException("The message head is invalid");
@@ -3485,7 +3482,7 @@ case 1:
         }
 	break;
 	case 103:
-// line 370 "src/rl/picard/http/HttpParser.rl"
+// line 371 "src/rl/picard/http/HttpParser.rl"
 	{
             flags |= CONN_CLOSE;
 
@@ -3495,7 +3492,7 @@ case 1:
         }
 	break;
 	case 104:
-// line 378 "src/rl/picard/http/HttpParser.rl"
+// line 379 "src/rl/picard/http/HttpParser.rl"
 	{
             flags |= UPGRADE;
 
@@ -3505,7 +3502,7 @@ case 1:
         }
 	break;
 	case 105:
-// line 386 "src/rl/picard/http/HttpParser.rl"
+// line 387 "src/rl/picard/http/HttpParser.rl"
 	{
             if (isHttp11()) {
                 flags |= EXPECT_CONTINUE;
@@ -3517,7 +3514,7 @@ case 1:
         }
 	break;
 	case 106:
-// line 396 "src/rl/picard/http/HttpParser.rl"
+// line 397 "src/rl/picard/http/HttpParser.rl"
 	{
             reset();
 
@@ -3526,7 +3523,7 @@ case 1:
         }
 	break;
 	case 107:
-// line 403 "src/rl/picard/http/HttpParser.rl"
+// line 404 "src/rl/picard/http/HttpParser.rl"
 	{
             // Not parsing the HTTP message head anymore
             flags ^= PARSING_HEAD;
@@ -3563,7 +3560,7 @@ case 1:
         }
 	break;
 	case 108:
-// line 442 "src/rl/picard/http/HttpParser.rl"
+// line 443 "src/rl/picard/http/HttpParser.rl"
 	{
             int toRead = min(contentLength, buf.limit() - p);
 
@@ -3585,7 +3582,7 @@ case 1:
         }
 	break;
 	case 109:
-// line 462 "src/rl/picard/http/HttpParser.rl"
+// line 463 "src/rl/picard/http/HttpParser.rl"
 	{
             int toRead = min(contentLength, buf.limit() - p);
 
@@ -3599,7 +3596,7 @@ case 1:
         }
 	break;
 	case 110:
-// line 474 "src/rl/picard/http/HttpParser.rl"
+// line 475 "src/rl/picard/http/HttpParser.rl"
 	{
             int remaining = buf.limit() - p;
 
@@ -3610,19 +3607,19 @@ case 1:
         }
 	break;
 	case 111:
-// line 483 "src/rl/picard/http/HttpParser.rl"
+// line 484 "src/rl/picard/http/HttpParser.rl"
 	{
             callback.body(this, null);
         }
 	break;
 	case 112:
-// line 487 "src/rl/picard/http/HttpParser.rl"
+// line 488 "src/rl/picard/http/HttpParser.rl"
 	{
             contentLength = 0;
         }
 	break;
 	case 113:
-// line 491 "src/rl/picard/http/HttpParser.rl"
+// line 492 "src/rl/picard/http/HttpParser.rl"
 	{
             if (contentLength >= ALMOST_MAX_LONG_HEX) {
                 throw new HttpParserException("The content-length is WAY too big");
@@ -3633,7 +3630,7 @@ case 1:
         }
 	break;
 	case 114:
-// line 500 "src/rl/picard/http/HttpParser.rl"
+// line 501 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 throw new HttpParserException("Invalid chunk size");
@@ -3641,7 +3638,7 @@ case 1:
         }
 	break;
 	case 116:
-// line 510 "src/rl/picard/http/HttpParser.rl"
+// line 511 "src/rl/picard/http/HttpParser.rl"
 	{
             if (++hread > MAX_HEADER_SIZE) {
                 throw new HttpParserException("The HTTP message head is too large");
@@ -3649,7 +3646,7 @@ case 1:
         }
 	break;
 	case 117:
-// line 516 "src/rl/picard/http/HttpParser.rl"
+// line 517 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 String msg = parseErrorMsg(buf, p);
@@ -3657,7 +3654,7 @@ case 1:
             }
         }
 	break;
-// line 3661 "src/jvm/picard/http/HttpParser.java"
+// line 3658 "src/jvm/picard/http/HttpParser.java"
 			}
 		}
 	}
@@ -3668,12 +3665,12 @@ case 2:
 	while ( _nacts-- > 0 ) {
 		switch ( _http_actions[_acts++] ) {
 	case 115:
-// line 506 "src/rl/picard/http/HttpParser.rl"
+// line 507 "src/rl/picard/http/HttpParser.rl"
 	{
             cs = 1;
         }
 	break;
-// line 3677 "src/jvm/picard/http/HttpParser.java"
+// line 3674 "src/jvm/picard/http/HttpParser.java"
 		}
 	}
 
@@ -3693,7 +3690,7 @@ case 4:
 	while ( __nacts-- > 0 ) {
 		switch ( _http_actions[__acts++] ) {
 	case 100:
-// line 339 "src/rl/picard/http/HttpParser.rl"
+// line 340 "src/rl/picard/http/HttpParser.rl"
 	{
             // Hack to get Java to compile
             if (true) {
@@ -3702,7 +3699,7 @@ case 4:
         }
 	break;
 	case 114:
-// line 500 "src/rl/picard/http/HttpParser.rl"
+// line 501 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 throw new HttpParserException("Invalid chunk size");
@@ -3710,7 +3707,7 @@ case 4:
         }
 	break;
 	case 117:
-// line 516 "src/rl/picard/http/HttpParser.rl"
+// line 517 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 String msg = parseErrorMsg(buf, p);
@@ -3718,7 +3715,7 @@ case 4:
             }
         }
 	break;
-// line 3722 "src/jvm/picard/http/HttpParser.java"
+// line 3719 "src/jvm/picard/http/HttpParser.java"
 		}
 	}
 	}
@@ -3728,7 +3725,7 @@ case 5:
 	break; }
 	}
 
-// line 719 "src/rl/picard/http/HttpParser.rl"
+// line 716 "src/rl/picard/http/HttpParser.rl"
             }
         }
         catch (RuntimeException e) {
@@ -3744,12 +3741,10 @@ case 5:
         headerNameMark = null;
     }
 
-    private Mark bridge(ByteBuffer buf, Mark mark) {
-        if (mark == null) {
-            return null;
+    private void bridge(ByteBuffer buf, ChunkedValue chunk) {
+        if (chunk != null) {
+            chunk.bridge(buf);
         }
-
-        return mark.bridge(buf);
     }
 
     private void reset() {
