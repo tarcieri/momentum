@@ -46,6 +46,12 @@ public class Mark {
         this.to = offset;
     }
 
+    public String toString() {
+        String str = new String(buf.array());
+
+        return "Mark('" + str + "', " + from + ", " + to + ")";
+    }
+
     public void finalize() {
         total = to - from;
 
@@ -64,18 +70,15 @@ public class Mark {
         return new Mark(nextBuf, 0, this);
     }
 
-    public Mark remainingWhiteSpace() {
+    public Mark remaining() {
+        finalize();
+
         if (to == buf.limit()) {
-            return null;
-        }
-        else if (lastByteIsText()) {
-            finalize(buf.limit());
             return null;
         }
         else {
             Mark rest = new Mark(buf, to, this);
 
-            finalize();
             rest.finalize(buf.limit());
 
             return rest;
@@ -116,9 +119,5 @@ public class Mark {
         buf.limit(oldLim);
 
         return length;
-    }
-
-    private boolean lastByteIsText() {
-        return ! HttpParser.isWhiteSpace(buf.get(buf.limit() - 1));
     }
 }

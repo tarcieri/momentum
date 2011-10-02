@@ -1,7 +1,6 @@
 (ns support.parsing
   (:require
-   [picard.http.parser :as http]
-   )
+   [picard.http.parser :as http])
   (:use
    clojure.test
    support.helpers)

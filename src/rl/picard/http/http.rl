@@ -129,26 +129,21 @@
                 % end_header_name
               ;
 
-  tracking_non_whitespace = ( LINE -- WS ) +
-                          % end_header_value_non_ws
-                          ;
-
-  header_value_line = tracking_non_whitespace ( WS + tracking_non_whitespace ) *
-                    | LINE *
+            ws_line = WS +;
+         no_ws_line = ( LINE -- WS ) + % end_header_value_no_ws;
+         blank_line = "" % end_header_value_no_ws;
+     non_blank_line = no_ws_line ( ws_line no_ws_line) * ws_line ?;
+  header_value_line = ( blank_line | non_blank_line )
                     > start_header_value_line
                     % end_header_value_line
                     ;
 
   header_value_line_1 = header_value_line CRLF;
   header_value_line_n = WS+ <: header_value_line_1;
-
-  header_value = ( header_value_line_1 header_value_line_n * )
-               % end_header_value
-               ;
-
-  hdr_generic = header_name
-                header_sep <:
-                header_value;
+         header_value = header_value_line_1 header_value_line_n *;
+          hdr_generic = header_name
+                        header_sep <:
+                        header_value % end_header_value;
 
   # Header: Content-Length
   # ===

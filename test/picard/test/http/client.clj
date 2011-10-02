@@ -430,5 +430,6 @@
 ;; (defcoretest handling-100-continue-requests-and-responses
 ;; (defcoretest issuing-immediate-abort)
 ;; (defcoretest defaults-to-port-80
-;; (defcoretest connecting-to-an-invalid-server
+;; (defcoretest connecting-to-an-invalid-server)
+
 

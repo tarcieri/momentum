@@ -303,7 +303,7 @@ public final class HttpParser extends AFn {
             }
         }
 
-        action end_header_value_non_ws {
+        action end_header_value_no_ws {
             if (headerValue != null) {
                 headerValue.mark(fpc);
             }
@@ -311,14 +311,19 @@ public final class HttpParser extends AFn {
 
         action end_header_value_line {
             if (headerValue != null) {
-                headerValue.endLine();
+                headerValue.push();
             }
         }
 
         action end_header_value {
             if (headerValue != null) {
                 callback.header(headers, headerName, headerValue.materialize());
+                headerName  = null;
                 headerValue = null;
+            }
+            else if (headerName != null) {
+                callback.header(headers, headerName, EMPTY_STRING);
+                headerName = null;
             }
         }
 
@@ -345,6 +350,7 @@ public final class HttpParser extends AFn {
 
             flags |= IDENTITY_BODY;
 
+            headerName  = null;
             headerValue = null;
             callback.header(headers, HDR_CONTENT_LENGTH, String.valueOf(contentLength));
         }
@@ -356,6 +362,7 @@ public final class HttpParser extends AFn {
 
             flags |= CHUNKED_BODY;
 
+            headerName  = null;
             headerValue = null;
             callback.header(headers, HDR_TRANSFER_ENCODING, VAL_CHUNKED);
         }
@@ -363,6 +370,7 @@ public final class HttpParser extends AFn {
         action end_connection_close {
             flags |= CONN_CLOSE;
 
+            headerName  = null;
             headerValue = null;
             callback.header(headers, HDR_CONNECTION, VAL_CLOSE);
         }
@@ -370,6 +378,7 @@ public final class HttpParser extends AFn {
         action end_connection_upgrade {
             flags |= UPGRADE;
 
+            headerName  = null;
             headerValue = null;
             callback.header(headers, HDR_CONNECTION, VAL_UPGRADE);
         }
@@ -379,6 +388,7 @@ public final class HttpParser extends AFn {
                 flags |= EXPECT_CONTINUE;
             }
 
+            headerName  = null;
             headerValue = null;
             callback.header(headers, HDR_EXPECT, VAL_100_CONTINUE);
         }
