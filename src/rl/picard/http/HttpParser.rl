@@ -54,8 +54,9 @@ public final class HttpParser extends AFn {
 
     public static final byte SP = (byte) 0x20; // Space
     public static final byte HT = (byte) 0x09; // Horizontal tab
-    public static final String SLASH = new String("/");
-    public static final String EMPTY_STRING = new String("");
+    public static final String SLASH = new String("/").intern();
+    public static final String EMPTY_STRING = new String("").intern();
+    public static final byte[] EMPTY_BUFFER = new byte[0];
     public static final ByteBuffer SPACE = ByteBuffer.wrap(new byte[] { SP });
 
     // Map of hexadecimal chars to their numeric value
@@ -267,7 +268,7 @@ public final class HttpParser extends AFn {
         action end_uri {
             uriMark.push(fpc);
 
-            String uriStr = uriMark.materialize();
+            String uriStr = uriMark.materializeStr();
 
             try {
                 uri = new URI(uriStr);
@@ -287,7 +288,7 @@ public final class HttpParser extends AFn {
             if (headerNameMark != null) {
                 headerNameMark.push(fpc);
 
-                headerName     = headerNameMark.materialize().toLowerCase();
+                headerName     = headerNameMark.materializeStr().toLowerCase();
                 headerNameMark = null;
             }
         }
@@ -315,7 +316,7 @@ public final class HttpParser extends AFn {
 
         action end_header_value {
             if (headerValue != null) {
-                callback.header(headers, headerName, headerValue.materialize());
+                callback.header(headers, headerName, headerValue.materializeStr());
                 headerName  = null;
                 headerValue = null;
             }

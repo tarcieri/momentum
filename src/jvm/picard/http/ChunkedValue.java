@@ -57,8 +57,24 @@ public class ChunkedValue {
         push();
     }
 
-    public String materialize() {
-        return complete.materialize();
+    public byte[] materialize() {
+        byte [] materialized = complete.materialize();
+
+        if (materialized == null) {
+            return HttpParser.EMPTY_BUFFER;
+        }
+
+        return materialized;
+    }
+
+    public String materializeStr() {
+        byte [] materialized = complete.materialize();
+
+        if (materialized == null) {
+            return HttpParser.EMPTY_STRING;
+        }
+
+        return new String(materialized);
     }
 
     public void bridge(ByteBuffer buf) {

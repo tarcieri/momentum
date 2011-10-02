@@ -85,9 +85,9 @@ public class Mark {
         }
     }
 
-    public String materialize() {
+    public byte[] materialize() {
         if (total() == 0) {
-            return HttpParser.EMPTY_STRING;
+            return null;
         }
 
         byte [] buf = new byte[total()];
@@ -99,7 +99,7 @@ public class Mark {
             cur  = cur.previous();
         }
 
-        return new String(buf);
+        return buf;
     }
 
     protected int total() {
