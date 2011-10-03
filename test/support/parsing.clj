@@ -100,26 +100,35 @@
    HttpParser/HDR_X_REQUESTED_WITH
    HttpParser/HDR_X_XSS_PROTECTION])
 
+(declare *default-parser*)
+
+(defn with-parser
+  [p f]
+  (binding [*default-parser* p] (f)))
+
 (defn- normalizing
   [f]
   (fn [evt val]
     (f evt (normalize val))))
 
+(defn- mk-callback
+  [msgs]
+  (fn [evt val] (swap! msgs #(conj % [evt val]))))
+
+(defn- parsing*
+  [raw f]
+  (let [p (*default-parser* (normalizing f))]
+    (if (coll? raw)
+      (doseq [raw raw] (p raw))
+      (p raw))))
+
 (defn parsing
-  ([raw]
-     (let [msgs (atom [])]
-       (parsing raw
-                (fn [evt val]
-                  (swap! msgs #(conj % [evt val]))))
-       @msgs))
+  [raw]
+  (let [msgs (atom [])]
+    (parsing* raw (mk-callback msgs))
+    @msgs))
 
-  ([raw f]
-     (let [p (http/parser (normalizing f))]
-       (if (coll? raw)
-         (doseq [raw raw] (http/parse p raw))
-         (http/parse p raw)))))
-
-(defmethod assert-expr 'parsed-as [msg form]
+(defmethod assert-expr 'parsed [msg form]
   (let [[_ raw & expected] form]
     (let [expected (vec (map vec (partition 2 expected)))]
       `(let [actual#   (parsing ~raw)

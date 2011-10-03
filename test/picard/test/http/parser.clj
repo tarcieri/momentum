@@ -53,200 +53,200 @@
 
 (deftest parsing-normal-request-lines
   (doseq [method valid-methods]
-    (is (parsed-as
+    (is (parsed
          (str method " / HTTP/1.1\r\n\r\n")
          :request [(assoc get-request :request-method method)
                    (when (= "CONNECT" method)
                      :upgraded)])))
 
-  (is (parsed-as
+  (is (parsed
        "GET / HTTP/1.0\r\n\r\n"
        :request [(assoc get-request :http-version [1 0]) nil]))
 
-  (is (parsed-as
+  (is (parsed
        "GET / HTTP/0.9\r\n\r\n"
        :request [(assoc get-request :http-version [0 9]) nil]))
 
-  (is (parsed-as
+  (is (parsed
        "GET / HTTP/90.23\r\n\r\n"
        :request [(assoc get-request :http-version [90 23]) nil])))
 
 (deftest parsing-normal-request-lines-in-chunks
   (doseq [method valid-methods]
-    (is (parsed-as
+    (is (parsed
          (str/split (str method " / HTTP/1.1\r\n\r\n") #"")
          :request [(assoc get-request :request-method method)
                    (when (= "CONNECT" method)
                      :upgraded)]))))
 
 (deftest parsing-some-request-line-edge-cases
-  (is (parsed-as
+  (is (parsed
        "GET  / HTTP/1.1\r\n\r\n"
        :request [get-request nil]))
 
-  (is (parsed-as
+  (is (parsed
        "GET /  HTTP/1.1\r\n\r\n"
        :request [get-request nil]))
 
-  (is (parsed-as
+  (is (parsed
        "GET / Http/1.1\r\n\r\n"
        :request [get-request nil]))
 
-  (is (parsed-as
+  (is (parsed
        "GET / HTTP/1.1\r\n\r\n"
        :request [get-request nil]))
 
-  (is (parsed-as
+  (is (parsed
        "\r\nGET / HTTP/1.1\r\n\r\n"
        :request [get-request nil]))
 
-  (is (parsed-as
+  (is (parsed
        "GET /\r\n\r\n"
        :request [(assoc get-request :http-version [0 9]) nil])))
 
 (deftest parsing-various-valid-request-uris
   (doseq [[uri hdrs] valid-uris]
     (let [raw (str "GET " uri " HTTP/1.1\r\n\r\n")]
-      (is (parsed-as
+      (is (parsed
            raw
            :request [(merge get-request hdrs) nil]))
 
-      (is (parsed-as
+      (is (parsed
            (str/split raw #"" 14)
            :request [(merge get-request hdrs) nil]))))
 
-  (is (parsed-as
+  (is (parsed
        ["GET /hello" "/world HTTP/1.1\r\n\r\n"]
        :request [(assoc get-request :path-info "/hello/world") nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET /hello/world?zomg" "whatsup HTTP/1.1\r\n\r\n"]
        :request [(assoc get-request
                    :path-info    "/hello/world"
                    :query-string "zomgwhatsup") nil])))
 
 (deftest parsing-single-headers
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "Zomg: HI2U\r\n\r\n")
        :request [(assoc get-request "zomg" "HI2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "Zomg:HI2U\r\n\r\n")
        :request [(assoc get-request "zomg" "HI2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "Zomg  :  HI2U \r\n\r\n")
        :request [(assoc get-request "zomg" "HI2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "Zomg" ": HI2U\r\n\r\n"]
        :request [(assoc get-request "zomg" "HI2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "ZO" "MG" "  : " "HI2U\r\n\r\n"]
        :request [(assoc get-request "zomg" "HI2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "zomg: " "H" "I" "2" "U" "\r\n\r\n"]
        :request [(assoc get-request "zomg" "HI2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "zomg: HI  2U \r\n\r\n")
        :request [(assoc get-request "zomg" "HI  2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "zomg: HI  " "2U\r\n\r\n"]
        :request [(assoc get-request "zomg" "HI  2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "zomg: HI " " " " 2U\r\n\r\n"]
        :request [(assoc get-request "zomg" "HI   2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "zomg: HI2U" "\r\n\r\n"]
        :request [(assoc get-request "zomg" "HI2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "zomg: HI" " " " 2U\r\n\r\n"]
        :request [(assoc get-request "zomg" "HI  2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "zomg: HI " " 2U" "\r\n\r\n"]
        :request [(assoc get-request "zomg" "HI  2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "zomg: HI" " " "\r\n\r\n"]
        :request [(assoc get-request "zomg" "HI") nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "zomg: HI " " " " \r\n\r\n"]
        :request [(assoc get-request "zomg" "HI") nil]))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "zomg: HI\r\n"
             " 2U\r\n\r\n")
        :request [(assoc get-request "zomg" "HI 2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "zomg: HI\r\n"
             "\t2U\r\n\r\n")
        :request [(assoc get-request "zomg" "HI 2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "zomg:HI\r\n"
             " 2U\r\n\r\n")
        :request [(assoc get-request "zomg" "HI 2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "zomg: HI " "\r\n 2U\r\n\r\n"]
        :request [(assoc get-request "zomg" "HI 2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "Zomg: HI  " "\r\n"
         "  2U\r\n\r\n"]
        :request [(assoc get-request "zomg" "HI 2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "Zomg: HI   \r\n"
         "   2U\r\n\r\n"]
        :request [(assoc get-request "zomg" "HI 2U") nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "Zomg:\r\n\r\n"]
        :request [(assoc get-request "zomg" "") nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "Zomg:" "\r\n\r\n"]
        :request [(assoc get-request "zomg" "") nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "ZOMG" "  " " : " "      " "\r\n\r\n"]
        :request [(assoc get-request "zomg" "") nil]))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "Zomg: \"ssdp:discover\"\r\n"
             "\r\n")
@@ -269,23 +269,23 @@
       (is (identical? expected actual)))))
 
 (deftest parsing-special-case-headers
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "Connection:  CLOSE\r\n\r\n")
        :request [(assoc get-request "connection" "close") nil]))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "Transfer-Encoding: CHUNKED\r\n\r\n")
        :request [(assoc get-request "transfer-encoding" "chunked") :chunked])))
 
 (deftest parsing-content-lengths
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "Content-Length: 1000\r\n\r\n")
        :request [(assoc get-request "content-length" "1000") :chunked]))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "Content-Length: 922337203685477580\r\n\r\n")
        :request [(assoc get-request "content-length" "922337203685477580") :chunked]))
@@ -310,55 +310,55 @@
                      "content-length: 1234l\r\n\r\n")))))
 
 (deftest parsing-transfer-encodings
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "Transfer-Encoding: chunked\r\n\r\n")
        :request [(assoc get-request "transfer-encoding" "chunked") :chunked]))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "transfer-encoding: chunked \r\n\r\n")
        :request [(assoc get-request "transfer-encoding" "chunked") :chunked]))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "Transfer-Encoding: chunked;lulz\r\n\r\n")
        :request [(assoc get-request "transfer-encoding" "chunked;lulz") nil]))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "Transfer-encoding: Chunked\r\n\r\n")
        :request [(assoc get-request "transfer-encoding" "chunked") :chunked]))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "Transfer-encoding: chun\r\n\r\n")
        :request [(assoc get-request "transfer-encoding" "chun") nil]))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "TRANSFER-ENCODING: zomg\r\n\r\n")
        :request [(assoc get-request "transfer-encoding" "zomg") nil]))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "Transfer-Encoding: zomg \r\n\r\n")
        :request [(assoc get-request "transfer-encoding" "zomg") nil]))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "transfer-encoding: zomg;omg\r\n\r\n")
        :request [(assoc get-request "transfer-encoding" "zomg;omg") nil])))
 
 (deftest parsing-identity-bodies
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "Content-Length: 5\r\n"
             "\r\n"
             "Hello")
        :request [(assoc get-request "content-length" "5") "Hello"]))
 
-  (is (parsed-as
+  (is (parsed
        [(str "GET / HTTP/1.1\r\n"
              "Content-Length: 5\r\n\r\n")
         "Hello"]
@@ -366,7 +366,7 @@
        :body    "Hello"
        :body    nil))
 
-  (is (parsed-as
+  (is (parsed
        [(str "GET / HTTP/1.1\r\n"
              "Content-Length: 10\r\n\r\n")
         "Hello" "World"]
@@ -375,12 +375,12 @@
        :body    "World"
        :body    nil))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "CONTENT-LENGTH: 11\r\n\r\nHello World")
        :request [(assoc get-request "content-length" "11") "Hello World"]))
 
-  (is (parsed-as
+  (is (parsed
        (str "POST / HTTP/1.1\r\n"
             "Content-Length: 5\r\n"
             "Expect: 100-continue\r\n\r\n"
@@ -391,7 +391,7 @@
        :body "Hello"
        :body nil))
 
-  (is (parsed-as
+  (is (parsed
        (str "POST / HTTP/1.0\r\n"
             "Content-Length: 5\r\n"
             "Expect: 100-continue\r\n\r\n"
@@ -401,7 +401,7 @@
                    "content-length" "5"
                    "expect" "100-continue") "Hello"]))
 
-  (is (parsed-as
+  (is (parsed
        (str "POST /blah HTTP/1.1\r\n"
             "Content-Length: 5\r\n\r\n"
             "Hello")
@@ -409,7 +409,7 @@
                    :path-info "/blah"
                    "content-length" "5") "Hello"]))
 
-  (is (parsed-as
+  (is (parsed
        (str "POST / HTTP/1.1\r\n"
             "Content-Length: 10000\r\n\r\n"
             "TROLLOLOLOLOLLLOLOLOLLOL")
@@ -417,7 +417,7 @@
        :body    "TROLLOLOLOLOLLLOLOLOLLOL")))
 
 (deftest parsing-chunked-bodies
-  (is (parsed-as
+  (is (parsed
        (str "POST / HTTP/1.1\r\n"
             "Transfer-Encoding: chunked\r\n\r\n"
             "5\r\nHello\r\n"
@@ -428,7 +428,7 @@
        :body    "World"
        :body    nil))
 
-  (is (parsed-as
+  (is (parsed
        ["POST / HTTP/1.1\r" "\n"
         "TRANSFER-encoding :chunked" "\r\n\r\n"
         "00" "5" "\r\n"
@@ -447,7 +447,7 @@
        :body    "9999999999999999"
        :body    nil))
 
-  (is (parsed-as
+  (is (parsed
        (str "POST / HTTP/1.1\r\n"
             "transfer-encoding: chunked\r\n"
             "\r\n"
@@ -469,27 +469,27 @@
              "8000000000000000AA\r\n")))))
 
 (deftest parsing-upgraded-connections
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "Connection: Upgrade\r\n\r\n"
             "ZOMGHI2U\r\n")
        :request [(assoc get-request "connection" "upgrade") :upgraded]
        :message "ZOMGHI2U\r\n"))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "Connection: UPGRADE\r\n\r\n"
         "GET / HTTP/1.1\r\n\r\n"]
        :request [(assoc get-request "connection" "upgrade") :upgraded]
        :message "GET / HTTP/1.1\r\n\r\n"))
 
-  (is (parsed-as
+  (is (parsed
        (str "CONNECT / HTTP/1.1\r\n\r\n"
             "Hello world")
        :request [(assoc get-request :request-method "CONNECT") :upgraded]
        :message "Hello world"))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET /demo HTTP/1.1\r\n"
             "Host: example.com\r\n"
             "Connection: Upgrade\r\n"
@@ -512,19 +512,19 @@
        :message "Hot diggity dogg")))
 
 (deftest keepalive-requests
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n\r\n"
             "GET / HTTP/1.1\r\n\r\n")
        :request [get-request nil]
        :request [get-request nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n\r\n"
         "GET / HTTP/1.1\r\n\r\n"]
        :request [get-request nil]
        :request [get-request nil]))
 
-  (is (parsed-as
+  (is (parsed
        (str "GET / HTTP/1.1\r\n"
             "Host: localhost\r\n"
             "Foo: 123\r\n\r\n"
@@ -536,7 +536,7 @@
        :request [(assoc post-request "content-length" "11") "Hello world"]
        :request [get-request nil]))
 
-  (is (parsed-as
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "Host: localhost\r\n\r\n"
         "POST / HTTP/1.1\r\n"
@@ -553,7 +553,7 @@
        :request [(assoc post-request "content-length" "11") "Hello world"]
        :request [get-request nil]))
 
-  (is (parsed-as
+  (is (parsed
        [(str "POST / HTTP/1.1\r\n"
              "Transfer-Encoding: chunked\r\n\r\n"
              "5\r\nHello\r\n6\r\n World\r\n0\r\n\r\n")
@@ -569,7 +569,7 @@
        :body    "INCEPTION"
        :body    nil))
 
-  (is (parsed-as
+  (is (parsed
        [(str "GET / HTTP/1.1\r\n\r\n")
         (str "POST /blah HTTP/1.1\r\n"
              "Content-Length: 5\r\n\r\n"
@@ -618,3 +618,5 @@
   (is (thrown?
        HttpParserException
        (parsing (concat ["GET / HTTP/1.1\r\n"] (repeat 15 "a"))))))
+
+(use-fixtures :each #(with-parser parser %))

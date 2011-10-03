@@ -164,7 +164,7 @@
   (let [p (parser f)]
     (fn [evt val]
       (if (= :message evt)
-        (parse p (to-buffer val))
+        (p val)
         (f evt val)))))
 
 ;; Converting HTTP messages to buffers
