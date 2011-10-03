@@ -37,6 +37,23 @@
        :part [{} "WORLD"]
        :part nil)))
 
+(deftest simple-multipart-with-headers
+  (is (parsed
+       (str "\r\n\r\n"
+            "--zomg\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            "[1,2,3]\r\n"
+            "--zomg\r\n"
+            "RECEIVED : blah fram    \r\n"
+            "foo-or-BAR: bar\r\n"
+            "\r\n"
+            "OH MY GOD!\r\n"
+            "--zomg--\r\n")
+       :part [{"content-type" "application/json"} "[1,2,3]"]
+       :part [{"received" "blah fram" "foo-or-bar" "bar"} "OH MY GOD!"]
+       :part nil)))
+
 (deftest funky-delimiters
   (is (parsed
        (str "\r\n\r\n!\r\n\r\n"   ;; 8

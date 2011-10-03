@@ -6,7 +6,7 @@ import java.nio.ByteBuffer;
 
 public final class MultipartParser {
     
-// line 97 "src/rl/picard/http/MultipartParser.rl"
+// line 126 "src/rl/picard/http/MultipartParser.rl"
 
 
     private int cs;
@@ -16,14 +16,17 @@ public final class MultipartParser {
     private int bodyStart;
     private int bodyEnd;
 
-    private Object headers;
+    private Object       headers;
+    private String       headerName;
+    private ChunkedValue headerNameChunks;
+    private HeaderValue  headerValue;
 
     private final ByteBuffer boundary;
 
     private final MultipartParserCallback callback;
 
     
-// line 27 "src/jvm/picard/http/MultipartParser.java"
+// line 30 "src/jvm/picard/http/MultipartParser.java"
 private static byte[] init__multipart_actions_0()
 {
 	return new byte [] {
@@ -654,16 +657,16 @@ static final int multipart_en_main_multipart_body = 13;
 static final int multipart_en_main_multipart_epilogue = 130;
 
 
-// line 113 "src/rl/picard/http/MultipartParser.rl"
+// line 145 "src/rl/picard/http/MultipartParser.rl"
 
     public MultipartParser(ByteBuffer boundary, MultipartParserCallback callback) {
         
-// line 662 "src/jvm/picard/http/MultipartParser.java"
+// line 665 "src/jvm/picard/http/MultipartParser.java"
 	{
 	cs = multipart_start;
 	}
 
-// line 116 "src/rl/picard/http/MultipartParser.rl"
+// line 148 "src/rl/picard/http/MultipartParser.rl"
 
         this.boundary = boundary;
         this.callback = callback;
@@ -676,9 +679,9 @@ static final int multipart_en_main_multipart_epilogue = 130;
         int eof = pe + 1;
 
         
-// line 128 "src/rl/picard/http/MultipartParser.rl"
+// line 160 "src/rl/picard/http/MultipartParser.rl"
         
-// line 682 "src/jvm/picard/http/MultipartParser.java"
+// line 685 "src/jvm/picard/http/MultipartParser.java"
 	{
 	int _klen;
 	int _trans = 0;
@@ -837,35 +840,64 @@ case 1:
 	case 4:
 // line 47 "src/rl/picard/http/MultipartParser.rl"
 	{
+            headerNameChunks = new ChunkedValue(buf, p);
         }
 	break;
 	case 5:
-// line 50 "src/rl/picard/http/MultipartParser.rl"
+// line 51 "src/rl/picard/http/MultipartParser.rl"
 	{
+            if (headerNameChunks != null) {
+                headerNameChunks.push(p);
+
+                headerName       = headerNameChunks.materializeStr().toLowerCase();
+                headerNameChunks = null;
+            }
         }
 	break;
 	case 6:
-// line 53 "src/rl/picard/http/MultipartParser.rl"
+// line 60 "src/rl/picard/http/MultipartParser.rl"
 	{
+            if (headerValue == null) {
+                headerValue = new HeaderValue(buf, p);
+            }
+            else {
+                headerValue.startLine(buf, p);
+            }
         }
 	break;
 	case 7:
-// line 56 "src/rl/picard/http/MultipartParser.rl"
+// line 69 "src/rl/picard/http/MultipartParser.rl"
 	{
+            if (headerValue != null) {
+                headerValue.mark(p);
+            }
         }
 	break;
 	case 8:
-// line 59 "src/rl/picard/http/MultipartParser.rl"
+// line 75 "src/rl/picard/http/MultipartParser.rl"
 	{
+            if (headerValue != null) {
+                headerValue.push();
+            }
         }
 	break;
 	case 9:
-// line 62 "src/rl/picard/http/MultipartParser.rl"
+// line 81 "src/rl/picard/http/MultipartParser.rl"
 	{
+            if (headerValue != null) {
+                callback.header(headers, headerName, headerValue.materializeStr());
+
+                headerName  = null;
+                headerValue = null;
+            }
+            else if (headerName != null) {
+                callback.header(headers, headerName, HttpParser.EMPTY_STRING);
+                headerName = null;
+            }
         }
 	break;
 	case 10:
-// line 74 "src/rl/picard/http/MultipartParser.rl"
+// line 103 "src/rl/picard/http/MultipartParser.rl"
 	{
             System.out.println("!!! BAM: " + bodyStart + " - " + bodyEnd);
             ByteBuffer chunk = buf.asReadOnlyBuffer();
@@ -877,7 +909,7 @@ case 1:
         }
 	break;
 	case 11:
-// line 84 "src/rl/picard/http/MultipartParser.rl"
+// line 113 "src/rl/picard/http/MultipartParser.rl"
 	{
             System.out.println("~~~~ ALL DONE");
             callback.done();
@@ -885,14 +917,14 @@ case 1:
         }
 	break;
 	case 12:
-// line 90 "src/rl/picard/http/MultipartParser.rl"
+// line 119 "src/rl/picard/http/MultipartParser.rl"
 	{
             if (true) {
                 throw new HttpParserException("Something went wrong");
             }
         }
 	break;
-// line 896 "src/jvm/picard/http/MultipartParser.java"
+// line 928 "src/jvm/picard/http/MultipartParser.java"
 			}
 		}
 	}
@@ -914,14 +946,14 @@ case 4:
 	while ( __nacts-- > 0 ) {
 		switch ( _multipart_actions[__acts++] ) {
 	case 12:
-// line 90 "src/rl/picard/http/MultipartParser.rl"
+// line 119 "src/rl/picard/http/MultipartParser.rl"
 	{
             if (true) {
                 throw new HttpParserException("Something went wrong");
             }
         }
 	break;
-// line 925 "src/jvm/picard/http/MultipartParser.java"
+// line 957 "src/jvm/picard/http/MultipartParser.java"
 		}
 	}
 	}
@@ -931,6 +963,6 @@ case 5:
 	break; }
 	}
 
-// line 129 "src/rl/picard/http/MultipartParser.rl"
+// line 161 "src/rl/picard/http/MultipartParser.rl"
     }
 }
