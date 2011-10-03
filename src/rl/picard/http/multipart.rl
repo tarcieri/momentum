@@ -12,9 +12,13 @@
    boundary = any $ parse_boundary when parsing_boundary;
       final = "--" @ end_parts ;
     padding = final ? LWSP * CRLF;
-    headers = CRLF;
   delimiter = ( CRLF "--" boundary * )
                 > start_delimiter;
+
+  # ==== HEADERS ====
+  header_name = generic_header_name;
+       header = header_name header_sep header_value % end_header_value;
+      headers = header * CRLF;
 
   multipart =
     start:

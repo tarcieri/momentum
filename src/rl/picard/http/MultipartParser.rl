@@ -59,6 +59,9 @@ public final class MultipartParser {
         action end_header_value_line {
         }
 
+        action end_header_value {
+        }
+
         action start_body {
             System.out.println("!!! START BODY - " + fpc);
             // bodyStart = fpc;
