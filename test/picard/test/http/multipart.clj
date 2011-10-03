@@ -37,13 +37,23 @@
        :part [{} "WORLD"]
        :part nil)))
 
-(deftest ^{:focus true} funky-delimiters
+(deftest funky-delimiters
   (is (parsed
        (str "\r\n\r\n!\r\n\r\n"   ;; 8
             "--zomg\r\n\r\n"      ;; 18
             "HELLO\r\n--zo\r\n"   ;; 31
             "--zomg--\r\n")
        :part [{} "HELLO\r\n--zo"]
-       :part nil)))
+       :part nil))
+
+  (with-parser #(multipart/parser % "fo:o")
+    (fn []
+      (is (parsed
+           (str "\r\n\r\n"
+                "--fo:o\r\n\r\n"
+                "HELLO\r\n"
+                "--fo:o--\r\n")
+           :part [{} "HELLO"]
+           :part nil)))))
 
 (use-fixtures :each (fn [f] (with-parser #(multipart/parser % "zomg") f)))

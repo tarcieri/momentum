@@ -2,8 +2,8 @@
 
   machine multipart;
 
-   CRLF = "\r\n";
-   LWSP = " " | "\t";
+  include common "common.rl";
+
   bchar = alnum | "'" | "(" | ")" | "+" | "_" | ","
         | "-" | "." | "/" | ":" | "=" | "?"
         ;

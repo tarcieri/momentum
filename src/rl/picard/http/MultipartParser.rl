@@ -44,6 +44,21 @@ public final class MultipartParser {
             bodyStart = fpc;
         }
 
+        action start_header_name {
+        }
+
+        action end_header_name {
+        }
+
+        action start_header_value_line {
+        }
+
+        action end_header_value_no_ws {
+        }
+
+        action end_header_value_line {
+        }
+
         action start_body {
             System.out.println("!!! START BODY - " + fpc);
             // bodyStart = fpc;
@@ -70,7 +85,9 @@ public final class MultipartParser {
         }
 
         action something_went_wrong {
-            System.out.println("Something went wrong: " + fpc);
+            if (true) {
+                throw new HttpParserException("Something went wrong");
+            }
         }
 
         include "multipart.rl";

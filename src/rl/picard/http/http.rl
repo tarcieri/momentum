@@ -1,18 +1,8 @@
 %%{
   machine http;
 
-  CRLF = "\r\n";
-   CTL = (cntrl | 127);
-    WS = ( " " | "\t" );
-   LWS = CRLF ? WS *;
-  TEXT = any -- CTL;
-  LINE = TEXT -- CRLF;
+  include common "common.rl";
 
-  separators = "(" | ")" | "<" | ">" | "@" | "," | ";"
-             | ":" | "\\" | "\"" | "/" | "[" | "]"
-             | "?" | "=" | "{" | "}" | " " | "\t";
-
-        token = TEXT -- separators;
    token_w_sp = token | " " | "\t";
    quoted_str = "\"" ((any -- "\"") | ("\\" any)) * "\"";
     parameter = token + "=" ( token + | quoted_str );
@@ -46,7 +36,7 @@
          ;
 
   # === HTTP request URI
-  request_uri = ( TEXT -- WS ) +
+  request_uri = ( TEXT -- LWSP ) +
                   > start_uri
                   % end_uri;
 
@@ -57,8 +47,6 @@
 
 
   # === HTTP headers
-  header_sep = WS * ":" WS *;
-  header_eol = WS * CRLF;
 
   header_name = "accept"i                    % hn_accept
               | "accept-charset"i            % hn_accept_charset
@@ -124,26 +112,14 @@
               | "x-powered-by"i              % hn_x_powered_by
               | "x-requested-with"i          % hn_x_requested_with
               | "x-xss-protection"i          % hn_x_xss_protection
-              | ( token + )
-                > start_header_name
-                % end_header_name
+              | generic_header_name
               ;
 
-            ws_line = WS +;
-         no_ws_line = ( LINE -- WS ) + % end_header_value_no_ws;
-         blank_line = "" % end_header_value_no_ws;
-     non_blank_line = no_ws_line ( ws_line no_ws_line) * ws_line ?;
-  header_value_line = ( blank_line | non_blank_line )
-                    > start_header_value_line
-                    % end_header_value_line
-                    ;
+  hdr_generic = header_name
+                header_sep
+                header_value
+                  % end_header_value;
 
-  header_value_line_1 = header_value_line CRLF;
-  header_value_line_n = WS+ <: header_value_line_1;
-         header_value = header_value_line_1 header_value_line_n *;
-          hdr_generic = header_name
-                        header_sep <:
-                        header_value % end_header_value;
 
   # Header: Content-Length
   # ===

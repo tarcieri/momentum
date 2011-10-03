@@ -6,7 +6,7 @@ import java.nio.ByteBuffer;
 
 public final class MultipartParser {
     
-// line 77 "src/rl/picard/http/MultipartParser.rl"
+// line 94 "src/rl/picard/http/MultipartParser.rl"
 
 
     private int cs;
@@ -282,7 +282,7 @@ static final int multipart_en_main_multipart_body = 13;
 static final int multipart_en_main_multipart_epilogue = 55;
 
 
-// line 93 "src/rl/picard/http/MultipartParser.rl"
+// line 110 "src/rl/picard/http/MultipartParser.rl"
 
     public MultipartParser(ByteBuffer boundary, MultipartParserCallback callback) {
         
@@ -291,7 +291,7 @@ static final int multipart_en_main_multipart_epilogue = 55;
 	cs = multipart_start;
 	}
 
-// line 96 "src/rl/picard/http/MultipartParser.rl"
+// line 113 "src/rl/picard/http/MultipartParser.rl"
 
         this.boundary = boundary;
         this.callback = callback;
@@ -304,7 +304,7 @@ static final int multipart_en_main_multipart_epilogue = 55;
         int eof = pe + 1;
 
         
-// line 108 "src/rl/picard/http/MultipartParser.rl"
+// line 125 "src/rl/picard/http/MultipartParser.rl"
         
 // line 310 "src/jvm/picard/http/MultipartParser.java"
 	{
@@ -463,7 +463,7 @@ case 1:
         }
 	break;
 	case 4:
-// line 56 "src/rl/picard/http/MultipartParser.rl"
+// line 71 "src/rl/picard/http/MultipartParser.rl"
 	{
             System.out.println("!!! BAM: " + bodyStart + " - " + bodyEnd);
             ByteBuffer chunk = buf.asReadOnlyBuffer();
@@ -475,7 +475,7 @@ case 1:
         }
 	break;
 	case 5:
-// line 66 "src/rl/picard/http/MultipartParser.rl"
+// line 81 "src/rl/picard/http/MultipartParser.rl"
 	{
             System.out.println("~~~~ ALL DONE");
             callback.done();
@@ -483,12 +483,14 @@ case 1:
         }
 	break;
 	case 6:
-// line 72 "src/rl/picard/http/MultipartParser.rl"
+// line 87 "src/rl/picard/http/MultipartParser.rl"
 	{
-            System.out.println("Something went wrong: " + p);
+            if (true) {
+                throw new HttpParserException("Something went wrong");
+            }
         }
 	break;
-// line 492 "src/jvm/picard/http/MultipartParser.java"
+// line 494 "src/jvm/picard/http/MultipartParser.java"
 			}
 		}
 	}
@@ -510,12 +512,14 @@ case 4:
 	while ( __nacts-- > 0 ) {
 		switch ( _multipart_actions[__acts++] ) {
 	case 6:
-// line 72 "src/rl/picard/http/MultipartParser.rl"
+// line 87 "src/rl/picard/http/MultipartParser.rl"
 	{
-            System.out.println("Something went wrong: " + p);
+            if (true) {
+                throw new HttpParserException("Something went wrong");
+            }
         }
 	break;
-// line 519 "src/jvm/picard/http/MultipartParser.java"
+// line 523 "src/jvm/picard/http/MultipartParser.java"
 		}
 	}
 	}
@@ -525,6 +529,6 @@ case 5:
 	break; }
 	}
 
-// line 109 "src/rl/picard/http/MultipartParser.rl"
+// line 126 "src/rl/picard/http/MultipartParser.rl"
     }
 }
