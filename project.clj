@@ -1,4 +1,4 @@
-(defproject picard "0.1.0-SNAPSHOT"
+(defproject picard "0.2.0-SNAPSHOT"
   :description "Async HTTP framework built on top of Netty"
 
   :dependencies [[org.clojure/clojure         "1.2.0"]
@@ -16,9 +16,4 @@
 
   :test-selectors   {:focus      (fn [v] (:focus v))
                      :no-network (fn [v] (not (:network v)))
-                     :all        (fn [_] true)}
-
-  :repositories { "snapshots" "file:./build/snapshots"
-                  "releases"  "file:./build/releases" }
-
-)
+                     :all        (fn [_] true)})
