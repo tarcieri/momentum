@@ -157,14 +157,122 @@
        ["\r\n\r\n--zomg\r\n\r\nHELLO\r\n--zomg"
         "--\r\n"]
        :part [{} "HELLO"]
+       :part nil)))
+
+(deftest tricky-boundary-chunking
+  (is (parsed
+       ["\r\n--zomg\r\n\r\nHELLO\r"
+        "\r\n--zomg--\r\n"]
+       :part [{} :chunked]
+       :body "HELLO"
+       :body "\r"
+       :body nil
        :part nil))
-  )
+
+  (is (parsed
+       ["\r\n--zomg\r\n\r\nHELLO\r\n"
+        "\r\n--zomg--\r\n"]
+       :part [{} :chunked]
+       :body "HELLO"
+       :body "\r\n"
+       :body nil
+       :part nil))
+
+  (is (parsed
+       ["\r\n--zomg\r\n\r\nHELLO\r\n-"
+        "\r\n--zomg--\r\n"]
+       :part [{} :chunked]
+       :body "HELLO"
+       :body "\r\n-"
+       :body nil
+       :part nil))
+
+  (is (parsed
+       ["\r\n--zomg\r\n\r\nHELLO\r\n--zo"
+        "\r\n--zomg--\r\n"]
+       :part [{} :chunked]
+       :body "HELLO"
+       :body "\r\n--zo"
+       :body nil
+       :part nil))
+
+  (is (parsed
+       ["\r\n--zomg\r\n\r\nHELLO\r"
+        "\n\r\n--zomg--\r\n"]
+       :part [{} :chunked]
+       :body "HELLO"
+       :body "\r\n"
+       :body nil
+       :part nil))
+
+  (is (parsed
+       ["\r\n--zomg\r\n\r\nHELLO\r"
+        "\n--\r\n--zomg--\r\n"]
+       :part [{} :chunked]
+       :body "HELLO"
+       :body "\r\n--"
+       :body nil
+       :part nil))
+
+  (is (parsed
+       ["\r\n--zomg\r\n\r\nHELLO\r"
+        "\n--blah\r\n--zomg--\r\n"]
+       :part [{} :chunked]
+       :body "HELLO"
+       :body "\r\n--"
+       :body "blah"
+       :body nil
+       :part nil)))
+
+(deftest chunkin-headers
+  (is (parsed
+       ["\r\n--zomg\r\nFoo"
+        "bar: foo\r\n\r\nHELLO\r\n--zomg--\r\n"]
+       :part [{"foobar" "foo"} "HELLO"]
+       :part nil))
+
+  (is (parsed
+       ["\r\n--zomg\r\nFoo: B"
+        "ar\r\n\r\nHELLO\r\n--zomg--\r\n"]
+       :part [{"foo" "Bar"} "HELLO"]
+       :part nil)))
+
+(deftest multi-chunks
+  (is (parsed
+       ["\r\n" "-" "-" "z" "o" "m" "g" "\r" "\n"
+        "\r" "\n" "HELLO" "\r" "\n"
+        "-" "-" "z" "o" "m" "g" "-" "-"]
+       :part [{} :chunked]
+       :body "HELLO"
+       :body nil
+       :part nil))
+
+  (is (parsed
+       ["\r\n--zomg\r\n\r\nFOO\r\n--z" "o" "lol"
+        "\r\n--zomg--\r\n"]
+       :part [{} :chunked]
+       :body "FOO"
+       :body "\r\n--zo"
+       :body "lol"
+       :body nil
+       :part nil))
+
+  (is (parsed
+       ["\r\n--zomg\r\n\r\nFOO\r" "\n" "--z" "o" "m" "lo" "l"
+        "\r" "\n" "-" "-" "z" "o" "m" "g" "-" "-" "\r" "\n"]
+       :part [{} :chunked]
+       :body "FOO"
+       :body "\r\n--zom"
+       :body "lo"
+       :body "l"
+       :body nil
+       :part nil)))
 
 (deftest funky-delimiters
   (is (parsed
-       (str "\r\n\r\n!\r\n\r\n"   ;; 8
-            "--zomg\r\n\r\n"      ;; 18
-            "HELLO\r\n--zo\r\n"   ;; 31
+       (str "\r\n\r\n!\r\n\r\n"
+            "--zomg\r\n\r\n"
+            "HELLO\r\n--zo\r\n"
             "--zomg--\r\n")
        :part [{} "HELLO\r\n--zo"]
        :part nil))

@@ -12,7 +12,7 @@ public final class MultipartParser {
     static final byte [] PREFIX = new byte [] { CR, LF, DASH, DASH };
 
     
-// line 167 "src/rl/picard/http/MultipartParser.rl"
+// line 184 "src/rl/picard/http/MultipartParser.rl"
 
 
     private int cs;
@@ -167,7 +167,7 @@ static final int multipart_en_main_multipart_body = 1;
 static final int multipart_en_main_multipart_epilogue = 17;
 
 
-// line 184 "src/rl/picard/http/MultipartParser.rl"
+// line 201 "src/rl/picard/http/MultipartParser.rl"
 
     public MultipartParser(ByteBuffer boundary, MultipartParserCallback callback) {
         
@@ -176,7 +176,7 @@ static final int multipart_en_main_multipart_epilogue = 17;
 	cs = multipart_start;
 	}
 
-// line 187 "src/rl/picard/http/MultipartParser.rl"
+// line 204 "src/rl/picard/http/MultipartParser.rl"
 
         ByteBuffer delimiter = ByteBuffer.allocate(4 + boundary.remaining());
 
@@ -197,12 +197,19 @@ static final int multipart_en_main_multipart_epilogue = 17;
         int pe  = buf.limit();
         int eof = pe + 1;
 
-        System.out.println("================== ");
+        bridge(buf, headerNameChunks);
+        bridge(buf, headerValue);
+
+        // System.out.println("================== '" +
+        //                    new String(buf.array()).
+        //                    replaceAll("\n", "\\\\n").
+        //                    replaceAll("\r", "\\\\r")
+        //                    + "'");
 
         
-// line 210 "src/rl/picard/http/MultipartParser.rl"
+// line 234 "src/rl/picard/http/MultipartParser.rl"
         
-// line 206 "src/jvm/picard/http/MultipartParser.java"
+// line 213 "src/jvm/picard/http/MultipartParser.java"
 	{
 	int _klen;
 	int _trans = 0;
@@ -285,13 +292,12 @@ case 1:
 	case 0:
 // line 15 "src/rl/picard/http/MultipartParser.rl"
 	{
-            System.out.println("#peek_delimiter: BEGIN - " + p);
-
-            bodyEnd = p;
+            // System.out.println("#peek_delimiter: BEGIN - " + fpc);
 
             // If the current character is CR, then we should start
             // attempting to match the delimiter.
             if (CR == ( buf.get(p))) {
+                bodyEnd = p;
 
                 // Start at 1 since the first character has already
                 // been matched.
@@ -299,21 +305,21 @@ case 1:
                 int limit = Math.min(delimiter.limit(), buf.limit() - p);
 
                 peek_delimiter: {
-                    System.out.println("Starting loop: " + p + " - " + limit + " - " + curr);
+                    // System.out.println("Starting loop: " + fpc + " - " + limit + " - " + curr);
 
                     while (++curr < limit) {
                         if (delimiter.get(curr) != buf.get(p + curr)) {
-                            System.out.println("FAIL: " + ( p + curr ));
+                            // System.out.println("FAIL: " + ( fpc + curr ));
                             {p = (( p + curr))-1;}
                             break peek_delimiter;
                         }
                     }
 
-                    System.out.println("MATCHED: " + ( p + curr));
+                    // System.out.println("MATCHED: " + ( fpc + curr));
 
                     // The delimiter has been matched
                     if (curr == delimiter.limit()) {
-                        System.out.println("-- Full delimiter match");
+                        // System.out.println("-- Full delimiter match");
 
                         if (parsingBody) {
 
@@ -325,12 +331,17 @@ case 1:
                                 headers = null;
                             }
                             else {
-                                if (bodyEnd > 0) {
-                                    callback.chunk(slice(buf, 0, bodyEnd));
+                                if (bodyEnd > bodyStart) {
+                                    // System.out.println("FINAL CHUNK: " + buf + " " + bodyStart +
+                                    //                    " - " + bodyEnd);
+                                    callback.chunk(slice(buf, bodyStart, bodyEnd));
                                 }
 
                                 callback.chunk(null);
                             }
+
+                            bodyStart = 0;
+                            bodyEnd   = 0;
                         }
 
                         cs = 3;
@@ -338,8 +349,8 @@ case 1:
                     }
                     // The end of the current buffer has been reached
                     else {
-                        System.out.println("-- Partial delimiter match");
-                        System.out.println("-- start: " + bodyStart + ", end: " + bodyEnd);
+                        // System.out.println("-- Partial delimiter match");
+                        // System.out.println("-- start: " + bodyStart + ", end: " + bodyEnd);
 
                         if (parsingBody) {
 
@@ -348,40 +359,53 @@ case 1:
                                 headers = null;
                             }
 
-                            callback.chunk(slice(buf, bodyStart, bodyEnd));
+                            if (bodyEnd > bodyStart) {
+                                callback.chunk(slice(buf, bodyStart, bodyEnd));
+                            }
+
+                            bodyStart = 0;
+                            bodyEnd   = 0;
                         }
 
                         delimiterPos = curr;
 
-                        System.out.println("#peek_delimiter: fgoto delimiter");
+                        // System.out.println("#peek_delimiter: fgoto delimiter");
                         cs = 2;
 
-                        System.out.println("#peek_delimiter: return");
+                        // System.out.println("#peek_delimiter: return");
                         return;
                     }
                 }
             }
+            else {
+                bodyEnd = p + 1;
+            }
         }
 	break;
 	case 1:
-// line 94 "src/rl/picard/http/MultipartParser.rl"
+// line 106 "src/rl/picard/http/MultipartParser.rl"
 	{
             int curr  = 0;
             int limit = Math.min(delimiter.limit() - delimiterPos, buf.limit());
 
-            System.out.println("#parse_delimiter: BEGIN - " + p + ", " + delimiterPos);
+            // System.out.println("#parse_delimiter: BEGIN - " + fpc + ", " + delimiterPos);
 
             parse_delimiter: {
                 while (curr < limit) {
                     if (delimiter.get(curr + delimiterPos) != buf.get(curr)) {
-                        System.out.println("#parse_delimiter: FAIL - " + p);
-                        {p = (( p + curr))-1;}
+                        // System.out.println("#parse_delimiter: FAIL - " + (fpc + curr));
 
                         if (parsingBody) {
-                            // Need to backtrack the body chunks
+                            // System.out.println(delimiterPos + " + " + curr + ", " + fpc);
+                            callback.chunk(slice(delimiter, 0, delimiterPos + curr));
+
+                            bodyStart = p + curr;
+
+                            {p = (( p + curr))-1;}
                             cs = 1;
                         }
                         else {
+                            {p = (( p + curr))-1;}
                             cs = 1;
                         }
 
@@ -393,7 +417,7 @@ case 1:
 
                 // The delimiter has been matched
                 if (curr == delimiter.limit() - delimiterPos) {
-                    System.out.println("#parse_delimiter: MATCH FULL - " + p);
+                    // System.out.println("#parse_delimiter: MATCH FULL - " + fpc);
 
                     if (parsingBody) {
                         callback.chunk(null);
@@ -404,7 +428,7 @@ case 1:
                 }
                 // The end fo the current buffer has been reached
                 else {
-                    System.out.println("#parse_delimiter: MATCH PARTIAL - " + p);
+                    // System.out.println("#parse_delimiter: MATCH PARTIAL - " + fpc);
                     delimiterPos += curr;
                     return;
                 }
@@ -412,10 +436,10 @@ case 1:
         }
 	break;
 	case 2:
-// line 140 "src/rl/picard/http/MultipartParser.rl"
+// line 157 "src/rl/picard/http/MultipartParser.rl"
 	{
             parsingBody = true;
-            System.out.println("Starting headers: " + p);
+            // System.out.println("Starting headers: " + fpc);
 
             headers = callback.blankHeaders();
             bodyStart = 0;
@@ -423,22 +447,22 @@ case 1:
         }
 	break;
 	case 3:
-// line 149 "src/rl/picard/http/MultipartParser.rl"
+// line 166 "src/rl/picard/http/MultipartParser.rl"
 	{
-            System.out.println("Ending headers: " + p);
+            // System.out.println("Ending headers: " + fpc);
             bodyStart  = p;
         }
 	break;
 	case 4:
-// line 154 "src/rl/picard/http/MultipartParser.rl"
+// line 171 "src/rl/picard/http/MultipartParser.rl"
 	{
-            System.out.println("~~~~ ALL DONE");
+            // System.out.println("~~~~ ALL DONE");
             callback.done();
             {cs = 17; _goto_targ = 2; if (true) continue _goto;}
         }
 	break;
 	case 5:
-// line 160 "src/rl/picard/http/MultipartParser.rl"
+// line 177 "src/rl/picard/http/MultipartParser.rl"
 	{
             if (true) {
                 throw new HttpParserException("Something went wrong: " + p);
@@ -504,7 +528,7 @@ case 1:
       }
   }
 	break;
-// line 508 "src/jvm/picard/http/MultipartParser.java"
+// line 532 "src/jvm/picard/http/MultipartParser.java"
 			}
 		}
 	}
@@ -526,14 +550,14 @@ case 4:
 	while ( __nacts-- > 0 ) {
 		switch ( _multipart_actions[__acts++] ) {
 	case 5:
-// line 160 "src/rl/picard/http/MultipartParser.rl"
+// line 177 "src/rl/picard/http/MultipartParser.rl"
 	{
             if (true) {
                 throw new HttpParserException("Something went wrong: " + p);
             }
         }
 	break;
-// line 537 "src/jvm/picard/http/MultipartParser.java"
+// line 561 "src/jvm/picard/http/MultipartParser.java"
 		}
 	}
 	}
@@ -543,17 +567,27 @@ case 5:
 	break; }
 	}
 
-// line 211 "src/rl/picard/http/MultipartParser.rl"
+// line 235 "src/rl/picard/http/MultipartParser.rl"
 
-        System.out.println("~~~ DONE WITH PARSING LOOP ~~~");
-        System.out.println("start: " + bodyStart + ", end: " + bodyEnd);
-        System.out.println(headers == null);
+        // System.out.println("~~~ DONE WITH PARSING LOOP ~~~");
+        // System.out.println("start: " + bodyStart + ", end: " + bodyEnd);
+        // System.out.println(headers == null);
 
-        if (headers != null && bodyEnd > bodyStart) {
-            callback.part(headers, null);
+        if (parsingBody && bodyEnd > bodyStart) {
+            // System.out.println("FLUSHING CHUNK: " + bodyStart + " - " + buf.limit());
+
+            if (headers != null) {
+                callback.part(headers, null);
+                headers = null;
+            }
+
             callback.chunk(slice(buf, bodyStart, buf.limit()));
+        }
+    }
 
-            headers = null;
+    private void bridge(ByteBuffer buf, ChunkedValue chunk) {
+        if (chunk != null) {
+            chunk.bridge(buf);
         }
     }
 

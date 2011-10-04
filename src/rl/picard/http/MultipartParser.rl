@@ -13,13 +13,12 @@ public final class MultipartParser {
         machine multipart;
 
         action peek_delimiter {
-            System.out.println("#peek_delimiter: BEGIN - " + fpc);
-
-            bodyEnd = fpc;
+            // System.out.println("#peek_delimiter: BEGIN - " + fpc);
 
             // If the current character is CR, then we should start
             // attempting to match the delimiter.
             if (CR == fc) {
+                bodyEnd = fpc;
 
                 // Start at 1 since the first character has already
                 // been matched.
@@ -27,21 +26,21 @@ public final class MultipartParser {
                 int limit = Math.min(delimiter.limit(), buf.limit() - fpc);
 
                 peek_delimiter: {
-                    System.out.println("Starting loop: " + fpc + " - " + limit + " - " + curr);
+                    // System.out.println("Starting loop: " + fpc + " - " + limit + " - " + curr);
 
                     while (++curr < limit) {
                         if (delimiter.get(curr) != buf.get(fpc + curr)) {
-                            System.out.println("FAIL: " + ( fpc + curr ));
+                            // System.out.println("FAIL: " + ( fpc + curr ));
                             fexec fpc + curr;
                             break peek_delimiter;
                         }
                     }
 
-                    System.out.println("MATCHED: " + ( fpc + curr));
+                    // System.out.println("MATCHED: " + ( fpc + curr));
 
                     // The delimiter has been matched
                     if (curr == delimiter.limit()) {
-                        System.out.println("-- Full delimiter match");
+                        // System.out.println("-- Full delimiter match");
 
                         if (parsingBody) {
 
@@ -53,12 +52,17 @@ public final class MultipartParser {
                                 headers = null;
                             }
                             else {
-                                if (bodyEnd > 0) {
-                                    callback.chunk(slice(buf, 0, bodyEnd));
+                                if (bodyEnd > bodyStart) {
+                                    // System.out.println("FINAL CHUNK: " + buf + " " + bodyStart +
+                                    //                    " - " + bodyEnd);
+                                    callback.chunk(slice(buf, bodyStart, bodyEnd));
                                 }
 
                                 callback.chunk(null);
                             }
+
+                            bodyStart = 0;
+                            bodyEnd   = 0;
                         }
 
                         fnext head;
@@ -66,8 +70,8 @@ public final class MultipartParser {
                     }
                     // The end of the current buffer has been reached
                     else {
-                        System.out.println("-- Partial delimiter match");
-                        System.out.println("-- start: " + bodyStart + ", end: " + bodyEnd);
+                        // System.out.println("-- Partial delimiter match");
+                        // System.out.println("-- start: " + bodyStart + ", end: " + bodyEnd);
 
                         if (parsingBody) {
 
@@ -76,18 +80,26 @@ public final class MultipartParser {
                                 headers = null;
                             }
 
-                            callback.chunk(slice(buf, bodyStart, bodyEnd));
+                            if (bodyEnd > bodyStart) {
+                                callback.chunk(slice(buf, bodyStart, bodyEnd));
+                            }
+
+                            bodyStart = 0;
+                            bodyEnd   = 0;
                         }
 
                         delimiterPos = curr;
 
-                        System.out.println("#peek_delimiter: fgoto delimiter");
+                        // System.out.println("#peek_delimiter: fgoto delimiter");
                         fnext delimiter;
 
-                        System.out.println("#peek_delimiter: return");
+                        // System.out.println("#peek_delimiter: return");
                         return;
                     }
                 }
+            }
+            else {
+                bodyEnd = fpc + 1;
             }
         }
 
@@ -95,19 +107,24 @@ public final class MultipartParser {
             int curr  = 0;
             int limit = Math.min(delimiter.limit() - delimiterPos, buf.limit());
 
-            System.out.println("#parse_delimiter: BEGIN - " + fpc + ", " + delimiterPos);
+            // System.out.println("#parse_delimiter: BEGIN - " + fpc + ", " + delimiterPos);
 
             parse_delimiter: {
                 while (curr < limit) {
                     if (delimiter.get(curr + delimiterPos) != buf.get(curr)) {
-                        System.out.println("#parse_delimiter: FAIL - " + fpc);
-                        fexec fpc + curr;
+                        // System.out.println("#parse_delimiter: FAIL - " + (fpc + curr));
 
                         if (parsingBody) {
-                            // Need to backtrack the body chunks
+                            // System.out.println(delimiterPos + " + " + curr + ", " + fpc);
+                            callback.chunk(slice(delimiter, 0, delimiterPos + curr));
+
+                            bodyStart = fpc + curr;
+
+                            fexec fpc + curr;
                             fnext body;
                         }
                         else {
+                            fexec fpc + curr;
                             fnext start;
                         }
 
@@ -119,7 +136,7 @@ public final class MultipartParser {
 
                 // The delimiter has been matched
                 if (curr == delimiter.limit() - delimiterPos) {
-                    System.out.println("#parse_delimiter: MATCH FULL - " + fpc);
+                    // System.out.println("#parse_delimiter: MATCH FULL - " + fpc);
 
                     if (parsingBody) {
                         callback.chunk(null);
@@ -130,7 +147,7 @@ public final class MultipartParser {
                 }
                 // The end fo the current buffer has been reached
                 else {
-                    System.out.println("#parse_delimiter: MATCH PARTIAL - " + fpc);
+                    // System.out.println("#parse_delimiter: MATCH PARTIAL - " + fpc);
                     delimiterPos += curr;
                     return;
                 }
@@ -139,7 +156,7 @@ public final class MultipartParser {
 
         action start_head {
             parsingBody = true;
-            System.out.println("Starting headers: " + fpc);
+            // System.out.println("Starting headers: " + fpc);
 
             headers = callback.blankHeaders();
             bodyStart = 0;
@@ -147,12 +164,12 @@ public final class MultipartParser {
         }
 
         action end_head {
-            System.out.println("Ending headers: " + fpc);
+            // System.out.println("Ending headers: " + fpc);
             bodyStart  = fpc;
         }
 
         action end_parts {
-            System.out.println("~~~~ ALL DONE");
+            // System.out.println("~~~~ ALL DONE");
             callback.done();
             fgoto epilogue;
         }
@@ -204,20 +221,37 @@ public final class MultipartParser {
         int pe  = buf.limit();
         int eof = pe + 1;
 
-        System.out.println("================== ");
+        bridge(buf, headerNameChunks);
+        bridge(buf, headerValue);
+
+        // System.out.println("================== '" +
+        //                    new String(buf.array()).
+        //                    replaceAll("\n", "\\\\n").
+        //                    replaceAll("\r", "\\\\r")
+        //                    + "'");
 
         %% getkey buf.get(p);
         %% write exec;
 
-        System.out.println("~~~ DONE WITH PARSING LOOP ~~~");
-        System.out.println("start: " + bodyStart + ", end: " + bodyEnd);
-        System.out.println(headers == null);
+        // System.out.println("~~~ DONE WITH PARSING LOOP ~~~");
+        // System.out.println("start: " + bodyStart + ", end: " + bodyEnd);
+        // System.out.println(headers == null);
 
-        if (headers != null && bodyEnd > bodyStart) {
-            callback.part(headers, null);
+        if (parsingBody && bodyEnd > bodyStart) {
+            // System.out.println("FLUSHING CHUNK: " + bodyStart + " - " + buf.limit());
+
+            if (headers != null) {
+                callback.part(headers, null);
+                headers = null;
+            }
+
             callback.chunk(slice(buf, bodyStart, buf.limit()));
+        }
+    }
 
-            headers = null;
+    private void bridge(ByteBuffer buf, ChunkedValue chunk) {
+        if (chunk != null) {
+            chunk.bridge(buf);
         }
     }
 
