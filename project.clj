@@ -13,9 +13,6 @@
   :source-path      "src/clj"
   :java-source-path "src/jvm"
   :javac-options    {:debug "true"}
-  :aot              [picard.log4j.CommonLogFormatLayout
-                     picard.log4j.VerboseLayout
-                     picard.exceptions.PoolFullException]
 
   :test-selectors   {:focus      (fn [v] (:focus v))
                      :no-network (fn [v] (not (:network v)))

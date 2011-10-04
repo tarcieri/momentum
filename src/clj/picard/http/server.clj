@@ -1,7 +1,7 @@
 (ns picard.http.server
   (:use
    picard.http.core
-   [picard.utils :only [swap-then!]])
+   picard.utils.core)
   (:require
    [picard.core.timer :as timer]
    [picard.net.server :as net])

@@ -3,7 +3,7 @@
    picard.core.deferred
    picard.core.timer
    picard.net.core
-   [picard.utils :only [swap-then!]])
+   picard.utils.core)
   (:require
    [picard.net.pool :as pool])
   (:import

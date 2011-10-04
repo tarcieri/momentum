@@ -1,7 +1,7 @@
 (ns picard.http.client
   (:use
    picard.http.core
-   [picard.utils :only [swap-then!]])
+   picard.utils.core)
   (:require
    [picard.net.client :as net])
   (:import

@@ -2,7 +2,7 @@
   (:refer-clojure
    :exclude [count drop])
   (:use
-   [picard.utils :only [swap-then!]])
+   picard.utils.core)
   (:require
    [picard.core.timer :as timer])
   (:import

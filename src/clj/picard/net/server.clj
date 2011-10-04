@@ -2,7 +2,7 @@
   (:use
    picard.core.deferred
    picard.net.core
-   [picard.utils :only [swap-then!]])
+   picard.utils.core)
   (:import
    [org.jboss.netty.bootstrap
     Bootstrap
