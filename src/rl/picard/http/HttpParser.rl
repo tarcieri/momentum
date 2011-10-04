@@ -280,52 +280,6 @@ public final class HttpParser extends AFn {
             uriMark = null;
         }
 
-        action start_header_name {
-            headerNameMark = new ChunkedValue(buf, fpc);
-        }
-
-        action end_header_name {
-            if (headerNameMark != null) {
-                headerNameMark.push(fpc);
-
-                headerName     = headerNameMark.materializeStr().toLowerCase();
-                headerNameMark = null;
-            }
-        }
-
-        action start_header_value_line {
-            if (headerValue == null) {
-                headerValue = new HeaderValue(buf, fpc);
-            }
-            else {
-                headerValue.startLine(buf, fpc);
-            }
-        }
-
-        action end_header_value_no_ws {
-            if (headerValue != null) {
-                headerValue.mark(fpc);
-            }
-        }
-
-        action end_header_value_line {
-            if (headerValue != null) {
-                headerValue.push();
-            }
-        }
-
-        action end_header_value {
-            if (headerValue != null) {
-                callback.header(headers, headerName, headerValue.materializeStr());
-                headerName  = null;
-                headerValue = null;
-            }
-            else if (headerName != null) {
-                callback.header(headers, headerName, EMPTY_STRING);
-                headerName = null;
-            }
-        }
-
         action count_content_length {
             if (contentLength >= ALMOST_MAX_LONG) {
                 throw new HttpParserException("The content-length is WAY too big");
@@ -590,7 +544,7 @@ public final class HttpParser extends AFn {
     private URI          uri;
     private ChunkedValue uriMark;
     private String       headerName;
-    private ChunkedValue headerNameMark;
+    private ChunkedValue headerNameChunks;
     private HeaderValue  headerValue;
 
     // Track the content length of the HTTP message
@@ -703,7 +657,7 @@ public final class HttpParser extends AFn {
 
         if (isParsingHead()) {
             bridge(buf, uriMark);
-            bridge(buf, headerNameMark);
+            bridge(buf, headerNameChunks);
             bridge(buf, headerValue);
         }
 
@@ -722,8 +676,8 @@ public final class HttpParser extends AFn {
     }
 
     private void setHeaderName(String name) {
-        headerName     = name;
-        headerNameMark = null;
+        headerName       = name;
+        headerNameChunks = null;
     }
 
     private void bridge(ByteBuffer buf, ChunkedValue chunk) {
@@ -742,13 +696,13 @@ public final class HttpParser extends AFn {
     }
 
     private void resetHeadState() {
-        headers         = null;
-        method          = null;
-        uri             = null;
-        uriMark         = null;
-        headerName      = null;
-        headerNameMark  = null;
-        headerValue     = null;
+        headers          = null;
+        method           = null;
+        uri              = null;
+        uriMark          = null;
+        headerName       = null;
+        headerNameChunks = null;
+        headerValue      = null;
     }
 
     private ByteBuffer slice(ByteBuffer buf, int from, int to) {

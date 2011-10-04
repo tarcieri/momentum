@@ -2,7 +2,56 @@
 
   machine common;
 
-  # Various tokens
+  # ==== COMMON HEADER ACTIONS ====
+
+  action start_header_name {
+      headerNameChunks = new ChunkedValue(buf, fpc);
+  }
+
+  action end_header_name {
+      if (headerNameChunks != null) {
+          headerNameChunks.push(fpc);
+
+          headerName       = headerNameChunks.materializeStr().toLowerCase();
+          headerNameChunks = null;
+      }
+  }
+
+  action start_header_value_line {
+      if (headerValue == null) {
+          headerValue = new HeaderValue(buf, fpc);
+      }
+      else {
+          headerValue.startLine(buf, fpc);
+      }
+  }
+
+  action end_header_value_no_ws {
+      if (headerValue != null) {
+          headerValue.mark(fpc);
+      }
+  }
+
+  action end_header_value_line {
+      if (headerValue != null) {
+          headerValue.push();
+      }
+  }
+
+  action end_header_value {
+      if (headerValue != null) {
+          callback.header(headers, headerName, headerValue.materializeStr());
+
+          headerName  = null;
+          headerValue = null;
+      }
+      else if (headerName != null) {
+          callback.header(headers, headerName, HttpParser.EMPTY_STRING);
+          headerName = null;
+      }
+  }
+
+  # ==== TOKENS ====
 
         CRLF = "\r\n";
          CTL = (cntrl | 127);

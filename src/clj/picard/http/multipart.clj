@@ -25,7 +25,7 @@
          (assoc! headers name (conj existing value)))))
 
     (part [_ hdrs body]
-      (f :part [(persistent! hdrs) body]))
+      (f :part [(persistent! hdrs) (or body :chunked)]))
 
     (chunk [_ chunk]
       (f :body chunk))

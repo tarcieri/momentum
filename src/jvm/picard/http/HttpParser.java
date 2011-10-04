@@ -149,7 +149,7 @@ public final class HttpParser extends AFn {
     }
 
     
-// line 524 "src/rl/picard/http/HttpParser.rl"
+// line 478 "src/rl/picard/http/HttpParser.rl"
 
 
     public static final long ALMOST_MAX_LONG     = Long.MAX_VALUE / 10;
@@ -170,46 +170,46 @@ public final class HttpParser extends AFn {
 private static byte[] init__http_actions_0()
 {
 	return new byte [] {
-	    0,    1,  108,    1,  109,    1,  110,    1,  111,    1,  113,    1,
-	  115,    1,  116,    1,  117,    2,    0,  116,    2,    1,  116,    2,
-	    2,  116,    2,    3,  116,    2,    4,  116,    2,    5,  116,    2,
-	    6,  116,    2,    7,  116,    2,    8,  116,    2,    9,  116,    2,
-	   10,  116,    2,   11,  116,    2,   12,  116,    2,   13,  116,    2,
-	   14,  116,    2,   15,  116,    2,   16,  116,    2,   17,  116,    2,
-	   18,  116,    2,   19,  116,    2,   20,  116,    2,   21,  116,    2,
-	   22,  116,    2,   23,  116,    2,   88,  116,    2,   89,  116,    2,
-	   90,  116,    2,   91,  116,    2,   92,  116,    2,   93,  116,    2,
-	   94,  116,    2,   95,  116,    2,   96,  116,    2,   97,  116,    2,
-	   98,  116,    2,   99,  116,    2,  100,  116,    2,  100,  117,    2,
-	  106,  116,    2,  107,  116,    2,  112,  113,    2,  114,  117,    3,
-	   24,   94,  116,    3,   25,   94,  116,    3,   26,   94,  116,    3,
-	   27,   94,  116,    3,   28,   94,  116,    3,   29,   94,  116,    3,
-	   30,   94,  116,    3,   31,   94,  116,    3,   32,   94,  116,    3,
-	   33,   94,  116,    3,   34,   94,  116,    3,   35,   94,  116,    3,
-	   36,   94,  116,    3,   37,   94,  116,    3,   38,   94,  116,    3,
-	   39,   94,  116,    3,   40,   94,  116,    3,   41,   94,  116,    3,
-	   42,   94,  116,    3,   43,   94,  116,    3,   44,   94,  116,    3,
-	   45,   94,  116,    3,   46,   94,  116,    3,   47,   94,  116,    3,
-	   48,   94,  116,    3,   49,   94,  116,    3,   50,   94,  116,    3,
-	   51,   94,  116,    3,   52,   94,  116,    3,   53,   94,  116,    3,
-	   54,   94,  116,    3,   55,   94,  116,    3,   56,   94,  116,    3,
-	   57,   94,  116,    3,   58,   94,  116,    3,   59,   94,  116,    3,
-	   60,   94,  116,    3,   61,   94,  116,    3,   62,   94,  116,    3,
-	   63,   94,  116,    3,   64,   94,  116,    3,   65,   94,  116,    3,
-	   66,   94,  116,    3,   67,   94,  116,    3,   68,   94,  116,    3,
-	   69,   94,  116,    3,   70,   94,  116,    3,   71,   94,  116,    3,
-	   72,   94,  116,    3,   73,   94,  116,    3,   74,   94,  116,    3,
-	   75,   94,  116,    3,   76,   94,  116,    3,   77,   94,  116,    3,
-	   78,   94,  116,    3,   79,   94,  116,    3,   80,   94,  116,    3,
-	   81,   94,  116,    3,   82,   94,  116,    3,   83,   94,  116,    3,
-	   84,   94,  116,    3,   85,   94,  116,    3,   86,   94,  116,    3,
-	   87,   94,  116,    3,   96,   97,  116,    3,   98,   93,  116,    3,
-	   99,   95,  116,    3,  100,   95,  116,    3,  101,   96,  116,    3,
-	  102,   96,  116,    3,  103,   96,  116,    3,  104,   96,  116,    3,
-	  105,   96,  116,    4,   95,   96,   97,  116,    4,  101,   96,   97,
-	  116,    4,  102,   96,   97,  116,    4,  103,   96,   97,  116,    4,
-	  104,   96,   97,  116,    4,  105,   96,   97,  116,    5,  100,   95,
-	   96,   97,  116
+	    0,    1,  102,    1,  103,    1,  104,    1,  105,    1,  107,    1,
+	  109,    1,  110,    1,  111,    2,    0,  110,    2,    1,  110,    2,
+	    2,  110,    2,    3,  110,    2,    4,  110,    2,    5,  110,    2,
+	    6,  110,    2,    7,  110,    2,    8,  110,    2,    9,  110,    2,
+	   10,  110,    2,   11,  110,    2,   12,  110,    2,   13,  110,    2,
+	   14,  110,    2,   15,  110,    2,   16,  110,    2,   17,  110,    2,
+	   18,  110,    2,   19,  110,    2,   20,  110,    2,   21,  110,    2,
+	   22,  110,    2,   23,  110,    2,   88,  110,    2,   89,  110,    2,
+	   90,  110,    2,   91,  110,    2,   92,  110,    2,   93,  110,    2,
+	   94,  110,    2,   94,  111,    2,  100,  110,    2,  101,  110,    2,
+	  106,  107,    2,  108,  111,    2,  112,  110,    2,  113,  110,    2,
+	  114,  110,    2,  115,  110,    2,  116,  110,    2,  117,  110,    3,
+	   24,  113,  110,    3,   25,  113,  110,    3,   26,  113,  110,    3,
+	   27,  113,  110,    3,   28,  113,  110,    3,   29,  113,  110,    3,
+	   30,  113,  110,    3,   31,  113,  110,    3,   32,  113,  110,    3,
+	   33,  113,  110,    3,   34,  113,  110,    3,   35,  113,  110,    3,
+	   36,  113,  110,    3,   37,  113,  110,    3,   38,  113,  110,    3,
+	   39,  113,  110,    3,   40,  113,  110,    3,   41,  113,  110,    3,
+	   42,  113,  110,    3,   43,  113,  110,    3,   44,  113,  110,    3,
+	   45,  113,  110,    3,   46,  113,  110,    3,   47,  113,  110,    3,
+	   48,  113,  110,    3,   49,  113,  110,    3,   50,  113,  110,    3,
+	   51,  113,  110,    3,   52,  113,  110,    3,   53,  113,  110,    3,
+	   54,  113,  110,    3,   55,  113,  110,    3,   56,  113,  110,    3,
+	   57,  113,  110,    3,   58,  113,  110,    3,   59,  113,  110,    3,
+	   60,  113,  110,    3,   61,  113,  110,    3,   62,  113,  110,    3,
+	   63,  113,  110,    3,   64,  113,  110,    3,   65,  113,  110,    3,
+	   66,  113,  110,    3,   67,  113,  110,    3,   68,  113,  110,    3,
+	   69,  113,  110,    3,   70,  113,  110,    3,   71,  113,  110,    3,
+	   72,  113,  110,    3,   73,  113,  110,    3,   74,  113,  110,    3,
+	   75,  113,  110,    3,   76,  113,  110,    3,   77,  113,  110,    3,
+	   78,  113,  110,    3,   79,  113,  110,    3,   80,  113,  110,    3,
+	   81,  113,  110,    3,   82,  113,  110,    3,   83,  113,  110,    3,
+	   84,  113,  110,    3,   85,  113,  110,    3,   86,  113,  110,    3,
+	   87,  113,  110,    3,   93,  114,  110,    3,   94,  114,  110,    3,
+	   95,  115,  110,    3,   96,  115,  110,    3,   97,  115,  110,    3,
+	   98,  115,  110,    3,   99,  115,  110,    3,  115,  116,  110,    3,
+	  117,  112,  110,    4,   95,  115,  116,  110,    4,   96,  115,  116,
+	  110,    4,   97,  115,  116,  110,    4,   98,  115,  116,  110,    4,
+	   99,  115,  116,  110,    4,  114,  115,  116,  110,    5,   94,  114,
+	  115,  116,  110
 	};
 }
 
@@ -2436,12 +2436,12 @@ private static final short _http_trans_targs[] = init__http_trans_targs_0();
 private static short[] init__http_trans_actions_0()
 {
 	return new short [] {
-	   15,  131,  131,  131,  131,  131,  131,  131,  131,  131,  131,  131,
-	  131,  131,  131,   13,   13,   13,   13,   13,   13,   13,   13,   13,
+	   15,  113,  113,  113,  113,  113,  113,  113,  113,  113,  113,  113,
+	  113,  113,  113,   13,   13,   13,   13,   13,   13,   13,   13,   13,
 	   13,   13,   13,   13,   13,   13,   13,   13,   13,   13,   13,   13,
-	   13,   13,   68,   13,   98,  101,  101,   13,   13,   13,  104,  104,
-	  104,  104,  104,  104,  104,  104,  104,  104,  104,  104,  104,  104,
-	  104,  104,  104,  104,  104,  134,   13,   13,   13,   13,   13,   29,
+	   13,   13,   68,   13,   98,  101,  101,   13,   13,   13,  125,  125,
+	  125,  125,  125,  125,  125,  125,  125,  125,  125,  125,  125,  125,
+	  125,  125,  125,  125,  125,  116,   13,   13,   13,   13,   13,   29,
 	   13,   13,   20,   13,   13,   13,   17,   13,   13,   13,   44,   13,
 	   13,   13,   13,   13,   13,   13,   71,   13,   13,   13,   13,   13,
 	   13,   13,   13,   13,   65,   13,   13,   47,   13,   13,   50,   13,
@@ -2451,9 +2451,9 @@ private static short[] init__http_trans_actions_0()
 	   53,   13,   13,   13,   13,   56,   13,   26,   13,   13,   13,   13,
 	   13,   62,   13,   13,   13,   13,   13,   13,   13,   13,   80,   13,
 	   13,   13,   13,   38,   13,   13,   13,   13,   13,   13,   59,   13,
-	   13,   13,   13,   13,   13,   13,   13,   83,  107,   13,  107,   13,
-	   13,  435,  110,   13,  119,  403,  403,  403,  403,  403,  403,  403,
-	  403,  403,  403,  403,  403,  403,  403,  403,  403,  403,  403,  403,
+	   13,   13,   13,   13,   13,   13,   13,   83,  128,   13,  128,   13,
+	   13,  460,  131,   13,  140,  431,  431,  431,  431,  431,  431,  431,
+	  431,  431,  431,  431,  431,  431,  431,  431,  431,  431,  431,  431,
 	   13,   13,   13,   13,   13,   13,   13,   13,  143,   13,  143,   13,
 	   13,   13,   13,   13,   13,   13,   13,   13,   13,  147,  147,   13,
 	   13,   13,   13,   13,   13,   13,  151,  151,   13,   13,   13,   13,
@@ -2462,19 +2462,19 @@ private static short[] init__http_trans_actions_0()
 	   13,   13,   13,   13,   13,   13,   13,  171,  171,   13,   13,   13,
 	   13,   13,   13,   13,   13,   13,   13,   13,   13,   13,  175,  175,
 	   13,   13,   13,   13,   13,   13,   13,   13,   13,   13,  179,  179,
-	   13,   13,  110,  110,  113,  399,   13,   13,  116,   13,   13,   13,
-	   13,  423,  450,   13,   13,   13,   13,   13,   13,  427,  455,   13,
+	   13,   13,  131,  131,  134,  427,   13,   13,  137,   13,   13,   13,
+	   13,  415,  445,   13,   13,   13,   13,   13,   13,  419,  450,   13,
 	   13,   13,   13,   13,   13,   13,   13,   13,   13,   13,   13,   13,
 	   13,   13,   13,   13,   13,   13,   13,  203,  203,   13,   13,   13,
 	   13,   13,   13,   13,  183,  183,   13,   13,   13,   13,   13,   13,
 	   13,   13,   13,  187,  187,   13,   13,   13,   13,  191,  191,   13,
-	   13,  128,  465,  411,  407,  415,  440,  125,  122,   13,   13,   13,
+	   13,  110,  465,  403,  399,  407,  435,  107,  104,   13,   13,   13,
 	   13,   13,   13,  195,  195,   13,   13,  199,  199,   13,   13,   13,
 	   13,  207,  207,   13,   13,   13,  211,  211,   13,   13,   13,  215,
 	  215,   13,   13,   13,   13,  219,  219,   13,  223,  223,   13,   13,
 	   13,   13,  227,  227,   13,   13,   13,   13,   13,  231,  231,   13,
-	   13,  110,   13,   13,   13,   13,   13,   13,   13,   13,   13,   13,
-	   13,  431,  460,   13,   13,   13,  235,  235,   13,   13,   13,  239,
+	   13,  131,   13,   13,   13,   13,   13,   13,   13,   13,   13,   13,
+	   13,  423,  455,   13,   13,   13,  235,  235,   13,   13,   13,  239,
 	  239,   13,   13,   13,  243,  243,   13,   13,   13,   13,   13,   13,
 	   13,   13,   13,   13,   13,  247,  247,   13,   13,   13,   13,   13,
 	   13,   13,   13,   13,   13,   13,   13,  251,  251,   13,   13,   13,
@@ -2496,8 +2496,8 @@ private static short[] init__http_trans_actions_0()
 	   13,   13,   13,   13,   13,   13,   13,   13,   13,   13,   13,   13,
 	   13,   13,   13,  327,  327,   13,   13,  331,  331,   13,   13,   13,
 	   13,   13,   13,  335,  335,   13,   13,   13,   13,   13,   13,   13,
-	   13,   13,   13,   13,   13,   13,  339,  339,   13,   13,  110,   13,
-	   13,   13,   13,   13,   13,  419,  445,   13,   13,   13,   13,   13,
+	   13,   13,   13,   13,   13,   13,  339,  339,   13,   13,  131,   13,
+	   13,   13,   13,   13,   13,  411,  440,   13,   13,   13,   13,   13,
 	   13,   13,  343,  343,   13,   13,   13,   13,   13,   13,   13,   13,
 	  347,  347,   13,   13,   13,   13,  351,  351,   13,  355,  355,   13,
 	   13,   13,   13,   13,   13,   13,  359,  359,   13,   13,   13,   13,
@@ -2513,8 +2513,8 @@ private static short[] init__http_trans_actions_0()
 	   13,   13,   13,   13,  391,  391,   13,   13,   13,   13,   13,   13,
 	   13,   13,   13,   13,   13,   13,   13,  395,  395,   13,   89,   13,
 	   13,   13,   13,   92,   13,   95,   13,   13,   13,   13,   13,   13,
-	   13,   32,   13,   41,  140,  137,  137,    9,    9,    0,    0,    0,
-	    0,    3,    0,  137,    0,    9,    0,    0,    7,    7,    0,    0,
+	   13,   32,   13,   41,  122,  119,  119,    9,    9,    0,    0,    0,
+	    0,    3,    0,  119,    0,    9,    0,    0,    7,    7,    0,    0,
 	    0,    0,    0,    1,    5
 	};
 }
@@ -2618,7 +2618,7 @@ private static short[] init__http_eof_actions_0()
 	   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,
 	   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,
 	   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,
-	   15,  128,  128,   15,   15,   15,   15,   15,   15,   15,   15,   15,
+	   15,  110,  110,   15,   15,   15,   15,   15,   15,   15,   15,   15,
 	   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,
 	   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,
 	   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,
@@ -2655,8 +2655,8 @@ private static short[] init__http_eof_actions_0()
 	   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,
 	   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,
 	   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,   15,
-	   15,   15,   15,   15,   15,   15,   15,   15,   15,  140,  140,  140,
-	   15,   15,   15,  140,  140,   15,   15,   15,   15,   15,   15,   15,
+	   15,   15,   15,   15,   15,   15,   15,   15,   15,  122,  122,  122,
+	   15,   15,   15,  122,  122,   15,   15,   15,   15,   15,   15,   15,
 	   15,    0,    0,    0,    0
 	};
 }
@@ -2674,7 +2674,7 @@ static final int http_en_upgraded = 736;
 static final int http_en_main = 1;
 
 
-// line 540 "src/rl/picard/http/HttpParser.rl"
+// line 494 "src/rl/picard/http/HttpParser.rl"
 
     // Variable used by ragel to represent the current state of the
     // parser. This must be an integer and it should persist across
@@ -2728,7 +2728,7 @@ static final int http_en_main = 1;
     private URI          uri;
     private ChunkedValue uriMark;
     private String       headerName;
-    private ChunkedValue headerNameMark;
+    private ChunkedValue headerNameChunks;
     private HeaderValue  headerValue;
 
     // Track the content length of the HTTP message
@@ -2744,7 +2744,7 @@ static final int http_en_main = 1;
 	cs = http_start;
 	}
 
-// line 604 "src/rl/picard/http/HttpParser.rl"
+// line 558 "src/rl/picard/http/HttpParser.rl"
 
         this.callback = callback;
         reset();
@@ -2847,14 +2847,14 @@ static final int http_en_main = 1;
 
         if (isParsingHead()) {
             bridge(buf, uriMark);
-            bridge(buf, headerNameMark);
+            bridge(buf, headerNameChunks);
             bridge(buf, headerValue);
         }
 
         try {
             parseLoop: {
                 
-// line 713 "src/rl/picard/http/HttpParser.rl"
+// line 667 "src/rl/picard/http/HttpParser.rl"
                 
 // line 2860 "src/jvm/picard/http/HttpParser.java"
 	{
@@ -2899,7 +2899,7 @@ case 1:
 	case 0: {
 		_widec = 65536 + (( buf.get(p)) - 0);
 		if ( 
-// line 437 "src/rl/picard/http/HttpParser.rl"
+// line 391 "src/rl/picard/http/HttpParser.rl"
 
             contentLength > 0
          ) _widec += 65536;
@@ -3376,64 +3376,6 @@ case 1:
 	case 93:
 // line 283 "src/rl/picard/http/HttpParser.rl"
 	{
-            headerNameMark = new ChunkedValue(buf, p);
-        }
-	break;
-	case 94:
-// line 287 "src/rl/picard/http/HttpParser.rl"
-	{
-            if (headerNameMark != null) {
-                headerNameMark.push(p);
-
-                headerName     = headerNameMark.materializeStr().toLowerCase();
-                headerNameMark = null;
-            }
-        }
-	break;
-	case 95:
-// line 296 "src/rl/picard/http/HttpParser.rl"
-	{
-            if (headerValue == null) {
-                headerValue = new HeaderValue(buf, p);
-            }
-            else {
-                headerValue.startLine(buf, p);
-            }
-        }
-	break;
-	case 96:
-// line 305 "src/rl/picard/http/HttpParser.rl"
-	{
-            if (headerValue != null) {
-                headerValue.mark(p);
-            }
-        }
-	break;
-	case 97:
-// line 311 "src/rl/picard/http/HttpParser.rl"
-	{
-            if (headerValue != null) {
-                headerValue.push();
-            }
-        }
-	break;
-	case 98:
-// line 317 "src/rl/picard/http/HttpParser.rl"
-	{
-            if (headerValue != null) {
-                callback.header(headers, headerName, headerValue.materializeStr());
-                headerName  = null;
-                headerValue = null;
-            }
-            else if (headerName != null) {
-                callback.header(headers, headerName, EMPTY_STRING);
-                headerName = null;
-            }
-        }
-	break;
-	case 99:
-// line 329 "src/rl/picard/http/HttpParser.rl"
-	{
             if (contentLength >= ALMOST_MAX_LONG) {
                 throw new HttpParserException("The content-length is WAY too big");
             }
@@ -3442,8 +3384,8 @@ case 1:
             contentLength += ( buf.get(p)) - '0';
         }
 	break;
-	case 100:
-// line 338 "src/rl/picard/http/HttpParser.rl"
+	case 94:
+// line 292 "src/rl/picard/http/HttpParser.rl"
 	{
             // Hack to get Java to compile
             if (true) {
@@ -3451,8 +3393,8 @@ case 1:
             }
         }
 	break;
-	case 101:
-// line 345 "src/rl/picard/http/HttpParser.rl"
+	case 95:
+// line 299 "src/rl/picard/http/HttpParser.rl"
 	{
             if (isChunkedBody()) {
                 throw new HttpParserException("The message head is invalid");
@@ -3465,8 +3407,8 @@ case 1:
             callback.header(headers, HDR_CONTENT_LENGTH, String.valueOf(contentLength));
         }
 	break;
-	case 102:
-// line 357 "src/rl/picard/http/HttpParser.rl"
+	case 96:
+// line 311 "src/rl/picard/http/HttpParser.rl"
 	{
             if (isIdentityBody()) {
                 throw new HttpParserException("The message head is invalid");
@@ -3479,8 +3421,8 @@ case 1:
             callback.header(headers, HDR_TRANSFER_ENCODING, VAL_CHUNKED);
         }
 	break;
-	case 103:
-// line 369 "src/rl/picard/http/HttpParser.rl"
+	case 97:
+// line 323 "src/rl/picard/http/HttpParser.rl"
 	{
             flags |= CONN_CLOSE;
 
@@ -3489,8 +3431,8 @@ case 1:
             callback.header(headers, HDR_CONNECTION, VAL_CLOSE);
         }
 	break;
-	case 104:
-// line 377 "src/rl/picard/http/HttpParser.rl"
+	case 98:
+// line 331 "src/rl/picard/http/HttpParser.rl"
 	{
             flags |= UPGRADE;
 
@@ -3499,8 +3441,8 @@ case 1:
             callback.header(headers, HDR_CONNECTION, VAL_UPGRADE);
         }
 	break;
-	case 105:
-// line 385 "src/rl/picard/http/HttpParser.rl"
+	case 99:
+// line 339 "src/rl/picard/http/HttpParser.rl"
 	{
             if (isHttp11()) {
                 flags |= EXPECT_CONTINUE;
@@ -3511,8 +3453,8 @@ case 1:
             callback.header(headers, HDR_EXPECT, VAL_100_CONTINUE);
         }
 	break;
-	case 106:
-// line 395 "src/rl/picard/http/HttpParser.rl"
+	case 100:
+// line 349 "src/rl/picard/http/HttpParser.rl"
 	{
             reset();
 
@@ -3520,8 +3462,8 @@ case 1:
             headers = callback.blankHeaders();
         }
 	break;
-	case 107:
-// line 402 "src/rl/picard/http/HttpParser.rl"
+	case 101:
+// line 356 "src/rl/picard/http/HttpParser.rl"
 	{
             // Not parsing the HTTP message head anymore
             flags ^= PARSING_HEAD;
@@ -3557,8 +3499,8 @@ case 1:
             resetHeadState();
         }
 	break;
-	case 108:
-// line 441 "src/rl/picard/http/HttpParser.rl"
+	case 102:
+// line 395 "src/rl/picard/http/HttpParser.rl"
 	{
             int toRead = min(contentLength, buf.limit() - p);
 
@@ -3579,8 +3521,8 @@ case 1:
             }
         }
 	break;
-	case 109:
-// line 461 "src/rl/picard/http/HttpParser.rl"
+	case 103:
+// line 415 "src/rl/picard/http/HttpParser.rl"
 	{
             int toRead = min(contentLength, buf.limit() - p);
 
@@ -3593,8 +3535,8 @@ case 1:
             }
         }
 	break;
-	case 110:
-// line 473 "src/rl/picard/http/HttpParser.rl"
+	case 104:
+// line 427 "src/rl/picard/http/HttpParser.rl"
 	{
             int remaining = buf.limit() - p;
 
@@ -3604,20 +3546,20 @@ case 1:
             }
         }
 	break;
-	case 111:
-// line 482 "src/rl/picard/http/HttpParser.rl"
+	case 105:
+// line 436 "src/rl/picard/http/HttpParser.rl"
 	{
             callback.body(this, null);
         }
 	break;
-	case 112:
-// line 486 "src/rl/picard/http/HttpParser.rl"
+	case 106:
+// line 440 "src/rl/picard/http/HttpParser.rl"
 	{
             contentLength = 0;
         }
 	break;
-	case 113:
-// line 490 "src/rl/picard/http/HttpParser.rl"
+	case 107:
+// line 444 "src/rl/picard/http/HttpParser.rl"
 	{
             if (contentLength >= ALMOST_MAX_LONG_HEX) {
                 throw new HttpParserException("The content-length is WAY too big");
@@ -3627,24 +3569,24 @@ case 1:
             contentLength += HEX_MAP[( buf.get(p))];
         }
 	break;
-	case 114:
-// line 499 "src/rl/picard/http/HttpParser.rl"
+	case 108:
+// line 453 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 throw new HttpParserException("Invalid chunk size");
             }
         }
 	break;
-	case 116:
-// line 509 "src/rl/picard/http/HttpParser.rl"
+	case 110:
+// line 463 "src/rl/picard/http/HttpParser.rl"
 	{
             if (++hread > MAX_HEADER_SIZE) {
                 throw new HttpParserException("The HTTP message head is too large");
             }
         }
 	break;
-	case 117:
-// line 515 "src/rl/picard/http/HttpParser.rl"
+	case 111:
+// line 469 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 String msg = parseErrorMsg(buf, p);
@@ -3652,7 +3594,66 @@ case 1:
             }
         }
 	break;
-// line 3656 "src/jvm/picard/http/HttpParser.java"
+	case 112:
+// line 7 "src/rl/picard/http/common.rl"
+	{
+      headerNameChunks = new ChunkedValue(buf, p);
+  }
+	break;
+	case 113:
+// line 11 "src/rl/picard/http/common.rl"
+	{
+      if (headerNameChunks != null) {
+          headerNameChunks.push(p);
+
+          headerName       = headerNameChunks.materializeStr().toLowerCase();
+          headerNameChunks = null;
+      }
+  }
+	break;
+	case 114:
+// line 20 "src/rl/picard/http/common.rl"
+	{
+      if (headerValue == null) {
+          headerValue = new HeaderValue(buf, p);
+      }
+      else {
+          headerValue.startLine(buf, p);
+      }
+  }
+	break;
+	case 115:
+// line 29 "src/rl/picard/http/common.rl"
+	{
+      if (headerValue != null) {
+          headerValue.mark(p);
+      }
+  }
+	break;
+	case 116:
+// line 35 "src/rl/picard/http/common.rl"
+	{
+      if (headerValue != null) {
+          headerValue.push();
+      }
+  }
+	break;
+	case 117:
+// line 41 "src/rl/picard/http/common.rl"
+	{
+      if (headerValue != null) {
+          callback.header(headers, headerName, headerValue.materializeStr());
+
+          headerName  = null;
+          headerValue = null;
+      }
+      else if (headerName != null) {
+          callback.header(headers, headerName, HttpParser.EMPTY_STRING);
+          headerName = null;
+      }
+  }
+	break;
+// line 3657 "src/jvm/picard/http/HttpParser.java"
 			}
 		}
 	}
@@ -3662,13 +3663,13 @@ case 2:
 	_nacts = (int) _http_actions[_acts++];
 	while ( _nacts-- > 0 ) {
 		switch ( _http_actions[_acts++] ) {
-	case 115:
-// line 505 "src/rl/picard/http/HttpParser.rl"
+	case 109:
+// line 459 "src/rl/picard/http/HttpParser.rl"
 	{
             cs = 1;
         }
 	break;
-// line 3672 "src/jvm/picard/http/HttpParser.java"
+// line 3673 "src/jvm/picard/http/HttpParser.java"
 		}
 	}
 
@@ -3687,8 +3688,8 @@ case 4:
 	int __nacts = (int) _http_actions[__acts++];
 	while ( __nacts-- > 0 ) {
 		switch ( _http_actions[__acts++] ) {
-	case 100:
-// line 338 "src/rl/picard/http/HttpParser.rl"
+	case 94:
+// line 292 "src/rl/picard/http/HttpParser.rl"
 	{
             // Hack to get Java to compile
             if (true) {
@@ -3696,16 +3697,16 @@ case 4:
             }
         }
 	break;
-	case 114:
-// line 499 "src/rl/picard/http/HttpParser.rl"
+	case 108:
+// line 453 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 throw new HttpParserException("Invalid chunk size");
             }
         }
 	break;
-	case 117:
-// line 515 "src/rl/picard/http/HttpParser.rl"
+	case 111:
+// line 469 "src/rl/picard/http/HttpParser.rl"
 	{
             if (true) {
                 String msg = parseErrorMsg(buf, p);
@@ -3713,7 +3714,7 @@ case 4:
             }
         }
 	break;
-// line 3717 "src/jvm/picard/http/HttpParser.java"
+// line 3718 "src/jvm/picard/http/HttpParser.java"
 		}
 	}
 	}
@@ -3723,7 +3724,7 @@ case 5:
 	break; }
 	}
 
-// line 714 "src/rl/picard/http/HttpParser.rl"
+// line 668 "src/rl/picard/http/HttpParser.rl"
             }
         }
         catch (RuntimeException e) {
@@ -3735,8 +3736,8 @@ case 5:
     }
 
     private void setHeaderName(String name) {
-        headerName     = name;
-        headerNameMark = null;
+        headerName       = name;
+        headerNameChunks = null;
     }
 
     private void bridge(ByteBuffer buf, ChunkedValue chunk) {
@@ -3755,13 +3756,13 @@ case 5:
     }
 
     private void resetHeadState() {
-        headers         = null;
-        method          = null;
-        uri             = null;
-        uriMark         = null;
-        headerName      = null;
-        headerNameMark  = null;
-        headerValue     = null;
+        headers          = null;
+        method           = null;
+        uri              = null;
+        uriMark          = null;
+        headerName       = null;
+        headerNameChunks = null;
+        headerValue      = null;
     }
 
     private ByteBuffer slice(ByteBuffer buf, int from, int to) {

@@ -8,12 +8,9 @@
         | "-" | "." | "/" | ":" | "=" | "?"
         ;
 
-   preamble = any * CRLF;
-   boundary = any $ parse_boundary when parsing_boundary;
+
       final = "--" @ end_parts ;
     padding = final ? LWSP * CRLF;
-  delimiter = ( CRLF "--" boundary * )
-                > start_delimiter;
 
   # ==== HEADERS ====
   header_name = generic_header_name;
@@ -22,16 +19,20 @@
 
   multipart =
     start:
-      preamble :>> delimiter padding -> head,
+      any * $ peek_delimiter,
+
+    delimiter:
+      any * $ parse_delimiter,
 
     head:
+      padding
       headers
         > start_head
         % end_head
       -> body,
 
     body:
-      any * :>> delimiter % end_part padding -> head,
+      any * $ peek_delimiter,
 
     epilogue: any *;
 
