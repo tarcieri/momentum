@@ -772,8 +772,16 @@
 
 (defcoretest request-callback-happens-before-body-is-recieved
   [ch1]
-  (start-hello-world-app ch1)
+  (start
+   (fn [dn]
+     (fn [evt val]
+       (when-not (= :body evt)
+         (enqueue ch1 [evt val]))
 
+       (when (= :request evt)
+         (dn :response [200 {"content-type"   "text/plain"
+                             "content-length" "5"
+                             "connection"     "close"} "Hello"])))))
   (with-socket
     (write-socket "POST / HTTP/1.1\r\n"
                   "Connection: close\r\n"
@@ -787,7 +795,11 @@
 
     (is (no-msgs ch1))
 
-    (write-socket (apply str (for [x (range 10000)] "a")))))
+    (write-socket (apply str (for [x (range 10000)] "a")))
+
+    (is (next-msgs
+         ch1
+         :done nil))))
 
 (defcoretest handling-100-continue-requests-with-100-response
   [ch1]

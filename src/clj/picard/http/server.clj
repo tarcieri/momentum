@@ -4,11 +4,7 @@
    picard.utils.core)
   (:require
    [picard.core.timer :as timer]
-   [picard.net.server :as net])
-  (:import
-   [org.jboss.netty.handler.codec.http
-    HttpRequestDecoder
-    HttpResponseEncoder]))
+   [picard.net.server :as net]))
 
 ;; TODO:
 ;;   - Add more checks for invalid header / body combinations
@@ -56,7 +52,6 @@
      next-up-fn
      next-dn-fn
      keepalive?
-     chunked?
      head?
      responded?
      upgrade
@@ -95,7 +90,6 @@
    handle-request   ;; next-up-fn
    handle-response  ;; next-dn-fn
    true             ;; keepalive?
-   false            ;; chunked?
    false            ;; head?
    false            ;; responded?
    nil              ;; upgrade
@@ -207,11 +201,10 @@
          :responded? true
          :next-dn-fn nil)))
    (fn [current-state]
-     (let [chunked?   (.chunked? current-state)
-           downstream (.downstream current-state)]
+     (let [downstream (.downstream current-state)]
        (maybe-finalizing-exchange
         state current-state
-        (send-chunk downstream chunked? chunk))))))
+        (downstream :body chunk))))))
 
 (defn- handle-response
   [state evt response current-state]
@@ -273,7 +266,6 @@
             ;; won't send the body and we also need to handle the
             ;; case of transfer-encoding: chunked w/ a single chunk
             ;; passed with the response.
-            :chunked?      (= (hdrs "transfer-encoding") "chunked")
             :next-dn-fn    (when (not responded?) stream-or-finalize-response)
             :keepalive?    (and (.keepalive? current-state)
                                 (keepalive-response? response))))))
@@ -287,7 +279,7 @@
        (let [downstream (.downstream current-state)]
          (maybe-finalizing-exchange
           state current-state
-          (send-response downstream status hdrs body)))))))
+          (downstream :response [status hdrs body])))))))
 
 (defn- stream-or-finalize-request
   [state evt chunk current-state]
@@ -456,12 +448,27 @@
                (str "Not expecting a message right now: "
                     [evt val]))))))))))
 
+(defn- encoder
+  [dn]
+  (let [chunked? (atom nil)]
+    (defstream
+      (response [[status hdrs body :as response]]
+        (reset! chunked? (= (hdrs "transfer-encoding") "chunked"))
+        (send-response dn status hdrs body))
+
+      (body [chunk]
+        (send-chunk dn @chunked? chunk))
+
+      (else [evt val]
+        (dn evt val)))))
+
 (defn proto
   ([app] (proto app {}))
   ([app opts]
      (let [app (handler app opts)]
        (fn [dn]
-         (request-parser (app dn))))))
+         (request-parser
+          (app (encoder dn)))))))
 
 (defn start
   ([app] (start app {}))
