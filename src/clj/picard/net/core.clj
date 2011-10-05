@@ -272,7 +272,7 @@
        (next-dn evt val)))))
 
 (defn handler
-  [app opts]
+  [app]
   (fn [dn]
     (let [state    (atom (mk-initial-state dn))
           upstream (app (mk-downstream dn state))]
@@ -318,9 +318,9 @@
        (throw (Exception. (str "Unexpected event: " evt)))))))
 
 (defn mk-upstream-handler
-  [^ChannelGroup channel-group app opts]
+  [^ChannelGroup channel-group app _]
   (let [state    (atom (mk-initial-netty-state))
-        app      (handler app opts)
+        app      (handler app)
         upstream (app (mk-netty-downstream-fn state))]
 
     ;; The actual Netty upstream handler.
