@@ -12,43 +12,84 @@
  transfer!
  remaining)
 
-(defprotocol Buffer
+(defprotocol Conversions
+  (to-byte-buffer [_])
+  (to-channel-buffer [_])
   (to-buffer [_])
   (to-bytes [_]))
 
-(extend-protocol Buffer
+(extend-protocol Conversions
   (class (byte-array 0))
+  (to-byte-buffer [bytes]
+    (ByteBuffer/wrap bytes))
+  (to-channel-buffer [bytes]
+    (ChannelBuffers/wrappedBuffer bytes))
   (to-buffer [bytes]
     (ByteBuffer/wrap bytes))
   (to-bytes [bytes]
     bytes)
 
   ByteBuffer
-  (to-buffer [buf] buf)
+  (to-byte-buffer [buf]
+    buf)
+  (to-channel-buffer [buf]
+    (ChannelBuffers/wrappedBuffer buf))
+  (to-buffer [buf]
+    buf)
   (to-bytes [buf]
     (let [arr (byte-array (.remaining buf))]
       (.get buf arr)
       arr))
 
   ChannelBuffer
-  (to-buffer [buf]
+  (to-byte-buffer [buf]
     (.toByteBuffer buf))
+  (to-channel-buffer [buf]
+    buf)
+  (to-buffer [buf]
+    buf)
   (to-bytes [buf]
     (let [arr (byte-array (.readableBytes buf))]
       (.readBytes buf arr)
       arr))
 
+  Iterable
+  (to-byte-buffer [list]
+    (to-byte-buffer (to-channel-buffer list)))
+  (to-channel-buffer [list]
+    (ChannelBuffers/wrappedBuffer
+     (into-array
+      (map to-channel-buffer list))))
+  (to-buffer [list]
+    (to-channel-buffer list))
+  (to-bytes [list]
+    (to-bytes (to-channel-buffer list)))
+
   String
+  (to-byte-buffer [str]
+    (ByteBuffer/wrap (to-bytes str)))
+  (to-channel-buffer [str]
+    (ChannelBuffers/wrappedBuffer (to-bytes str)))
   (to-buffer [str]
-    (ByteBuffer/wrap (.getBytes str)))
+    (to-byte-buffer str))
   (to-bytes [str]
-    (.getBytes str))
+    (.getBytes str "UTF-8"))
 
   nil
-  (to-buffer [_] nil)
-  (to-bytes [_] nil)
+  (to-byte-buffer [_]
+    nil)
+  (to-channel-buffer [_]
+    nil)
+  (to-buffer [_]
+    nil)
+  (to-bytes [_]
+    nil)
 
   Object
+  (to-byte-buffer [o]
+    (to-byte-buffer (str o)))
+  (to-channel-buffer [o]
+    (to-channel-buffer (str o)))
   (to-buffer [o]
     (to-buffer (str o)))
   (to-bytes [o]
@@ -141,9 +182,7 @@
 
 (defn wrap
   [& bufs]
-  (ChannelBuffers/wrappedBuffer
-   (into-array
-    (map to-buffer bufs))))
+  (to-buffer bufs))
 
 (defn batch
   "Takes an initial buffer size, a function that creates the buffers

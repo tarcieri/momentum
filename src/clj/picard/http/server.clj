@@ -410,53 +410,58 @@
     (str "Not expecting an HTTP request right now, "
          "pipelining is not yet supported."))))
 
-(def default-options
+(def default-opts
   {:keepalive 60
    :timeout   5})
+
+(defn handler
+  [app opts]
+  (let [opts (merge default-opts opts)]
+    (fn [dn]
+      (let [state (atom (initial-connection-state dn opts))]
+        (fn [evt val]
+          (let [current-state @state
+                next-up (.upstream current-state)]
+            (cond
+             ;; Check if an exchange is currently in progress. If
+             ;; there is one, then throw an exception since
+             ;; pipelining is not currently supported.
+             (= :request evt)
+             (if next-up
+               (throw-http-pipelining-exception)
+               (do
+                 (clear-timeout state current-state)
+                 (let [address-info
+                       (.address-info current-state)
+                       next-up
+                       (exchange app dn state address-info opts)]
+                   ;; Setup the new exchange
+                   (swap! state #(assoc % :upstream next-up))
+                   (next-up evt val))))
+
+             next-up
+             (next-up evt val)
+
+             (= :close evt)
+             (clear-timeout state current-state)
+
+             (= :open evt)
+             (do
+               (bump-timeout state current-state)
+               (swap! state #(assoc % :address-info val)))
+
+             (not (#{:body :pause :resume :abort} evt))
+             (throw
+              (Exception.
+               (str "Not expecting a message right now: "
+                    [evt val]))))))))))
 
 (defn proto
   ([app] (proto app {}))
   ([app opts]
-     (let [opts (merge default-options opts)]
+     (let [app (handler app opts)]
        (fn [dn]
-         (let [state (atom (initial-connection-state dn opts))]
-           (request-parser
-            (fn [evt val]
-              (let [current-state @state
-                    next-up (.upstream current-state)]
-                (cond
-                 ;; Check if an exchange is currently in progress. If
-                 ;; there is one, then throw an exception since
-                 ;; pipelining is not currently supported.
-                 (= :request evt)
-                 (if next-up
-                   (throw-http-pipelining-exception)
-                   (do
-                     (clear-timeout state current-state)
-                     (let [address-info
-                           (.address-info current-state)
-                           next-up
-                           (exchange app dn state address-info opts)]
-                       ;; Setup the new exchange
-                       (swap! state #(assoc % :upstream next-up))
-                       (next-up evt val))))
-
-                 next-up
-                 (next-up evt val)
-
-                 (= :close evt)
-                 (clear-timeout state current-state)
-
-                 (= :open evt)
-                 (do
-                   (bump-timeout state current-state)
-                   (swap! state #(assoc % :address-info val)))
-
-                 (not (#{:body :pause :resume :abort} evt))
-                 (throw
-                  (Exception.
-                   (str "Not expecting a message right now: "
-                        [evt val]))))))))))))
+         (request-parser (app dn))))))
 
 (defn start
   ([app] (start app {}))

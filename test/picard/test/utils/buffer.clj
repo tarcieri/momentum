@@ -45,8 +45,12 @@
     (is (= (rewind dst) (buffer "Hel")))))
 
 (deftest buffer-wrap
-  (is (= (buffer "Hello world")
-         (buffer (wrap (buffer "Hello " (buffer "world")))))))
+  (is (= (to-channel-buffer "Hello world")
+         (wrap "Hello " "world"))))
+
+(deftest wraapping-iterables
+  (is (= (wrap "Hello" "world")
+         (buffer ["Hello" "world"]))))
 
 (deftest buffer-batch
   (let [bufs (atom [])

@@ -61,4 +61,4 @@
 (defn parser
   [f]
   (let [parser (HttpParser. (mk-callback f))]
-    (fn [buf] (.execute parser (to-buffer buf)))))
+    (fn [buf] (.execute parser (to-byte-buffer buf)))))
