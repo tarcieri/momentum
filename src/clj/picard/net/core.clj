@@ -107,26 +107,32 @@
 ;; ==== Handlers
 
 (defrecord State
-    [ch
-     upstream
+    [upstream
+     downstream
      aborting?
      writable?
-     last-write
      event-lock
      state-queue
      message-queue])
 
-(defn- initial-state
-  [ch]
+(defrecord NettyState
+    [ch
+     last-write])
+
+(defn- mk-initial-state
+  [dn]
   (State.
-   ch              ;; ch
    nil             ;; upstream
+   dn              ;; downstream
    false           ;; aborting?
    true            ;; writable?
-   nil             ;; last-write
    (atom true)     ;; event-lock
    (LinkedList.)   ;; state-queue
    (LinkedList.))) ;; message-queue
+
+(defn- mk-initial-netty-state
+  []
+  (NettyState. nil nil))
 
 (declare handle-err)
 
@@ -170,9 +176,11 @@
 (defn- poll-queue*
   [current-state]
   (or (.. current-state state-queue poll)
-      (and (or (.. current-state ch isReadable)
-               (not (.. current-state ch isOpen)))
-           (.. current-state message-queue poll))))
+      (.. current-state message-queue poll)
+      ;; (and (or (.. current-state ch isReadable)
+      ;;          (not (.. current-state ch isOpen)))
+      ;;      (.. current-state message-queue poll))
+      ))
 
 (defn- poll-queue
   [current-state]
@@ -190,13 +198,14 @@
       (reset! event-lock true))))
 
 (defn- handle-interest-ops
-  [state upstream]
+  [state evt upstream]
   (let [current-state @state
-        writable?     (.writable? current-state)
-        ch            (.ch current-state)]
-    (when (not= writable? (.isWritable ch))
-      (swap! state #(assoc % :writable? (not writable?)))
-      (upstream (if writable? :pause :resume) nil))))
+        was-writable? (.writable? current-state)
+        now-writable? (= :resume evt)]
+
+    (when (not= was-writable? now-writable?)
+      (swap! state #(assoc % :writable? now-writable?))
+      (upstream evt nil))))
 
 ;; Handles sending messages upstream in a sane and thread-safe way.
 ;;
@@ -212,8 +221,8 @@
         (loop []
           (when-let [[evt val] (poll-queue current-state)]
             (cond
-             (= :interest-ops evt)
-             (handle-interest-ops state upstream)
+             (#{:pause :resume} evt)
+             (handle-interest-ops state evt upstream)
 
              (= :schedule evt)
              (val)
@@ -229,14 +238,15 @@
   ([state err current-state]
      (handle-err state err current-state false))
   ([state err current-state locked?]
-     (when (and current-state
-                (not (.aborting? current-state)))
-       (let [upstream  (.upstream current-state)]
+     (when (not (.aborting? current-state))
+       (let [upstream (.upstream current-state)]
          (swap-then!
           state
           #(assoc % :aborting? true)
           (fn [^State current-state]
-            (close-channel current-state)
+            (try
+              ((.downstream current-state) :close nil)
+              (catch Exception _))
             (when upstream
               (try
                 (if locked?
@@ -244,13 +254,48 @@
                   (send-upstream state :abort err current-state))
                 (catch Exception _)))))))))
 
-(defn- mk-downstream-fn
-  [state]
+(defn- mk-downstream
+  [next-dn state]
   (fn [evt val]
-    (let [current-state ^State @state]
+    (let [current-state @state]
       (when-not (.upstream current-state)
         (throw (Exception. "Not callbable yet")))
 
+      (cond
+       (= :schedule evt)
+       (send-upstream state :schedule val current-state)
+
+       (= :abort evt)
+       (handle-err state val current-state)
+
+       :else
+       (next-dn evt val)))))
+
+(defn handler
+  [app opts]
+  (fn [dn]
+    (let [state    (atom (mk-initial-state dn))
+          upstream (app (mk-downstream dn state))]
+      ;; Save off the upstream
+      (swap! state #(assoc % :upstream upstream))
+      ;; And now the upstream
+      (fn [evt val]
+        (try
+          (let [current-state @state]
+            (if (= :abort evt)
+              (when-not (.aborting? current-state)
+                (swap-then!
+                 state
+                 #(assoc % :aborting? true)
+                 #(send-upstream state evt val %)))
+              (send-upstream state evt val current-state)))
+          (catch Exception err
+            (handle-err state err @state)))))))
+
+(defn- mk-netty-downstream-fn
+  [state]
+  (fn [evt val]
+    (let [current-state @state]
       (cond
        (= :message evt)
        (let [ch (.ch current-state)]
@@ -264,59 +309,52 @@
        (close-channel current-state)
 
        (= :pause evt)
-       (when (.upstream current-state)
-         (.setReadable (.ch current-state) false))
+       (.setReadable (.ch current-state) false)
 
        (= :resume evt)
-       (when (.upstream current-state)
-         (.setReadable (.ch current-state) true))
-
-       (= :schedule evt)
-       (send-upstream state evt val current-state)
-
-       (= :abort evt)
-       (handle-err state val current-state)
+       (.setReadable (.ch current-state) true)
 
        :else
        (throw (Exception. (str "Unexpected event: " evt)))))))
 
 (defn mk-upstream-handler
   [^ChannelGroup channel-group app opts]
-  (let [state (atom nil)]
+  (let [state    (atom (mk-initial-netty-state))
+        app      (handler app opts)
+        upstream (app (mk-netty-downstream-fn state))]
+
+    ;; The actual Netty upstream handler.
     (reify ChannelUpstreamHandler
       (^void handleUpstream [_ ^ChannelHandlerContext ctx ^ChannelEvent evt]
         (let [current-state ^State @state]
-          (try
-            (cond
-             ;; Handle message events
-             (message-event? evt)
-             (let [[evt val] (decode (.getMessage ^MessageEvent evt))]
-               (send-upstream state evt val current-state))
+          (cond
+           ;; Handle message events
+           (message-event? evt)
+           (let [[evt val] (decode (.getMessage ^MessageEvent evt))]
+             (upstream evt val))
 
-             (interest-changed-event? evt)
-             (send-upstream state :interest-ops nil current-state)
+           (interest-changed-event? evt)
+           (if (.isWritable (.getChannel evt))
+             (upstream :resume nil)
+             (upstream :pause nil))
 
-             ;; The bind function is invoked on channel open, ideally
-             ;; this would always get invoked. However, there is a
-             ;; possibility that opening the socket channel
-             ;; fails. That case isn't handled right now.
-             (channel-open-event? evt)
-             (let [ch (.getChannel evt)]
-               ;; First, track the channel in the channel group
-               (.add channel-group ch)
-               ;; Now, initialize the state with the channel
-               (reset! state (initial-state ch))
-               (let [upstream (app (mk-downstream-fn state))]
-                 (swap! state #(assoc % :upstream upstream))))
+           ;; The bind function is invoked on channel open, ideally
+           ;; this would always get invoked. However, there is a
+           ;; possibility that opening the socket channel
+           ;; fails. That case isn't handled right now.
+           (channel-open-event? evt)
+           (let [ch (.getChannel evt)]
+             ;; First, track the channel in the channel group
+             (.add channel-group ch)
+             ;; Now, initialize the state with the channel
+             (swap! state #(assoc % :ch ch)))
 
-             (channel-connected-event? evt)
-             (let [ch-info (-> current-state .ch channel-info)]
-               (send-upstream state :open ch-info current-state))
+           (channel-connected-event? evt)
+           (let [ch-info (-> current-state .ch channel-info)]
+             (upstream :open ch-info))
 
-             (channel-disconnected-event? evt)
-             (send-upstream state :close nil current-state)
+           (channel-disconnected-event? evt)
+           (upstream :close nil)
 
-             (exception-event? evt)
-             (handle-err state (.getCause evt) current-state))
-            (catch Exception err
-              (handle-err state err @state))))))))
+           (exception-event? evt)
+           (upstream :abort (.getCause evt))))))))
