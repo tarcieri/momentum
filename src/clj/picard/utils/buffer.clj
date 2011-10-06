@@ -9,8 +9,7 @@
 (declare
  flip
  transfer
- transfer!
- remaining)
+ transfer!)
 
 (defprotocol Conversions
   (to-byte-buffer [_])
@@ -95,6 +94,30 @@
   (to-bytes [o]
     (to-bytes (str o))))
 
+(defn to-string
+  ([buf]
+     (to-string buf "UTF-8"))
+  ([buf encoding]
+     (when-let [bytes (to-bytes buf)]
+       (String. bytes encoding))))
+
+(defprotocol Buffer
+  (remaining  [_])
+  (remaining? [_]))
+
+(extend-protocol Buffer
+  ByteBuffer
+  (remaining [this]
+    (.remaining this))
+  (remaining? [this]
+    (.hasRemaining this))
+
+  ChannelBuffer
+  (remaining [this]
+    (.readableBytes this))
+  (remaining? [this]
+    (.readable this)))
+
 (defn ^ByteBuffer buffer
   ([]
      (ByteBuffer/allocate 1024))
@@ -149,14 +172,6 @@
 (defn position
   [^ByteBuffer buf]
   (.position buf))
-
-(defn remaining
-  [^ByteBuffer buf]
-  (.remaining buf))
-
-(defn remaining?
-  [^ByteBuffer buf]
-  (.hasRemaining buf))
 
 (defn rewind
   [^ByteBuffer buf]

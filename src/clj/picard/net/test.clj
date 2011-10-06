@@ -8,6 +8,7 @@
 
 (declare
  *app*
+ *connections*
  received)
 
 (def default-addrs
@@ -31,7 +32,8 @@
 
 (defmacro with-app
   [app & stmts]
-  `(binding [*app* (net/handler ~app)]
+  `(binding [*app* (net/handler ~app)
+             *connections* (atom (sequence []))]
      ~@stmts))
 
 (defn- mk-downstream
@@ -46,14 +48,17 @@
        (throw (Exception. "No app set, use (with-app ...)")))
 
      (let [queue    (LinkedBlockingQueue.)
-           upstream (*app* (mk-downstream queue))]
-
+           upstream (*app* (mk-downstream queue))
+           cache    (atom clojure.lang.PersistentQueue/EMPTY)
+           conn     (Connection. queue upstream cache)]
        (upstream :open (merge default-addrs addrs))
-       (Connection. queue upstream (atom clojure.lang.PersistentQueue/EMPTY)))))
+       (swap! *connections* #(conj % conn))
+       conn)))
 
 (defn received
-  [conn]
-  (lazy-seq
-   (when-let [e (.poll (.queue conn) 1000 TimeUnit/MILLISECONDS)]
-     (swap! (.cached conn) #(conj % e))
-     (cons e (received conn)))))
+  ([] (received (first @*connections*)))
+  ([conn]
+     (lazy-seq
+      (when-let [e (.poll (.queue conn) 1000 TimeUnit/MILLISECONDS)]
+        (swap! (.cached conn) #(conj % e))
+        (cons e (received conn))))))

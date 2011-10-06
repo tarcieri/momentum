@@ -1,4 +1,7 @@
 (ns picard.http.test
+  (:use
+   clojure.test
+   picard.utils.buffer)
   (:require
    [picard.http.server :as server]
    [picard.net.test    :as net]))
@@ -37,3 +40,37 @@
 (defn DELETE [& args] (apply request "DELETE" args))
 
 (def received net/received)
+
+(defn- normalize-response
+  [[status hdrs body]]
+  [status hdrs (to-byte-buffer body)])
+
+(defn- stringify-response
+  [[status hdrs body]]
+  [status hdrs (to-string body)])
+
+(defn response
+  [& args]
+  (let [[[_ response]]
+        (filter
+         (fn [[evt val]] (= :response evt))
+         (apply received args))]
+    response))
+
+(defn response-body
+  [& args]
+  (let [[_ _ body] (apply response args)]
+    body))
+
+(defn assert-responded?
+  [msg conn expected f]
+  (let [actual (response conn)
+        match? (= (normalize-response expected)
+                  (normalize-response actual))]
+    (f {:type     (if match? :pass :fail)
+        :message  msg
+        :expected (stringify-response expected)
+        :actual   (stringify-response actual)})))
+
+(defmethod assert-expr 'responded? [msg [_ conn expected]]
+  `(assert-responded? ~msg ~conn ~expected #(do-report %)))
