@@ -121,16 +121,28 @@
         (swap! state #(assoc % :timeout timeout))))))
 
 (defn- waiting-for-response
-  [_ _ _ _]
-  (throw (Exception. "Not expecting a message right now.")))
+  [_ evt val _]
+  (throw
+   (Exception.
+    (str "Not expecting a message right now.n"
+         "  EVT: " evt "\n"
+         "  VAL: " val))))
 
 (defn- upstream-pass-through
-  [_ _ _ _]
-  (throw (Exception. "Should be receiving message events.")))
+  [_ evt val _]
+  (throw
+   (Exception.
+    (str "Should be receiving message events.\n"
+         "  EVT: " evt "\n"
+         "  VAL: " val))))
 
 (defn- downstream-pass-through
-  [_ _ _ _]
-  (throw (Exception. "Should be receiving message events.")))
+  [_ evt val _]
+  (throw
+   (Exception.
+    (str "Should be receiving message events.\n"
+         "  EVT: " evt "\n"
+         "  VAL: " val))))
 
 (defn- awaiting-100-continue?
   [current-state]

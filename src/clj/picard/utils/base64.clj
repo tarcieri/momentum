@@ -6,8 +6,8 @@
     Base64]))
 
 (defprotocol IBase64
-  (encode64 [o chunked?])
-  (decode64 [o]))
+  (^{:private true} encode64 [o chunked?])
+  (^{:private true} decode64 [o]))
 
 (extend-protocol IBase64
   (class (byte-array 0))
@@ -24,9 +24,7 @@
   (encode64 [o chunked?]
     (encode64 (.getBytes o) chunked?))
   (decode64 [o]
-    (Base64/decodeBase64 o))
-
-  )
+    (Base64/decodeBase64 o)))
 
 (defn encode
   ([o] (encode64 o false))

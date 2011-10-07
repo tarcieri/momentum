@@ -103,7 +103,8 @@
 
 (defprotocol Buffer
   (remaining  [_])
-  (remaining? [_]))
+  (remaining? [_])
+  (put-byte   [_ byte]))
 
 (extend-protocol Buffer
   ByteBuffer
@@ -111,12 +112,16 @@
     (.remaining this))
   (remaining? [this]
     (.hasRemaining this))
+  (put-byte [this byte]
+    (.put this (byte byte)))
 
   ChannelBuffer
   (remaining [this]
     (.readableBytes this))
   (remaining? [this]
-    (.readable this)))
+    (.readable this))
+  (put-byte [this byte]
+    (.writeByte this (byte byte))))
 
 (defn ^ByteBuffer buffer
   ([]

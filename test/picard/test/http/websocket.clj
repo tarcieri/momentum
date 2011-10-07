@@ -4,7 +4,11 @@
   (:use
    clojure.test
    support.helpers
-   picard.http.server))
+   picard.http.server)
+  (:require
+   [picard.utils.base64 :as base64]
+   [picard.utils.digest :as digest]
+   [picard.utils.random :as random]))
 
 (defcoretest exchanges-without-upgrade-header-are-ignored
   [ch1]
@@ -32,7 +36,7 @@
          "content-length: 5\r\n\r\n"
          "Hello"))))
 
-(defcoretest simple-exchange
+(defcoretest simple-handshake
   [ch1]
   (start
    (ws/proto
@@ -49,6 +53,10 @@
      "GET / HTTP/1.1\r\n"
      "Host: localhost\r\n"
      "Upgrade: websocket\r\n"
+     "Connection: upgrade\r\n"
+     "Sec-WebSocket-Key: " (base64/encode (random/secure-random 16)) "\r\n"
+     "Sec-WebSocket-Origin: http://localhost\r\n"
+     "Sec-WebSocket-Version: 8\r\n"
      "\r\n")
 
     ;; (is (next-msgs

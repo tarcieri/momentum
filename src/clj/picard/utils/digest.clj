@@ -6,7 +6,7 @@
     MessageDigest]))
 
 (defprotocol Digest
-  (update-digest [val digest]))
+  (^{:private true} update-digest [val digest]))
 
 (extend-protocol Digest
   (class (byte-array 0))

@@ -1,34 +1,55 @@
 (ns picard.http.websocket
+  (:use
+   picard.utils.buffer
+   picard.utils.core)
   (:require
-   [picard.utils.digest :as digest]
-   [picard.utils.base64 :as b64]))
-
-;; STATES:
-;; * CONNECTING
-;; * ABORTED
+   [picard.utils.base64 :as base64]
+   [picard.utils.digest :as digest])
+  (:import
+   [picard.http
+    WsFrame
+    WsFrameEncoder
+    WsFrameType]))
 
 (defrecord Socket
     [state
      version
      extensions])
 
+(def opcodes
+  {:continuation WsFrameType/CONTINUATION
+   :text         WsFrameType/TEXT
+   :binary       WsFrameType/BINARY
+   :close        WsFrameType/CLOSE
+   :ping         WsFrameType/PING
+   :pong         WsFrameType/PONG})
+
 (defn- mk-socket
   []
   (atom (Socket. :CONNECTING nil nil)))
 
+(defn- frame
+  [type data]
+  (.. (WsFrameEncoder. (WsFrame. (opcodes type)))
+      (encode (buffer data))))
+
 (defn- abort-socket
   [state dn]
-  (println "ABORTING!!!")
   (dn :close nil))
 
 (defn- accept-socket
   [state dn key]
-  (let [sig  (str key "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
-        hdrs {"connection" "upgrade"
-              "upgrade"    "websocket"
-              "sec-websocket-accept" sig}]
-    (println "ACCEPTING")
-    (dn :response [101 hdrs ""])))
+  (let [sig  (digest/sha1 (str key "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+        hdrs {"connection"   "upgrade"
+              "upgrade"      "websocket"
+              "content-type" "utf-8"
+              "sec-websocket-accept" (base64/encode sig)}]
+
+    (swap! state #(assoc % :state :OPEN))
+    (println "SENDING HANDSHAKE")
+
+    (dn :response [101 hdrs ""])
+    (dn :message (frame :text "HELLO"))))
 
 (defn- handshake
   [state dn [{upgrade    "upgrade"
@@ -37,27 +58,34 @@
               key        "sec-websocket-key"
               origin     "sec-websocket-origin"
               protos     "sec-websocket-protocol"
-              exts       "sec-websocket-extensions"} :as request]]
+              exts       "sec-websocket-extensions"} body]]
 
   ;; If the request is a websocket request, initiate the handshake.
-  (when (= upgrade "websocket")
-    ;; The state will starts at CONNECTING
-    (reset! state :CONNECTING)
-
+  (when (and (= :upgraded body) (= upgrade "websocket"))
     (if (and key origin)
       (accept-socket state dn key)
-      (abort-socket state dn))))
+      (abort-socket state dn))
+    true))
 
 (defn proto
   [app]
   (fn [dn]
+    (println "ZOOOOOOOOOMG")
     (let [up (app dn)
-          state (atom nil)]
-      (fn [evt val]
-        (cond
-         (= :request evt)
-         (when-not (handshake state dn val)
-           (up evt val))
+          state (mk-socket)]
+      (defstream
+        (request [request]
+          (println "UP: " [:request request])
+          (when-not (handshake state dn request)
+            (println "NO HANDSHAKE")
+            (up :request request)))
 
-         :else
-         (up evt val))))))
+        (message [buf]
+          (println "UP: " [:message buf]))
+
+        (abort [err]
+          (.printStackTrace err))
+
+        (else [evt val]
+          (println "UP: " [evt val])
+          (up evt val))))))
