@@ -1,6 +1,6 @@
 package picard.http;
 
-import java.nio.ByteBuffer
+import java.nio.ByteBuffer;
 import org.jboss.netty.buffer.ChannelBuffer;
 
 // TODO: Maybe abstract away the framing logic
@@ -27,16 +27,17 @@ public class WsFrameDecoder {
     }
 
     public Object decode(ByteBuffer buf) {
+        byte b;
         try {
             while (buf.hasRemaining()) {
                 switch (cs) {
                 case OP_CODE:
-                    byte b = buf.get();
+                    b = buf.get();
 
                     // Create a new frame object
                     cf = new WsFrame();
 
-                    cf.isFinal(WsFrame.FIN_MASK == b & WsFrame.FIN_MASK);
+                    cf.isFinal(WsFrame.FIN_MASK == (b & WsFrame.FIN_MASK));
                     // Ignore rsv1-3 for now
                     cf.type(getType(b & 0x0F));
 
@@ -45,9 +46,9 @@ public class WsFrameDecoder {
                     break;
 
                 case LENGTH:
-                    byte b = buf.get();
+                    b = buf.get();
 
-                    cf.isMasked(WsFrame.FIN_MASK == b & WsFrame.FIN_MASK);
+                    cf.isMasked(WsFrame.FIN_MASK == (b & WsFrame.FIN_MASK));
 
                     int length = b & WsFrame.LOWER_SEVEN;
 
@@ -78,7 +79,7 @@ public class WsFrameDecoder {
                     --remaining;
 
                     cf.length *= 10;
-                    cf.length += buf.get() & 0xFF:
+                    cf.length += buf.get() & 0xFF;
 
                     if (remaining == 0) {
                         if (cf.isMasked()) {
@@ -96,7 +97,7 @@ public class WsFrameDecoder {
                 case MASK_KEY:
                     --remaining;
 
-                    cf.maskingKey << 8;
+                    cf.maskingKey = cf.maskingKey << 8;
                     cf.maskingKey |= buf.get() & 0xFF;
 
                     if (remaining == 0) {
@@ -122,7 +123,7 @@ public class WsFrameDecoder {
         }
     }
 
-    private WsFrameType getType(byte opcode) {
+    private WsFrameType getType(int opcode) {
         switch (opcode) {
         case 0x00:
             return WsFrameType.CONTINUATION;

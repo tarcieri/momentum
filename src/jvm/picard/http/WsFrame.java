@@ -46,7 +46,7 @@ public class WsFrame {
         return val;
     }
 
-    public booleean isFinal() {
+    public boolean isFinal() {
         return isFinal;
     }
 
