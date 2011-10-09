@@ -265,11 +265,51 @@ public abstract class Buffer {
    */
 
   public final double getDouble() {
-    return (double) 0;
+    return Double.longBitsToDouble(getLong());
   }
 
-  public double getDouble(int index) {
-    return (double) 0;
+  public final double getDouble(int idx) {
+    return Double.longBitsToDouble(getLong(idx));
+  }
+
+  public final double getDoubleBigEndian() {
+    return Double.longBitsToDouble(getLongBigEndian());
+  }
+
+  public final double getDoubleBigEndian(int idx) {
+    return Double.longBitsToDouble(getLongBigEndian(idx));
+  }
+
+  public final double getDoubleLittleEndian() {
+    return Double.longBitsToDouble(getLongLittleEndian());
+  }
+
+  public final double getDoubleLittleEndian(int idx) {
+    return Double.longBitsToDouble(getLongLittleEndian(idx));
+  }
+
+  public final Buffer putDouble(double val) {
+    return putLong(Double.doubleToRawLongBits(val));
+  }
+
+  public final Buffer putDouble(int idx, double val) {
+    return putLong(idx, Double.doubleToRawLongBits(val));
+  }
+
+  public final Buffer putDoubleBigEndian(double val) {
+    return putLongBigEndian(Double.doubleToRawLongBits(val));
+  }
+
+  public final Buffer putDoubleBigEndian(int idx, double val) {
+    return putLongBigEndian(idx, Double.doubleToRawLongBits(val));
+  }
+
+  public final Buffer putDoubleLittleEndian(double val) {
+    return putLongLittleEndian(Double.doubleToRawLongBits(val));
+  }
+
+  public final Buffer putDoubleLittleEndian(int idx, double val) {
+    return putLongLittleEndian(idx, Double.doubleToRawLongBits(val));
   }
 
   /*
