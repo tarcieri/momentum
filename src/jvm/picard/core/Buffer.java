@@ -201,6 +201,9 @@ public abstract class Buffer {
     return (char) (b1 << 8 | b0 & 0xFF);
   }
 
+  private final byte char1(char x) { return (byte) (x >> 8); }
+  private final byte char0(char x) { return (byte)  x;       }
+
   public final char getChar() {
     return bigEndian ? getCharBigEndian() : getCharLittleEndian();
   }
@@ -237,14 +240,6 @@ public abstract class Buffer {
     return putCharBigEndian(walking(2), val);
   }
 
-  private final byte char1(char x) {
-    return (byte) (x >> 8);
-  }
-
-  private final byte char0(char x) {
-    return (byte) x;
-  }
-
   public final Buffer putCharBigEndian(int idx, char val) {
     put(idx,     char1(val));
     put(idx + 1, char0(val));
@@ -263,6 +258,12 @@ public abstract class Buffer {
     return this;
   }
 
+  /*
+   *
+   *  DOUBLE accessors
+   *
+   */
+
   public final double getDouble() {
     return (double) 0;
   }
@@ -271,36 +272,304 @@ public abstract class Buffer {
     return (double) 0;
   }
 
-  public float getFloat() {
-    return (float) 0;
+  /*
+   *
+   *  FLOAT accessors
+   *
+   */
+
+  public final float getFloat() {
+    return Float.intBitsToFloat(getInt());
   }
 
-  public float getFloat(int index) {
-    return (float) 0;
+  public final float getFloat(int idx) {
+    return Float.intBitsToFloat(getInt(idx));
   }
 
-  public int getInt() {
-    return (int) 0;
+  public final float getFloatBigEndian() {
+    return Float.intBitsToFloat(getIntBigEndian());
   }
 
-  public int getInt(int index) {
-    return (int) 0;
+  public final float getFloatBigEndian(int idx) {
+    return Float.intBitsToFloat(getIntBigEndian(idx));
   }
 
-  public long getLong() {
-    return (long) 0;
+  public final float getFloatLittleEndian() {
+    return Float.intBitsToFloat(getIntLittleEndian());
   }
 
-  public long getLong(int index) {
-    return (long) 0;
+  public final float getFloatLittleEndian(int idx) {
+    return Float.intBitsToFloat(getIntLittleEndian(idx));
   }
 
-  public short getShort() {
-    return (short) 0;
+  public final Buffer putFloat(float val) {
+    return putInt(Float.floatToRawIntBits(val));
   }
 
-  public short getShort(int index) {
-    return (short) 0;
+  public final Buffer putFloat(int idx, float val) {
+    return putInt(idx, Float.floatToRawIntBits(val));
+  }
+
+  public final Buffer putFloatBigEndian(float val) {
+    return putIntBigEndian(Float.floatToRawIntBits(val));
+  }
+
+  public final Buffer putFloatBigEndian(int idx, float val) {
+    return putIntBigEndian(idx, Float.floatToRawIntBits(val));
+  }
+
+  public final Buffer putFloatLittleEndian(float val) {
+    return putIntLittleEndian(Float.floatToRawIntBits(val));
+  }
+
+  public final Buffer putFloatLittleEndian(int idx, float val) {
+    return putIntLittleEndian(idx, Float.floatToRawIntBits(val));
+  }
+
+  /*
+   *
+   *  INT accessors
+   *
+   */
+
+  private final int makeInt(byte b3, byte b2, byte b1, byte b0) {
+    return (b3       ) << 24 |
+           (b2 & 0xFF) << 16 |
+           (b1 & 0xFF) <<  8 |
+           (b0 & 0xFF);
+  }
+
+  private final byte int3(int x) { return (byte) (x >> 24); }
+  private final byte int2(int x) { return (byte) (x >> 16); }
+  private final byte int1(int x) { return (byte) (x >>  8); }
+  private final byte int0(int x) { return (byte)  x;        }
+
+  public final int getInt() {
+    return bigEndian ? getIntBigEndian() : getIntLittleEndian();
+  }
+
+  public final int getInt(int idx) {
+    return bigEndian ? getIntBigEndian(idx) : getIntLittleEndian(idx);
+  }
+
+  public final int getIntBigEndian() {
+    return getIntBigEndian(walking(4));
+  }
+
+  public final int getIntBigEndian(int idx) {
+    return makeInt(get(idx), get(idx + 1), get(idx + 2), get(idx + 3));
+  }
+
+  public final int getIntLittleEndian() {
+    return getIntLittleEndian(walking(4));
+  }
+
+  public final int getIntLittleEndian(int idx) {
+    return makeInt(get(idx + 3), get(idx + 2), get(idx + 1), get(idx));
+  }
+
+  public final Buffer putInt(int val) {
+    return bigEndian ? putIntBigEndian(val) : putIntLittleEndian(val);
+  }
+
+  public final Buffer putInt(int idx, int val) {
+    return bigEndian ? putIntBigEndian(idx, val) : putIntLittleEndian(idx, val);
+  }
+
+  public final Buffer putIntBigEndian(int val) {
+    return putIntBigEndian(walking(4), val);
+  }
+
+  public final Buffer putIntBigEndian(int idx, int val) {
+    put(idx,     int3(val));
+    put(idx + 1, int2(val));
+    put(idx + 2, int1(val));
+    put(idx + 3, int0(val));
+
+    return this;
+  }
+
+  public final Buffer putIntLittleEndian(int val) {
+    return putIntLittleEndian(walking(4), val);
+  }
+
+  public final Buffer putIntLittleEndian(int idx, int val) {
+    put(idx,     int0(val));
+    put(idx + 1, int1(val));
+    put(idx + 2, int2(val));
+    put(idx + 3, int3(val));
+
+    return this;
+  }
+
+  /*
+   *
+   *  LONG accessors
+   *
+   */
+
+  private final long makeLong(byte b7, byte b6, byte b5, byte b4,
+                              byte b3, byte b2, byte b1, byte b0) {
+    return ((long) b7       ) << 56 |
+           ((long) b6 & 0xff) << 48 |
+           ((long) b5 & 0xff) << 40 |
+           ((long) b4 & 0xff) << 32 |
+           ((long) b3 & 0xff) << 24 |
+           ((long) b2 & 0xff) << 16 |
+           ((long) b1 & 0xff) <<  8 |
+           ((long) b0 & 0xff);
+  }
+
+  private final byte long7(long x) { return (byte) (x >> 56); }
+  private final byte long6(long x) { return (byte) (x >> 48); }
+  private final byte long5(long x) { return (byte) (x >> 40); }
+  private final byte long4(long x) { return (byte) (x >> 32); }
+  private final byte long3(long x) { return (byte) (x >> 24); }
+  private final byte long2(long x) { return (byte) (x >> 16); }
+  private final byte long1(long x) { return (byte) (x >>  8); }
+  private final byte long0(long x) { return (byte)  x;        }
+
+  public final long getLong() {
+    return bigEndian ? getLongBigEndian() : getLongLittleEndian();
+  }
+
+  public final long getLong(int idx) {
+    return bigEndian ? getLongBigEndian(idx) : getLongLittleEndian(idx);
+  }
+
+  public final long getLongBigEndian() {
+    return getLongBigEndian(walking(8));
+  }
+
+  public final long getLongBigEndian(int idx) {
+    return makeLong(get(idx),
+                    get(idx + 1),
+                    get(idx + 2),
+                    get(idx + 3),
+                    get(idx + 4),
+                    get(idx + 5),
+                    get(idx + 6),
+                    get(idx + 7));
+  }
+
+  public final long getLongLittleEndian() {
+    return getLongLittleEndian(walking(8));
+  }
+
+  public final long getLongLittleEndian(int idx) {
+    return makeLong(get(idx + 7),
+                    get(idx + 6),
+                    get(idx + 5),
+                    get(idx + 4),
+                    get(idx + 3),
+                    get(idx + 2),
+                    get(idx + 1),
+                    get(idx));
+  }
+
+  public final Buffer putLong(long val) {
+    return bigEndian ? putLongBigEndian(val) : putLongLittleEndian(val);
+  }
+
+  public final Buffer putLong(int idx, long val) {
+    return bigEndian ? putLongBigEndian(idx, val) : putLongLittleEndian(idx, val);
+  }
+
+  public final Buffer putLongBigEndian(long val) {
+    return putLongBigEndian(walking(8), val);
+  }
+
+  public final Buffer putLongBigEndian(int idx, long val) {
+    put(idx,     long7(val));
+    put(idx + 1, long6(val));
+    put(idx + 2, long5(val));
+    put(idx + 3, long4(val));
+    put(idx + 4, long3(val));
+    put(idx + 5, long2(val));
+    put(idx + 6, long1(val));
+    put(idx + 7, long0(val));
+
+    return this;
+  }
+
+  public final Buffer putLongLittleEndian(long val) {
+    return putLongLittleEndian(walking(8), val);
+  }
+
+  public final Buffer putLongLittleEndian(int idx, long val) {
+    put(idx,     long0(val));
+    put(idx + 1, long1(val));
+    put(idx + 2, long2(val));
+    put(idx + 3, long3(val));
+    put(idx + 4, long4(val));
+    put(idx + 5, long5(val));
+    put(idx + 6, long6(val));
+    put(idx + 7, long7(val));
+
+    return this;
+  }
+
+  /*
+   *
+   *  SHORT accessors
+   *
+   */
+
+  private final short makeShort(byte b1, byte b0) {
+    return (short) (b1 << 8 | b0 & 0xFF);
+  }
+
+  private final byte short1(short x) { return (byte) (x >> 8); }
+  private final byte short0(short x) { return (byte)  x;       }
+
+  public final short getShort() {
+    return bigEndian ? getShortBigEndian() : getShortLittleEndian();
+  }
+
+  public final short getShort(int idx) {
+    return bigEndian ? getShortBigEndian(idx) : getShortLittleEndian(idx);
+  }
+
+  public final short getShortBigEndian() {
+    return getShortBigEndian(walking(2));
+  }
+
+  public final short getShortBigEndian(int idx) {
+    return makeShort(get(idx), get(idx + 1));
+  }
+
+  public final short getShortLittleEndian() {
+    return getShortLittleEndian(walking(2));
+  }
+
+  public final short getShortLittleEndian(int idx) {
+    return makeShort(get(idx + 1), get(idx));
+  }
+
+  public final Buffer putShort(int idx, short val) {
+    return bigEndian ? putShortBigEndian(val) : putShortLittleEndian(val);
+  }
+
+  public final Buffer putShortBigEndian(short val) {
+    return putShortBigEndian(walking(2), val);
+  }
+
+  public final Buffer putShortBigEndian(int idx, short val) {
+    put(idx,     short1(val));
+    put(idx + 1, short0(val));
+
+    return this;
+  }
+
+  public final Buffer putShortLittleEndian(short val) {
+    return putShortLittleEndian(walking(2), val);
+  }
+
+  public final Buffer putShortLittleEndian(int idx, short val) {
+    put(idx,     short0(val));
+    put(idx + 1, short1(val));
+
+    return this;
   }
 
   private final void assertWalkable(int count) {
