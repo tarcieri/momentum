@@ -92,3 +92,15 @@
 
 (deftest byte-buffer-backed-buffers
   (test-buffer (Buffer/wrap (ByteBuffer/allocate 100))))
+
+(deftest composite-buffer
+  (test-buffer
+   (Buffer/wrap
+    (Buffer/allocate 20)
+    (Buffer/allocate 20)
+    (Buffer/allocate 20)
+    (Buffer/allocate 20)
+    (Buffer/allocate 20))))
+
+(deftest wrapping-non-buffer-object
+  (is (thrown? IllegalArgumentException (Buffer/wrap 1))))

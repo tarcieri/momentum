@@ -3,6 +3,8 @@ package picard.core;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.BufferUnderflowException;
+import java.util.Arrays;
+import java.util.List;
 
 public abstract class Buffer {
 
@@ -37,6 +39,57 @@ public abstract class Buffer {
     return new ByteBufferBackedBuffer(buf, buf.position(), buf.limit(), buf.limit());
   }
 
+  public static Buffer wrap(Buffer buf) {
+    return buf;
+  }
+
+  public static Buffer wrap(Buffer[] bufs) {
+    return new CompositeBuffer(bufs);
+  }
+
+  public static Buffer wrap(List<Object> objs) {
+    Buffer[] bufs = new Buffer[objs.size()];
+
+    for (int i = 0; i < bufs.length; ++i) {
+      bufs[i] = Buffer.wrap(objs.get(i));
+    }
+
+    return new CompositeBuffer(bufs);
+  }
+
+  public static Buffer wrap(Object obj) {
+    if (obj instanceof Buffer) {
+      return (Buffer) obj;
+    }
+    else if (obj instanceof ByteBuffer) {
+      return wrap((ByteBuffer) obj);
+    }
+    else {
+      String msg = "Object " + obj + " not bufferable";
+      throw new IllegalArgumentException();
+    }
+  }
+
+  public static Buffer wrap(Object o1, Object o2) {
+    return wrap(Arrays.asList(o1, o2));
+  }
+
+  public static Buffer wrap(Object o1, Object o2, Object o3) {
+    return wrap(Arrays.asList(o1, o2, o3));
+  }
+
+  public static Buffer wrap(Object o1, Object o2, Object o3, Object o4) {
+    return wrap(Arrays.asList(o1, o2, o3, o4));
+  }
+
+  public static Buffer wrap(Object o1, Object o2, Object o3, Object o4, Object o5) {
+    return wrap(Arrays.asList(o1, o2, o3, o4, o5));
+  }
+
+  public static Buffer wrap(Object o1, Object o2, Object o3, Object o4, Object o5, Object o6) {
+    return wrap(Arrays.asList(o1, o2, o3, o4, o5, o6));
+  }
+
   protected Buffer(int pos, int lim, int cap) {
     if (cap < 0) {
       throw new IllegalArgumentException("Negative capacity: " + cap);
@@ -47,7 +100,6 @@ public abstract class Buffer {
     limit(lim);
     position(pos);
   }
-
 
   /**
    * Returns this buffer's capacity.
@@ -148,6 +200,28 @@ public abstract class Buffer {
 
   /*
    *
+   *  BUFFER based accessors
+   *
+   */
+
+  public final void get(Buffer buf) {
+    // Not implemented yet
+  }
+
+  public void get(int idx, Buffer buf) {
+    // Not implemented yet
+  }
+
+  public final void put(Buffer buf) {
+    // Not implemented yet
+  }
+
+  public void put(int idx, Buffer buf) {
+    // Not implemented yet
+  }
+
+  /*
+   *
    *  BYTE accessors
    *
    */
@@ -170,7 +244,15 @@ public abstract class Buffer {
   }
 
   // Bulk byte reading
-  public abstract void get(int idx, byte[] dst, int offset, int len);
+  public void get(int idx, byte[] dst, int offset, int len) {
+    if (idx + len > limit) {
+      throw new BufferUnderflowException();
+    }
+
+    for (int i = 0; i < len; ++i) {
+      dst[offset + i] = get(idx + i);
+    }
+  }
 
   public final void put(byte b) {
     assertWalkable(1);
@@ -189,7 +271,15 @@ public abstract class Buffer {
   }
 
   // Bulk byte writing
-  public abstract void put(int idx, byte[] src, int offset, int len);
+  public void put(int idx, byte[] src, int offset, int len) {
+    if (idx + len > limit) {
+      throw new BufferUnderflowException();
+    }
+
+    for (int i = 0; i < len; ++i) {
+      put(idx + i, src[offset + i]);
+    }
+  }
 
   /*
    *
