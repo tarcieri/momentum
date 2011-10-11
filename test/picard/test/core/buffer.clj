@@ -5,6 +5,7 @@
    java.nio.ByteBuffer
    java.nio.ByteOrder
    java.util.Arrays
+   org.jboss.netty.buffer.ChannelBuffers
    picard.core.Buffer))
 
 (def d-at-50
@@ -402,6 +403,9 @@
 
 (deftest byte-buffer-backed-buffers
   (test-buffer (Buffer/wrap (ByteBuffer/allocate 100))))
+
+(deftest channel-buffer-backed-buffers
+  (test-buffer (Buffer/wrap (ChannelBuffers/buffer 100))))
 
 (deftest composite-buffer
   (test-buffer

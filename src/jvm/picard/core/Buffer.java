@@ -6,6 +6,8 @@ import java.nio.BufferUnderflowException;
 import java.util.Arrays;
 import java.util.List;
 
+import org.jboss.netty.buffer.ChannelBuffer;
+
 public abstract class Buffer {
 
   // The buffer's current position
@@ -37,6 +39,11 @@ public abstract class Buffer {
   public static Buffer wrap(ByteBuffer buf) {
     buf = buf.duplicate();
     return new ByteBufferBackedBuffer(buf, buf.position(), buf.limit(), buf.limit());
+  }
+
+  public static Buffer wrap(ChannelBuffer buf) {
+    int cap = buf.capacity();
+    return new ChannelBufferBackedBuffer(buf, buf.readerIndex(), cap, cap);
   }
 
   public static Buffer wrap(Buffer buf) {
