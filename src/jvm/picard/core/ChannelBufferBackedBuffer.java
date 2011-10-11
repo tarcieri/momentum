@@ -12,19 +12,19 @@ public final class ChannelBufferBackedBuffer extends Buffer {
     this.buf = buf;
   }
 
-  public byte get(int idx) {
+  protected byte _get(int idx) {
     return buf.getByte(idx);
   }
 
-  public void get(int idx, byte[] dst, int offset, int len) {
+  protected void _get(int idx, byte[] dst, int offset, int len) {
     buf.getBytes(idx, dst, offset, len);
   }
 
-  public void put(int idx, byte b) {
+  protected void _put(int idx, byte b) {
     buf.setByte(idx, b);
   }
 
-  public void put(int idx, byte[] src, int offset, int len) {
+  protected void _put(int idx, byte[] src, int offset, int len) {
     buf.setBytes(idx, src, offset, len);
   }
 }

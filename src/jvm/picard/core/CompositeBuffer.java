@@ -33,7 +33,7 @@ public final class CompositeBuffer extends Buffer {
     limit = capacity;
   }
 
-  public byte get(int idx) {
+  protected byte _get(int idx) {
     int bufIdx = bufferIndex(idx);
     return bufs[bufIdx].get(idx - indices[bufIdx]);
   }
@@ -41,7 +41,7 @@ public final class CompositeBuffer extends Buffer {
   // public void get(int idx, byte [] dst, int offset, int len) {
   // }
 
-  public void put(int idx, byte b) {
+  protected void _put(int idx, byte b) {
     int bufIdx = bufferIndex(idx);
     bufs[bufIdx].put(idx - indices[bufIdx], b);
   }

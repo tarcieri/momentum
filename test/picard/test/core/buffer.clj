@@ -134,10 +134,10 @@
      (is (= (char 1234) (.getChar buf i))))
    (fn [i]
      (is (= (char 1234) (.getCharBigEndian buf)))
-     (is (= (char 1234) (.getCharBigEndian buf i))))
-   )
+     (is (= (char 1234) (.getCharBigEndian buf i)))))
 
   (.order buf ByteOrder/LITTLE_ENDIAN)
+
   ;; Getting little endian chars
 
   (in-steps-of
@@ -158,8 +158,7 @@
      (.putCharLittleEndian buf (char 1234))
      (is (= (char 1234) (.getChar buf i)))
      (.putCharLittleEndian buf i (char 1234))
-     (is (= (char 1234) (.getChar buf i))))
-   )
+     (is (= (char 1234) (.getChar buf i)))))
 
   (.order buf ByteOrder/BIG_ENDIAN)
 
@@ -181,8 +180,7 @@
      (.putLongBigEndian buf a-long)
      (is (= a-long (.getLong buf i)))
      (.putLongBigEndian buf i a-long)
-     (is (= a-long (.getLong buf i))))
-   )
+     (is (= a-long (.getLong buf i)))))
 
   (.order buf ByteOrder/LITTLE_ENDIAN)
 
@@ -204,8 +202,7 @@
      (.putLongLittleEndian buf a-long)
      (is (= a-long (.getLong buf i)))
      (.putLongLittleEndian buf i a-long)
-     (is (= a-long (.getLong buf i))))
-   )
+     (is (= a-long (.getLong buf i)))))
 
   (.order buf ByteOrder/BIG_ENDIAN)
 
@@ -400,6 +397,14 @@
 
 (deftest heap-allocated-buffers
   (test-buffer (Buffer/allocate 100)))
+
+(deftest wrapped-arry-with-offset
+  (let [arr (byte-array 102)]
+    (aset-byte arr 0 79)
+    (aset-byte arr 101 81)
+    (test-buffer (Buffer/wrapArray arr 1 100))
+    (is (= 79 (aget arr 0)))
+    (is (= 81 (aget arr 101)))))
 
 (deftest byte-buffer-backed-buffers
   (test-buffer (Buffer/wrap (ByteBuffer/allocate 100))))

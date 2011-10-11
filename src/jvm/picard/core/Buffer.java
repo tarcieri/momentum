@@ -24,7 +24,7 @@ public abstract class Buffer {
   boolean bigEndian = true;
 
   public static Buffer allocate(int cap) {
-    return new HeapBuffer(new byte[cap], 0, cap, cap);
+    return wrapArray(new byte[cap], 0, cap);
   }
 
   public static Buffer allocateDirect(int cap) {
@@ -33,7 +33,11 @@ public abstract class Buffer {
   }
 
   public static Buffer wrap(byte[] arr) {
-    return new HeapBuffer(arr, 0, arr.length, arr.length);
+    return wrapArray(arr, 0, arr.length);
+  }
+
+  public static Buffer wrapArray(byte[] arr, int offset, int len) {
+    return new HeapBuffer(arr, offset, 0, len, len);
   }
 
   public static Buffer wrap(ByteBuffer buf) {
@@ -207,6 +211,28 @@ public abstract class Buffer {
 
   /*
    *
+   *  Unchecked internal accessors
+   *
+   */
+
+  protected abstract byte _get(int idx);
+  protected abstract void _put(int idx, byte b);
+
+  protected void _get(int idx, byte[] dst, int off, int len) {
+    for (int i = 0; i < len; ++i) {
+      dst[off + i] = get(idx + i);
+    }
+  }
+
+  protected void _put(int idx, byte[] src, int off, int len) {
+    for (int i = 0; i < len; ++i) {
+      put(idx + i, src[off + i]);
+    }
+  }
+
+
+  /*
+   *
    *  BUFFER based accessors
    *
    */
@@ -241,59 +267,81 @@ public abstract class Buffer {
     return retval;
   }
 
-  // Single byte reading
-  public abstract byte get(int idx);
+  public final byte get(int idx) {
+    if (idx < 0 || idx >= capacity) {
+      throw new IndexOutOfBoundsException();
+    }
 
-  public final void get(byte[] dst, int offset, int len) {
-    assertWalkable(len);
-    get(position, dst, offset, len);
-    position += len;
+    return _get(idx);
   }
 
-  // Bulk byte reading
-  public void get(int idx, byte[] dst, int offset, int len) {
-    if (idx + len > limit) {
+  public final Buffer get(byte[] dst, int offset, int len) {
+    assertWalkable(len);
+    _get(position, dst, offset, len);
+    position += len;
+
+    return this;
+  }
+
+  public final Buffer get(int idx, byte[] dst, int offset, int len) {
+    if (idx + len > capacity) {
       throw new BufferUnderflowException();
     }
-
-    for (int i = 0; i < len; ++i) {
-      dst[offset + i] = get(idx + i);
+    else if (idx < 0 || offset + len > dst.length) {
+      throw new IndexOutOfBoundsException();
     }
+
+    _get(idx, dst, offset, len);
+
+    return this;
   }
 
-  public final void get(int idx, byte[] dst) {
-    get(idx, dst, 0, dst.length);
+  public final Buffer get(int idx, byte[] dst) {
+    return get(idx, dst, 0, dst.length);
   }
 
-  public final void put(byte b) {
+  public final Buffer put(byte b) {
     assertWalkable(1);
 
-    put(position, b);
+    _put(position, b);
     ++position;
+
+    return this;
   }
 
-  // Single byte writing
-  public abstract void put(int idx, byte b);
+  public final Buffer put(int idx, byte b) {
+    if (idx < 0 || idx >= capacity) {
+      throw new IndexOutOfBoundsException();
+    }
 
-  public final void put(byte[] src, int offset, int len) {
+    _put(idx, b);
+
+    return this;
+  }
+
+  public final Buffer put(byte[] src, int offset, int len) {
     assertWalkable(len);
-    put(position, src, offset, len);
+    _put(position, src, offset, len);
     position += len;
+
+    return this;
   }
 
-  // Bulk byte writing
-  public void put(int idx, byte[] src, int offset, int len) {
-    if (idx + len > limit) {
+  public final Buffer put(int idx, byte[] src, int offset, int len) {
+    if (idx + len > capacity) {
       throw new BufferUnderflowException();
     }
-
-    for (int i = 0; i < len; ++i) {
-      put(idx + i, src[offset + i]);
+    else if (idx < 0 || offset + len > src.length) {
+      throw new IndexOutOfBoundsException();
     }
+
+    _put(idx, src, offset, len);
+
+    return this;
   }
 
-  public void put(int idx, byte[] src) {
-    put(idx, src, 0, src.length);
+  public final Buffer put(int idx, byte[] src) {
+    return put(idx, src, 0, src.length);
   }
 
   /*

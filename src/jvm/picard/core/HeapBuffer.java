@@ -2,27 +2,29 @@ package picard.core;
 
 public final class HeapBuffer extends Buffer {
 
+  final int offset;
   final byte [] arr;
 
-  protected HeapBuffer(byte [] arr, int pos, int lim, int cap) {
+  protected HeapBuffer(byte [] arr, int offset, int pos, int lim, int cap) {
     super(pos, lim, cap);
 
-    this.arr = arr;
+    this.offset = offset;
+    this.arr    = arr;
   }
 
-  public byte get(int idx) {
-    return arr[idx];
+  public byte _get(int idx) {
+    return arr[offset + idx];
   }
 
-  public void get(int idx, byte[] dst, int offset, int len) {
-    System.arraycopy(arr, idx, dst, offset, len);
+  protected void _get(int idx, byte[] dst, int off, int len) {
+    System.arraycopy(arr, offset + idx, dst, off, len);
   }
 
-  public void put(int idx, byte b) {
-    arr[idx] = b;
+  protected void _put(int idx, byte b) {
+    arr[offset + idx] = b;
   }
 
-  public void put(int idx, byte[] src, int offset, int len) {
-    System.arraycopy(src, offset, arr, idx, len);
+  protected void _put(int idx, byte[] src, int off, int len) {
+    System.arraycopy(src, off, arr, offset + idx, len);
   }
 }
