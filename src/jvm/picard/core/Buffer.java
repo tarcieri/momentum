@@ -254,6 +254,10 @@ public abstract class Buffer {
     }
   }
 
+  public final void get(int idx, byte[] dst) {
+    get(idx, dst, 0, dst.length);
+  }
+
   public final void put(byte b) {
     assertWalkable(1);
 
@@ -279,6 +283,10 @@ public abstract class Buffer {
     for (int i = 0; i < len; ++i) {
       put(idx + i, src[offset + i]);
     }
+  }
+
+  public void put(int idx, byte[] src) {
+    put(idx, src, 0, src.length);
   }
 
   /*
@@ -676,8 +684,12 @@ public abstract class Buffer {
     return makeShort(get(idx + 1), get(idx));
   }
 
-  public final Buffer putShort(int idx, short val) {
+  public final Buffer putShort(short val) {
     return bigEndian ? putShortBigEndian(val) : putShortLittleEndian(val);
+  }
+
+  public final Buffer putShort(int idx, short val) {
+    return bigEndian ? putShortBigEndian(idx, val) : putShortLittleEndian(idx, val);
   }
 
   public final Buffer putShortBigEndian(short val) {
