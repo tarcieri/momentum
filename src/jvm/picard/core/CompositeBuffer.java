@@ -92,14 +92,38 @@ public final class CompositeBuffer extends Buffer {
     return bufs[bufIdx].get(idx - indices[bufIdx]);
   }
 
-  // public void get(int idx, byte [] dst, int offset, int len) {
-  // }
+  public void _get(int idx, byte [] dst, int off, int len) {
+    if (idx >= currentCapacity) {
+      Arrays.fill(dst, off, off + len, (byte) 0);
+      return;
+    }
+
+    int bufIdx = bufferIndex(idx);
+
+    while (len > 0) {
+      int nextIdx = indices[bufIdx + 1];
+      int chunk   = Math.min(nextIdx - idx, len);
+
+      bufs[bufIdx]._get(idx - indices[bufIdx], dst, off, chunk);
+
+      idx  = nextIdx;
+      off += chunk;
+      len -= chunk;
+
+      if (idx >= currentCapacity) {
+        Arrays.fill(dst, off, off + len, (byte) 0);
+        return;
+      }
+
+      ++bufIdx;
+    }
+  }
 
   protected void _put(int idx, byte b) {
     int bufIdx;
 
     if (idx >= currentCapacity) {
-      bufIdx = growTo(idx);
+      bufIdx = growTo(idx, 1);
     }
     else {
       bufIdx = bufferIndex(idx);
@@ -108,8 +132,33 @@ public final class CompositeBuffer extends Buffer {
     bufs[bufIdx].put(idx - indices[bufIdx], b);
   }
 
-  // public void put(int idx, byte [] src, int offset, int len) {
-  // }
+  public void _put(int idx, byte [] src, int off, int len) {
+    int bufIdx;
+
+    if (idx >= currentCapacity) {
+      bufIdx = growTo(idx, len);
+    }
+    else {
+      if (idx + len > currentCapacity) {
+        growTo(idx, len);
+      }
+
+      bufIdx = bufferIndex(idx);
+    }
+
+    while (len > 0) {
+      int nextIdx = indices[bufIdx + 1];
+      int chunk   = Math.min(nextIdx - idx, len);
+
+      bufs[bufIdx]._put(idx - indices[bufIdx], src, off, chunk);
+
+      idx  = nextIdx;
+      off += chunk;
+      len -= chunk;
+
+      ++bufIdx;
+    }
+  }
 
   private int bufferIndex(int idx) {
     // First, make sure that the index is within the bounds fo the buffer.
@@ -129,7 +178,7 @@ public final class CompositeBuffer extends Buffer {
       do {
         ++bufferIdx;
       } while (indices[bufferIdx + 1] < idx);
-  }
+    }
     else {
       // Search left
       do {
@@ -141,12 +190,12 @@ public final class CompositeBuffer extends Buffer {
     return bufferIdx;
   }
 
-  private int growTo(int idx) {
+  private int growTo(int idx, int padding) {
     // Calculate the new buffer capacity. This will be at least twice the size
     // of the current buffer. However, we should ensure that the current write
     // can fit after the buffer grows, so if the required index is larger, just
     // use that.
-    int newCapacity = Math.max(idx + 1, currentCapacity * 2);
+    int newCapacity = Math.max(idx + padding, currentCapacity * 2);
 
     // Make sure that we haven't filled up our current buffer & index lookup
     // arrays. If we have, create new ones.

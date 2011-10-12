@@ -49,4 +49,14 @@ public final class HeapBuffer extends Buffer {
   protected void _put(int idx, byte[] src, int off, int len) {
     System.arraycopy(src, off, arr, offset + idx, len);
   }
+
+  protected void _put(int idx, Buffer src, int off, int len) {
+    if (src instanceof HeapBuffer) {
+      HeapBuffer s = (HeapBuffer) src;
+      System.arraycopy(s.arr, s.offset + off, arr, offset + idx, len);
+    }
+    else {
+      src._get(off, arr, offset + idx, len);
+    }
+  }
 }

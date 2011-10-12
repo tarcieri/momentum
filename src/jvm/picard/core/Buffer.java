@@ -357,10 +357,9 @@ public abstract class Buffer {
     }
   }
 
-  protected void _put(int idx, Buffer dst, int off, int len) {
+  protected void _put(int idx, Buffer src, int off, int len) {
     for (int i = 0; i < len; ++i) {
-      _put(idx + i, dst._get(off + i));
-      // dst._put(off + i, _get(idx + i));
+      _put(idx + i, src._get(off + i));
     }
   }
 
