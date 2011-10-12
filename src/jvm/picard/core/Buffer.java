@@ -32,6 +32,36 @@ public abstract class Buffer {
     return new ByteBufferBackedBuffer(buf, 0, cap, cap);
   }
 
+  public static Buffer wrapDynamic(Buffer buf, int max) {
+    return wrapDynamic(new Buffer[] { buf }, max);
+  }
+
+  public static Buffer wrapDynamic(Buffer[] bufs, int max) {
+    return new CompositeBuffer(bufs, max);
+  }
+
+  public static Buffer wrapDynamic(List<Object> objs, int max) {
+    Buffer[] bufs = new Buffer[objs.size()];
+
+    for (int i = 0; i < bufs.length; ++i) {
+      bufs[i] = Buffer.wrap(objs.get(i));
+    }
+
+    return wrapDynamic(bufs, max);
+  }
+
+  public static Buffer dynamic() {
+    return dynamic(1024, Integer.MAX_VALUE);
+  }
+
+  public static Buffer dynamic(int est) {
+    return dynamic(est, Integer.MAX_VALUE);
+  }
+
+  public static Buffer dynamic(int est, int max) {
+    return new CompositeBuffer(new Buffer[] { Buffer.allocate(est) }, max);
+  }
+
   public static Buffer wrap(byte[] arr) {
     return wrapArray(arr, 0, arr.length);
   }
@@ -55,17 +85,11 @@ public abstract class Buffer {
   }
 
   public static Buffer wrap(Buffer[] bufs) {
-    return new CompositeBuffer(bufs);
+    return wrapDynamic(bufs, 0);
   }
 
   public static Buffer wrap(List<Object> objs) {
-    Buffer[] bufs = new Buffer[objs.size()];
-
-    for (int i = 0; i < bufs.length; ++i) {
-      bufs[i] = Buffer.wrap(objs.get(i));
-    }
-
-    return new CompositeBuffer(bufs);
+    return wrapDynamic(objs, 0);
   }
 
   public static Buffer wrap(Object obj) {

@@ -421,5 +421,11 @@
     (Buffer/allocate 20)
     (Buffer/allocate 20))))
 
+(deftest dynamic-buffer
+  (let [buf (Buffer/dynamic 1 100)]
+    (is (= 1 (.limit buf)))
+    (.limit buf 100)
+    (test-buffer buf)))
+
 (deftest wrapping-non-buffer-object
   (is (thrown? IllegalArgumentException (Buffer/wrap 1))))
