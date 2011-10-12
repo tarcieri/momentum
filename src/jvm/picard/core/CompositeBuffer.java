@@ -1,7 +1,11 @@
 package picard.core;
 
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
+
+import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.buffer.ChannelBuffers;
 
 public final class CompositeBuffer extends Buffer {
 
@@ -36,6 +40,47 @@ public final class CompositeBuffer extends Buffer {
 
     this.capacity = Math.max(capacity, currentCapacity);
     limit         = currentCapacity;
+  }
+
+  public ByteBuffer toByteBuffer() {
+    if (bufCount == 1) {
+      ByteBuffer buf = bufs[0].toByteBuffer();
+
+      buf.position(position());
+      buf.limit(limit());
+      buf.order(order());
+
+      return buf;
+    }
+    else {
+      return super.toByteBuffer();
+    }
+  }
+
+  public ChannelBuffer toChannelBuffer() {
+    ByteBuffer[] arr = new ByteBuffer[bufCount];
+    ByteBuffer curr;
+
+    for (int i = 0; i < bufCount; ++i) {
+      curr = bufs[i].toByteBuffer();
+      curr.order(order());
+      arr[i] = curr;
+    }
+
+    return ChannelBuffers.wrappedBuffer(arr);
+  }
+
+  public byte[] toByteArray() {
+    if (bufCount == 1) {
+      return bufs[0].toByteArray();
+    }
+    else {
+      byte[] arr = new byte[currentCapacity];
+
+      _get(0, arr, 0, currentCapacity);
+
+      return arr;
+    }
   }
 
   protected byte _get(int idx) {

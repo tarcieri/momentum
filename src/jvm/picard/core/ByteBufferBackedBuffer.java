@@ -1,6 +1,10 @@
 package picard.core;
 
 import java.nio.ByteBuffer;
+import java.util.Arrays;
+
+import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.buffer.ChannelBuffers;
 
 public final class ByteBufferBackedBuffer extends Buffer {
 
@@ -10,6 +14,29 @@ public final class ByteBufferBackedBuffer extends Buffer {
     super(pos, lim, cap);
 
     this.buf = buf;
+  }
+
+  public ByteBuffer toByteBuffer() {
+    buf.position(position());
+    buf.limit(limit());
+    buf.order(order());
+
+    return buf.duplicate();
+  }
+
+  public byte[] toByteArray() {
+    if (buf.hasArray() && buf.arrayOffset() == 0) {
+      byte[] ret = buf.array();
+
+      if (ret.length == capacity) {
+        return ret;
+      }
+      else {
+        return Arrays.copyOf(ret, capacity);
+      }
+    }
+
+    return super.toByteArray();
   }
 
   protected byte _get(int idx) {

@@ -2,11 +2,14 @@ package picard.core;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.BufferOverflowException;
 import java.nio.BufferUnderflowException;
+import java.nio.ReadOnlyBufferException;
 import java.util.Arrays;
 import java.util.List;
 
 import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.buffer.ChannelBuffers;
 
 public abstract class Buffer {
 
@@ -71,13 +74,23 @@ public abstract class Buffer {
   }
 
   public static Buffer wrap(ByteBuffer buf) {
-    buf = buf.duplicate();
-    return new ByteBufferBackedBuffer(buf, buf.position(), buf.limit(), buf.limit());
+    if (buf.hasArray()) {
+      return wrapArray(buf.array(), buf.arrayOffset(), buf.limit());
+    }
+    else {
+      buf = buf.duplicate();
+      return new ByteBufferBackedBuffer(buf, buf.position(), buf.limit(), buf.limit());
+    }
   }
 
   public static Buffer wrap(ChannelBuffer buf) {
-    int cap = buf.capacity();
-    return new ChannelBufferBackedBuffer(buf, buf.readerIndex(), cap, cap);
+    if (buf.hasArray()) {
+      return wrapArray(buf.array(), buf.arrayOffset(), buf.capacity());
+    }
+    else {
+      int cap = buf.capacity();
+      return new ChannelBufferBackedBuffer(buf, buf.readerIndex(), cap, cap);
+    }
   }
 
   public static Buffer wrap(Buffer buf) {
@@ -99,28 +112,91 @@ public abstract class Buffer {
     else if (obj instanceof ByteBuffer) {
       return wrap((ByteBuffer) obj);
     }
+    else if (obj instanceof ChannelBuffer) {
+      return wrap((ChannelBuffer) obj);
+    }
     else {
       String msg = "Object " + obj + " not bufferable";
       throw new IllegalArgumentException();
     }
   }
 
+  /**
+   * Returns a Buffer wrapping the arguments.
+   *
+   * The new buffer will be backed by the given objects. Any modification to
+   * the underlying objects will cause the buffer to be modified and vice
+   * versa.
+   *
+   * @return The new buffer
+   *
+   * @throws IllegalArgumentException
+   *         If any of the arguments cannot be wrapped by a Buffer.
+   */
   public static Buffer wrap(Object o1, Object o2) {
     return wrap(Arrays.asList(o1, o2));
   }
 
+  /**
+   * Returns a Buffer wrapping the arguments.
+   *
+   * The new buffer will be backed by the given objects. Any modification to
+   * the underlying objects will cause the buffer to be modified and vice
+   * versa.
+   *
+   * @return The new buffer
+   *
+   * @throws IllegalArgumentException
+   *         If any of the arguments cannot be wrapped by a Buffer.
+   */
   public static Buffer wrap(Object o1, Object o2, Object o3) {
     return wrap(Arrays.asList(o1, o2, o3));
   }
 
+  /**
+   * Returns a Buffer wrapping the arguments.
+   *
+   * The new buffer will be backed by the given objects. Any modification to
+   * the underlying objects will cause the buffer to be modified and vice
+   * versa.
+   *
+   * @return The new buffer
+   *
+   * @throws IllegalArgumentException
+   *         If any of the arguments cannot be wrapped by a Buffer.
+   */
   public static Buffer wrap(Object o1, Object o2, Object o3, Object o4) {
     return wrap(Arrays.asList(o1, o2, o3, o4));
   }
 
+  /**
+   * Returns a Buffer wrapping the arguments.
+   *
+   * The new buffer will be backed by the given objects. Any modification to
+   * the underlying objects will cause the buffer to be modified and vice
+   * versa.
+   *
+   * @return The new buffer
+   *
+   * @throws IllegalArgumentException
+   *         If any of the arguments cannot be wrapped by a Buffer.
+   */
   public static Buffer wrap(Object o1, Object o2, Object o3, Object o4, Object o5) {
     return wrap(Arrays.asList(o1, o2, o3, o4, o5));
   }
 
+  /**
+   * Returns a Buffer wrapping the arguments.
+   *
+   * The new buffer will be backed by the given objects. Any modification to
+   * the underlying objects will cause the buffer to be modified and vice
+   * versa.
+   *
+   * @return The new buffer
+   *
+   * @throws IllegalArgumentException
+   *         If any of the arguments cannot be wrapped by a Buffer.
+   */
   public static Buffer wrap(Object o1, Object o2, Object o3, Object o4, Object o5, Object o6) {
     return wrap(Arrays.asList(o1, o2, o3, o4, o5, o6));
   }
@@ -195,6 +271,10 @@ public abstract class Buffer {
     return this;
   }
 
+  public final Buffer window(int pos, int len) {
+    return position(pos).limit(pos + len);
+  }
+
   public final Buffer flip() {
     limit = position;
     position = 0;
@@ -235,6 +315,29 @@ public abstract class Buffer {
 
   /*
    *
+   *  Conversions
+   *
+   */
+
+  public ByteBuffer toByteBuffer() {
+    return ByteBuffer.wrap(toByteArray());
+  }
+
+  public ChannelBuffer toChannelBuffer() {
+    return ChannelBuffers.wrappedBuffer(toByteBuffer());
+  }
+
+  // Stuff
+  public byte[] toByteArray() {
+    byte[] arr = new byte[capacity];
+
+    _get(0, arr, 0, capacity);
+
+    return arr;
+  }
+
+  /*
+   *
    *  Unchecked internal accessors
    *
    */
@@ -244,13 +347,20 @@ public abstract class Buffer {
 
   protected void _get(int idx, byte[] dst, int off, int len) {
     for (int i = 0; i < len; ++i) {
-      dst[off + i] = get(idx + i);
+      dst[off + i] = _get(idx + i);
     }
   }
 
   protected void _put(int idx, byte[] src, int off, int len) {
     for (int i = 0; i < len; ++i) {
-      put(idx + i, src[off + i]);
+      _put(idx + i, src[off + i]);
+    }
+  }
+
+  protected void _put(int idx, Buffer dst, int off, int len) {
+    for (int i = 0; i < len; ++i) {
+      _put(idx + i, dst._get(off + i));
+      // dst._put(off + i, _get(idx + i));
     }
   }
 
@@ -261,20 +371,107 @@ public abstract class Buffer {
    *
    */
 
-  public final void get(Buffer buf) {
-    // Not implemented yet
+  /**
+   * Relative bulk get method
+   *
+   * Transfers bytes from this buffer into the given destination buffer. This
+   * method advances the position of both this buffer and the destination
+   * buffer.
+   *
+   * @return The new buffer
+   *
+   * @throws BufferUnderflowException
+   *         If there are fewer than dst.remaining() bytes in this buffer
+   * @throws BufferOverflowException
+   *         If there is insufficient space in the destination buffer for the
+   *         remaining bytes in the current buffer.
+   * @throws ReadOnlyBufferException
+   *         If the destination buffer is read-only.
+   */
+  public final Buffer get(Buffer dst) {
+    int remaining = remaining();
+
+    if (remaining == 0) {
+      return this;
+    }
+    else if (dst.remaining() < remaining) {
+      throw new BufferOverflowException();
+    }
+
+    dst._put(dst.position, this, position, remaining);
+
+    position     += remaining;
+    dst.position += remaining;
+
+    return this;
   }
 
-  public void get(int idx, Buffer buf) {
-    // Not implemented yet
+  public final Buffer get(Buffer dst, int off) {
+    return get(dst, off, remaining());
   }
 
-  public final void put(Buffer buf) {
-    // Not implemented yet
+  public final Buffer get(Buffer dst, int off, int len) {
+    int remaining = remaining();
+
+    if (remaining < len) {
+      throw new BufferUnderflowException();
+    }
+    else if (dst.capacity < off + len) {
+      throw new IndexOutOfBoundsException();
+    }
+
+    dst._put(off, this, position, len);
+    position += len;
+
+    return this;
   }
 
-  public void put(int idx, Buffer buf) {
-    // Not implemented yet
+  public final Buffer get(int idx, Buffer dst, int off, int len) {
+    if (capacity < idx + len) {
+      throw new BufferUnderflowException();
+    }
+
+    if (dst.capacity < off + len) {
+      throw new BufferOverflowException();
+    }
+
+    dst._put(off, this, idx, len);
+
+    return this;
+  }
+
+  public final Buffer put(Buffer src) {
+    int len = src.remaining();
+
+    put(position, src, src.position, len);
+    position     += len;
+    src.position += len;
+
+    return this;
+  }
+
+  public final Buffer put(Buffer src, int off) {
+    return put(src, off, remaining());
+  }
+
+  public final Buffer put(Buffer src, int off, int len) {
+    put(position, src, off, len);
+    position += len;
+
+    return this;
+  }
+
+  public final Buffer put(int idx, Buffer src, int off, int len) {
+    if (capacity < idx + len) {
+      throw new BufferUnderflowException();
+    }
+    else if (src.capacity < off + len) {
+      throw new BufferOverflowException();
+    }
+
+    _put(idx, src, off, len);
+
+    return this;
   }
 
   /*
@@ -297,6 +494,10 @@ public abstract class Buffer {
     }
 
     return _get(idx);
+  }
+
+  public final Buffer get(byte[] dst) {
+    return get(dst, 0, dst.length);
   }
 
   public final Buffer get(byte[] dst, int offset, int len) {
@@ -341,6 +542,10 @@ public abstract class Buffer {
     _put(idx, b);
 
     return this;
+  }
+
+  public final Buffer put(byte[] src) {
+    return put(src, 0, src.length);
   }
 
   public final Buffer put(byte[] src, int offset, int len) {
@@ -791,6 +996,12 @@ public abstract class Buffer {
     put(idx + 1, short1(val));
 
     return this;
+  }
+
+  private final void assertHolds(Buffer buf, int count) {
+    if (buf.remaining() < count) {
+      throw new BufferOverflowException();
+    }
   }
 
   private final void assertWalkable(int count) {

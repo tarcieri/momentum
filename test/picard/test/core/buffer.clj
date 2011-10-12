@@ -4,9 +4,16 @@
   (:import
    java.nio.ByteBuffer
    java.nio.ByteOrder
+   java.nio.BufferOverflowException
+   java.nio.BufferUnderflowException
    java.util.Arrays
+   org.jboss.netty.buffer.ChannelBuffer
    org.jboss.netty.buffer.ChannelBuffers
    picard.core.Buffer))
+
+;; ==== HELPERS
+
+(def blank (byte-array 100))
 
 (def d-at-50
   (doto (byte-array 100)
@@ -34,6 +41,14 @@
 (def a-int    (int    1199546451))
 (def a-short  (short  1234))
 
+(defn- mk-channel-buffer
+  [size]
+  (ChannelBuffers/wrappedBuffer
+   (into-array
+    [(ByteBuffer/allocate 1)
+     (ByteBuffer/allocate 1)
+     (ByteBuffer/allocate (- size 2))])))
+
 (defn- mk-arr
   [size order f]
   (let [buf (ByteBuffer/allocate size)
@@ -48,11 +63,23 @@
         (recur)))
     (.array buf)))
 
-(defn- get-arr
-  [buf idx len]
-  (let [arr (byte-array len)]
-    (.get buf idx arr)
-    arr))
+(defn- arr-get
+  ([buf idx len pad]
+     (Arrays/copyOf (arr-get buf idx len) (+ len pad)))
+  ([buf idx len]
+     (let [arr (byte-array len)]
+       (.get buf idx arr)
+       arr)))
+
+(defn- arr=
+  [a b]
+  (Arrays/equals a b))
+
+(defn- arr-range
+  ([a from len pad]
+     (Arrays/copyOf (arr-range a from len) (+ len pad)))
+  ([a from len]
+     (Arrays/copyOfRange a from (+ from len))))
 
 (defn- in-steps-of
     [base step buf & fns]
@@ -64,6 +91,8 @@
 
         (dotimes [j (/ 80 step)]
           (f (+ i (* step j)))))))
+
+;; ==== COMMON TESTS
 
 (defn- test-buffer
   [buf]
@@ -79,7 +108,7 @@
   (is (= 0 (.position buf)))
 
   ;; Absolute multibyte get / put
-  (is (Arrays/equals (get-arr buf 0 100) d-at-50))
+  (is (arr= (arr-get buf 0 100) d-at-50))
 
   (.put buf 0 F-at-60 0 100)
   (dotimes [i 60]
@@ -113,7 +142,7 @@
   (is (= 100 (.limit buf)))
   (is (= 100 (.capacity buf)))
 
-  (is (Arrays/equals (get-arr buf 0 100) increasing))
+  (is (arr= (arr-get buf 0 100) increasing))
 
   (.flip buf)
 
@@ -124,6 +153,8 @@
   (dotimes [i 100]
     (is (= (.position buf i)))
     (is (= (- 100 i) (.get buf))))
+
+  ;; Relative multibyte get / put
 
   ;; Getting big endian chars
   (in-steps-of
@@ -395,8 +426,205 @@
   (.limit buf 50)
   (is (thrown? IllegalArgumentException (.position buf 51))))
 
+(defn- test-transfers
+  [a b]
+  (let [reset
+        (fn []
+          (.clear a)
+          (.clear b)
+          (.put a 0 blank)
+          (.put b 0 blank))]
+
+    (reset)
+
+    (.put a 0 increasing)
+    (.get a b)
+
+    (is (= 100 (.position a) (.position b)))
+    (is (= 100 (.limit a) (.limit b)))
+
+    (is (arr= increasing (arr-get b 0 100)))
+
+    (reset)
+
+    (.put a 0 increasing)
+    (.put b a)
+
+    (is (= 100 (.position a) (.position b)))
+    (is (= 100 (.limit a) (.limit b)))
+
+    (is (arr= increasing (arr-get b 0 100)))
+
+    (reset)
+
+    (.put a 0 increasing)
+
+    (.window a 20 10)
+    (.window b 45 10)
+
+    (.get a b)
+
+    (is (= 30 (.position a)))
+    (is (= 55 (.position b)))
+
+    (is (arr= (arr-get b 0 45) (arr-range blank 0 45)))
+    (is (arr= (arr-get b 45 55) (arr-range increasing 20 10 45)))
+
+    (reset)
+
+    (.put a 0 increasing)
+
+    (.window a 20 10)
+    (.window b 45 10)
+
+    (.put b a)
+
+    (is (= 30 (.position a)))
+    (is (= 55 (.position b)))
+
+    (is (arr= (arr-get b 0 45) (arr-range blank 0 45)))
+    (is (arr= (arr-get b 45 55) (arr-range increasing 20 10 45)))
+
+    (reset)
+
+    (.put a 0 increasing)
+    (.get a b 0)
+
+    (is (= 100 (.position a)))
+    (is (= 0 (.position b)))
+
+    (is (arr= increasing (arr-get b 0 100)))
+
+    (reset)
+
+    (.put a 0 increasing)
+    (.put b a 0)
+
+    (is (= 0 (.position a)))
+    (is (= 100 (.position b)))
+
+    (is (arr= increasing (arr-get b 0 100)))
+
+    (reset)
+
+    (.put a 0 increasing)
+    (.limit a 95)
+    (.get a b 5)
+
+    (is (= 95 (.position a)))
+    (is (= 0 (.position b)))
+
+    (is (arr= (arr-get b 5 90 10)
+              (arr-range increasing 0 90 10)))
+
+    (reset)
+
+    (.put a 0 increasing)
+    (.limit b 90)
+    (.put b a 5)
+
+    (is (= 90 (.position b)))
+    (is (= 0 (.position a)))
+
+    (is (arr= (arr-get b 0 90 10)
+              (arr-range increasing 5 90 10)))
+
+    (reset)
+
+    (.put a 0 increasing)
+    (.get a 5 b 6 90)
+
+    (is (= 0 (.position a) (.position b)))
+
+    (is (arr= (arr-get b 6 90)
+              (arr-range increasing 5 90)))
+
+    (reset)
+
+    (.put a 0 increasing)
+    (.put b 5 a 6 90)
+
+    (is (= 0 (.position a) (.position b)))
+
+    ;; Start is blank
+    (is (arr= (arr-get b 0 5) (arr-range blank 0 5)))
+    ;; End is blank
+    (is (arr= (arr-get b 95 5) (arr-range blank 0 5)))
+    ;; Middle is filled
+    (is (arr= (arr-get b 5 90 10)
+              (arr-range increasing 6 90 10)))
+
+    (reset)
+
+    (is (thrown?
+         BufferUnderflowException
+         (.get a 90 b 0 20)))
+
+    (is (thrown?
+         BufferOverflowException
+         (.get a 0 b 90 20)))
+
+    (.window a 0 100)
+    (.window b 0 40)
+    (is (thrown?
+         BufferOverflowException
+         (.get a b)))))
+
+;; TODO:
+;; * get(byte[])
+;; * put(byte[])
+
 (deftest heap-allocated-buffers
   (test-buffer (Buffer/allocate 100)))
+
+(deftest converting-heap-allocated-buffers
+  (let [buf (Buffer/allocate 100)]
+    (.put buf d-at-50)
+    (.flip buf)
+
+    (is (= (.toByteBuffer buf)
+           (ByteBuffer/wrap d-at-50)))
+
+    (is (= (.toChannelBuffer buf)
+           (ChannelBuffers/wrappedBuffer d-at-50)))
+
+    (is (arr= (.toByteArray buf) d-at-50)))
+
+  (let [buf (Buffer/wrapArray d-at-50 5 95)]
+    (is (= (.toByteBuffer buf)
+           (ByteBuffer/wrap d-at-50 5 95)))
+
+    (is (= (.toChannelBuffer buf)
+           (ChannelBuffers/wrappedBuffer d-at-50 5 95)))
+
+    (is (arr= (.toByteArray buf)
+                       (Arrays/copyOfRange d-at-50 5 95))))
+
+  (let [buf (Buffer/wrapArray d-at-50 0 95)]
+    (is (= (.toByteBuffer buf)
+           (ByteBuffer/wrap d-at-50 0 95)))
+
+    (is (= (.toChannelBuffer buf)
+           (ChannelBuffers/wrappedBuffer d-at-50 0 95)))
+
+    (is (arr= (.toByteArray buf)
+                       (Arrays/copyOf d-at-50 95)))))
+
+(deftest direct-allocated-buffers
+  (test-buffer (Buffer/allocateDirect 100)))
+
+(deftest converting-byte-buffer-backed-buffers
+  (let [buf (Buffer/allocateDirect 100)]
+    (.put buf d-at-50)
+    (.flip buf)
+
+    (is (= (.toByteBuffer buf)
+           (ByteBuffer/wrap d-at-50)))
+
+    (is (= (.toChannelBuffer buf)
+           (ChannelBuffers/wrappedBuffer d-at-50)))
+
+    (is (arr= (.toByteArray buf) d-at-50))))
 
 (deftest wrapped-arry-with-offset
   (let [arr (byte-array 102)]
@@ -429,3 +657,85 @@
 
 (deftest wrapping-non-buffer-object
   (is (thrown? IllegalArgumentException (Buffer/wrap 1))))
+
+
+;;
+;; === Transfers ===
+;;
+
+(deftest heap-buffer-transfers
+  (test-transfers
+   (Buffer/allocate 100)
+   (Buffer/allocate 100))
+
+  (test-transfers
+   (Buffer/allocate 100)
+   (Buffer/allocateDirect 100))
+
+  (test-transfers
+   (Buffer/allocate 100)
+   (Buffer/wrap
+    (mk-channel-buffer 100)))
+
+  (test-transfers
+   (Buffer/allocate 100)
+   (Buffer/wrap
+    (Buffer/allocate 20)
+    (Buffer/allocate 50)
+    (Buffer/allocate 30))))
+
+(deftest byte-buffer-transfers
+  (test-transfers
+   (Buffer/allocateDirect 100)
+   (Buffer/allocateDirect 100))
+
+  (test-transfers
+   (Buffer/allocateDirect 100)
+   (Buffer/allocate 100))
+
+  (test-transfers
+   (Buffer/allocateDirect 100)
+   (Buffer/wrap
+    (mk-channel-buffer 100)))
+
+  (test-transfers
+   (Buffer/allocateDirect 100)
+   (Buffer/wrap
+    (Buffer/allocate 20)
+    (Buffer/allocateDirect 30)
+    (Buffer/wrap
+     (Buffer/allocate 20)
+     (Buffer/allocate 30)))))
+
+(deftest composite-transfers
+  (test-transfers
+   (Buffer/wrap
+    (Buffer/allocate 30)
+    (Buffer/allocate 30)
+    (Buffer/allocate 40))
+   (Buffer/wrap
+    (Buffer/allocate 40)
+    (Buffer/allocate 20)
+    (Buffer/allocate 40)))
+
+  (test-transfers
+   (Buffer/wrap
+    (Buffer/allocate 30)
+    (Buffer/allocate 30)
+    (Buffer/allocate 40))
+   (Buffer/allocate 100))
+
+  (test-transfers
+   (Buffer/wrap
+    (Buffer/allocate 30)
+    (Buffer/allocate 30)
+    (Buffer/allocate 40))
+   (Buffer/allocateDirect 100))
+
+  (test-transfers
+   (Buffer/wrap
+    (Buffer/allocate 30)
+    (Buffer/allocate 30)
+    (Buffer/allocate 40))
+   (Buffer/wrap
+    (mk-channel-buffer 100))))

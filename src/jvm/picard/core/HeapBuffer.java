@@ -1,5 +1,11 @@
 package picard.core;
 
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+
+import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.buffer.ChannelBuffers;
+
 public final class HeapBuffer extends Buffer {
 
   final int offset;
@@ -10,6 +16,22 @@ public final class HeapBuffer extends Buffer {
 
     this.offset = offset;
     this.arr    = arr;
+  }
+
+  public ByteBuffer toByteBuffer() {
+    return ByteBuffer.wrap(arr, offset, capacity);
+  }
+
+  public ChannelBuffer toChannelBuffer() {
+    return ChannelBuffers.wrappedBuffer(arr, offset, capacity);
+  }
+
+  public byte[] toByteArray() {
+    if (offset == 0 && capacity == arr.length) {
+      return arr;
+    }
+
+    return Arrays.copyOfRange(arr, offset, capacity);
   }
 
   public byte _get(int idx) {
