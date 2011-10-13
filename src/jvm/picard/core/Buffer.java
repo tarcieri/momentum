@@ -6,7 +6,8 @@ import java.nio.BufferOverflowException;
 import java.nio.BufferUnderflowException;
 import java.nio.ReadOnlyBufferException;
 import java.util.Arrays;
-import java.util.List;
+import java.util.Collection;
+import java.util.Iterator;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
@@ -43,11 +44,14 @@ public abstract class Buffer {
     return new CompositeBuffer(bufs, max);
   }
 
-  public static Buffer wrapDynamic(List<Object> objs, int max) {
-    Buffer[] bufs = new Buffer[objs.size()];
+  public static Buffer wrapDynamic(Collection<Object> objs, int max) {
+    Buffer[] bufs     = new Buffer[objs.size()];
+    Iterator iterator = objs.iterator();
 
-    for (int i = 0; i < bufs.length; ++i) {
-      bufs[i] = Buffer.wrap(objs.get(i));
+    int i = 0;
+    while (iterator.hasNext()) {
+      bufs[i] = Buffer.wrap(iterator.next());
+      ++i;
     }
 
     return wrapDynamic(bufs, max);
@@ -101,7 +105,7 @@ public abstract class Buffer {
     return wrapDynamic(bufs, 0);
   }
 
-  public static Buffer wrap(List<Object> objs) {
+  public static Buffer wrap(Collection<Object> objs) {
     return wrapDynamic(objs, 0);
   }
 
