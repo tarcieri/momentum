@@ -1,5 +1,6 @@
 package picard.core;
 
+import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.BufferOverflowException;
@@ -27,13 +28,16 @@ public abstract class Buffer {
   // The byte order that any multibyte reads will use.
   boolean bigEndian = true;
 
+  // Whether the buffer is frozen or not
+  boolean isFrozen;
+
   public static Buffer allocate(int cap) {
     return wrapArray(new byte[cap], 0, cap);
   }
 
   public static Buffer allocateDirect(int cap) {
     ByteBuffer buf = ByteBuffer.allocateDirect(cap);
-    return new ByteBufferBackedBuffer(buf, 0, cap, cap);
+    return new ByteBufferBackedBuffer(buf, 0, cap, cap, false);
   }
 
   public static Buffer wrapDynamic(Buffer buf, int max) {
@@ -41,7 +45,7 @@ public abstract class Buffer {
   }
 
   public static Buffer wrapDynamic(Buffer[] bufs, int max) {
-    return new CompositeBuffer(bufs, max);
+    return new CompositeBuffer(bufs, max, false);
   }
 
   public static Buffer wrapDynamic(Collection<Object> objs, int max) {
@@ -66,7 +70,7 @@ public abstract class Buffer {
   }
 
   public static Buffer dynamic(int est, int max) {
-    return new CompositeBuffer(new Buffer[] { Buffer.allocate(est) }, max);
+    return new CompositeBuffer(new Buffer[] { Buffer.allocate(est) }, max, false);
   }
 
   public static Buffer wrap(byte[] arr) {
@@ -74,7 +78,7 @@ public abstract class Buffer {
   }
 
   public static Buffer wrapArray(byte[] arr, int offset, int len) {
-    return new HeapBuffer(arr, offset, 0, len, len);
+    return new HeapBuffer(arr, offset, 0, len, len, false);
   }
 
   public static Buffer wrap(ByteBuffer buf) {
@@ -83,7 +87,7 @@ public abstract class Buffer {
     }
     else {
       buf = buf.duplicate();
-      return new ByteBufferBackedBuffer(buf, buf.position(), buf.limit(), buf.limit());
+      return new ByteBufferBackedBuffer(buf, buf.position(), buf.limit(), buf.limit(), false);
     }
   }
 
@@ -93,12 +97,12 @@ public abstract class Buffer {
     }
     else {
       int cap = buf.capacity();
-      return new ChannelBufferBackedBuffer(buf, buf.readerIndex(), cap, cap);
+      return new ChannelBufferBackedBuffer(buf, buf.readerIndex(), cap, cap, false);
     }
   }
 
   public static Buffer wrap(Buffer buf) {
-    return buf;
+    return buf.duplicate();
   }
 
   public static Buffer wrap(Buffer[] bufs) {
@@ -111,7 +115,7 @@ public abstract class Buffer {
 
   public static Buffer wrap(Object obj) {
     if (obj instanceof Buffer) {
-      return (Buffer) obj;
+      return wrap((Buffer) obj);
     }
     else if (obj instanceof ByteBuffer) {
       return wrap((ByteBuffer) obj);
@@ -205,12 +209,13 @@ public abstract class Buffer {
     return wrap(Arrays.asList(o1, o2, o3, o4, o5, o6));
   }
 
-  protected Buffer(int pos, int lim, int cap) {
+  protected Buffer(int pos, int lim, int cap, boolean frz) {
     if (cap < 0) {
       throw new IllegalArgumentException("Negative capacity: " + cap);
     }
 
     capacity = cap;
+    isFrozen = frz;
 
     limit(lim);
     position(pos);
@@ -223,6 +228,69 @@ public abstract class Buffer {
    */
   public final int capacity() {
     return capacity;
+  }
+
+  public final Buffer clear() {
+    position = 0;
+    limit = capacity;
+
+    return this;
+  }
+
+  public Buffer duplicate() {
+    return new BufferBackedBuffer(this, position, limit, capacity, isFrozen);
+  }
+
+  public final Buffer flip() {
+    limit = position;
+    position = 0;
+
+    return this;
+  }
+
+  public final Buffer freeze() {
+    isFrozen = true;
+    return this;
+  }
+
+  public final boolean hasRemaining() {
+    return position < limit;
+  }
+
+  public final boolean isFrozen() {
+    return isFrozen;
+  }
+
+  public final boolean isReadOnly() {
+    return isFrozen;
+  }
+
+  public final int limit() {
+    return limit;
+  }
+
+  public final Buffer limit(int newLimit) {
+    if (newLimit > capacity || newLimit < 0) {
+      throw new IllegalArgumentException();
+    }
+
+    limit = newLimit;
+
+    if (position > limit) {
+      position = limit;
+    }
+
+    return this;
+  }
+
+  public final ByteOrder order() {
+    return bigEndian ? ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN;
+  }
+
+  public final Buffer order(ByteOrder order) {
+    bigEndian = order == ByteOrder.BIG_ENDIAN;
+
+    return this;
   }
 
   /**
@@ -257,40 +325,20 @@ public abstract class Buffer {
     return this;
   }
 
-  public final int limit() {
-    return limit;
+  public final Buffer slice() {
+    return duplicate();
   }
 
-  public final Buffer limit(int newLimit) {
-    if (newLimit > capacity || newLimit < 0) {
-      throw new IllegalArgumentException();
-    }
-
-    limit = newLimit;
-
-    if (position > limit) {
-      position = limit;
-    }
-
-    return this;
+  public final Buffer slice(int len) {
+    return duplicate().limit(position + len);
   }
 
-  public final Buffer window(int pos, int len) {
-    return position(pos).limit(pos + len);
+  public final Buffer slice(int pos, int len) {
+    return duplicate().position(pos).limit(pos + len);
   }
 
-  public final Buffer flip() {
-    limit = position;
-    position = 0;
-
-    return this;
-  }
-
-  public final Buffer clear() {
-    position = 0;
-    limit = capacity;
-
-    return this;
+  public final int remaining() {
+    return limit - position;
   }
 
   public final Buffer rewind() {
@@ -299,22 +347,8 @@ public abstract class Buffer {
     return this;
   }
 
-  public final int remaining() {
-    return limit - position;
-  }
-
-  public final boolean hasRemaining() {
-    return position < limit;
-  }
-
-  public final ByteOrder order() {
-    return bigEndian ? ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN;
-  }
-
-  public final Buffer order(ByteOrder order) {
-    bigEndian = order == ByteOrder.BIG_ENDIAN;
-
-    return this;
+  public final Buffer window(int pos, int len) {
+    return position(pos).limit(pos + len);
   }
 
   /*
@@ -338,6 +372,20 @@ public abstract class Buffer {
     _get(0, arr, 0, capacity);
 
     return arr;
+  }
+
+  public final Buffer toReadOnlyBuffer() {
+    return duplicate().freeze();
+  }
+
+  public final String toString(String charsetName)
+      throws UnsupportedEncodingException {
+    return toString(0, capacity, charsetName);
+  }
+
+  public String toString(int off, int len, String charsetName)
+      throws UnsupportedEncodingException {
+    return new String(toByteArray(), off, len, charsetName);
   }
 
   /*
@@ -401,6 +449,7 @@ public abstract class Buffer {
       throw new BufferOverflowException();
     }
 
+    dst.assertReadable();
     dst._put(dst.position, this, position, remaining);
 
     position     += remaining;
@@ -423,6 +472,7 @@ public abstract class Buffer {
       throw new IndexOutOfBoundsException();
     }
 
+    dst.assertReadable();
     dst._put(off, this, position, len);
     position += len;
 
@@ -438,6 +488,7 @@ public abstract class Buffer {
       throw new BufferOverflowException();
     }
 
+    dst.assertReadable();
     dst._put(off, this, idx, len);
 
     return this;
@@ -472,6 +523,7 @@ public abstract class Buffer {
       throw new BufferOverflowException();
     }
 
+    assertReadable();
     _put(idx, src, off, len);
 
     return this;
@@ -530,6 +582,7 @@ public abstract class Buffer {
 
   public final Buffer put(byte b) {
     assertWalkable(1);
+    assertReadable();
 
     _put(position, b);
     ++position;
@@ -542,6 +595,8 @@ public abstract class Buffer {
       throw new IndexOutOfBoundsException();
     }
 
+    assertReadable();
+
     _put(idx, b);
 
     return this;
@@ -553,7 +608,7 @@ public abstract class Buffer {
 
   public final Buffer put(byte[] src, int offset, int len) {
     assertWalkable(len);
-    _put(position, src, offset, len);
+    put(position, src, offset, len);
     position += len;
 
     return this;
@@ -566,6 +621,8 @@ public abstract class Buffer {
     else if (idx < 0 || offset + len > src.length) {
       throw new IndexOutOfBoundsException();
     }
+
+    assertReadable();
 
     _put(idx, src, offset, len);
 
@@ -999,6 +1056,12 @@ public abstract class Buffer {
     put(idx + 1, short1(val));
 
     return this;
+  }
+
+  private final void assertReadable() {
+    if (isFrozen) {
+      throw new ReadOnlyBufferException();
+    }
   }
 
   private final void assertHolds(Buffer buf, int count) {

@@ -1,15 +1,21 @@
 (ns picard.test.core.buffer
   (:use
-   clojure.test)
+   clojure.test
+   picard.core.buffer)
   (:import
-   java.nio.ByteBuffer
-   java.nio.ByteOrder
-   java.nio.BufferOverflowException
-   java.nio.BufferUnderflowException
-   java.util.Arrays
-   org.jboss.netty.buffer.ChannelBuffer
-   org.jboss.netty.buffer.ChannelBuffers
-   picard.core.Buffer))
+   [java.nio
+    BufferOverflowException
+    BufferUnderflowException
+    ReadOnlyBufferException
+    ByteBuffer
+    ByteOrder]
+   [java.util
+    Arrays]
+   [org.jboss.netty.buffer
+    ChannelBuffer
+    ChannelBuffers]
+   [picard.core
+    Buffer]))
 
 ;; ==== HELPERS
 
@@ -739,3 +745,22 @@
     (Buffer/allocate 40))
    (Buffer/wrap
     (mk-channel-buffer 100))))
+
+;;
+;; === Other stuff ===
+;;
+
+(deftest wrapping-buffers-with-one-frozen
+  (is (frozen (wrap (freeze (buffer 10)) (buffer 10))))
+  (is (frozen (wrap (buffer 10) (freeze (buffer 10))))))
+
+(deftest duplicating-frozen-buffer-stays-frozen
+  (is (frozen (-> (buffer 10) freeze duplicate)))
+  (is (frozen (-> (mk-channel-buffer 10) buffer freeze duplicate)))
+  (is (frozen (-> (direct-buffer 10) freeze duplicate)))
+  (is (frozen (-> (wrap (buffer 10) (buffer 10)) freeze duplicate))))
+
+(deftest throws-when-writing-to-frozen-buffer
+  (is (thrown?
+       ReadOnlyBufferException
+       (.put (freeze (buffer 10)) (byte 1)))))

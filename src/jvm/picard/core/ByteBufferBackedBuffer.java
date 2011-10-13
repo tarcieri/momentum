@@ -10,9 +10,8 @@ public final class ByteBufferBackedBuffer extends Buffer {
 
   final ByteBuffer buf;
 
-  protected ByteBufferBackedBuffer(ByteBuffer buf, int pos, int lim, int cap) {
-    super(pos, lim, cap);
-
+  protected ByteBufferBackedBuffer(ByteBuffer buf, int pos, int lim, int cap, boolean frz) {
+    super(pos, lim, cap, frz);
     this.buf = buf;
   }
 
@@ -43,17 +42,21 @@ public final class ByteBufferBackedBuffer extends Buffer {
     return buf.get(idx);
   }
 
-  protected void _get(int idx, byte[] dst, int offset, int len) {
+  protected void _get(int idx, byte[] dst, int off, int len) {
     buf.position(idx);
-    buf.get(dst, offset, len);
+    buf.get(dst, off, len);
   }
 
   protected void _put(int idx, byte b) {
     buf.put(idx, b);
   }
 
-  protected void _put(int idx, byte[] src, int offset, int len) {
+  protected void _put(int idx, byte[] src, int off, int len) {
     buf.position(idx);
-    buf.put(src, offset, len);
+    buf.put(src, off, len);
+  }
+
+  public Buffer duplicate() {
+    return new ByteBufferBackedBuffer(buf, position, limit, capacity, isFrozen);
   }
 }

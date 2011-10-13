@@ -11,8 +11,8 @@ public final class HeapBuffer extends Buffer {
   final int offset;
   final byte [] arr;
 
-  protected HeapBuffer(byte [] arr, int offset, int pos, int lim, int cap) {
-    super(pos, lim, cap);
+  protected HeapBuffer(byte [] arr, int offset, int pos, int lim, int cap, boolean frz) {
+    super(pos, lim, cap, frz);
 
     this.offset = offset;
     this.arr    = arr;
@@ -58,5 +58,9 @@ public final class HeapBuffer extends Buffer {
     else {
       src._get(off, arr, offset + idx, len);
     }
+  }
+
+  public Buffer duplicate() {
+    return new HeapBuffer(arr, offset, position, limit, capacity, isFrozen);
   }
 }

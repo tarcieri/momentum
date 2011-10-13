@@ -7,6 +7,12 @@ import java.util.List;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 
+/**
+ * TODO:
+ *   The "rope" functionality should be extracted out into a separate class and
+ *   then duplicate() should be imlemented to create a new CompositeBuffer sharing
+ *   the same rope.
+ */
 public final class CompositeBuffer extends Buffer {
 
   private Buffer[] bufs;
@@ -16,9 +22,9 @@ public final class CompositeBuffer extends Buffer {
   private int lastBufferIdx;
   private int bufCount;
 
-  protected CompositeBuffer(Buffer[] bufArr, int capacity) {
+  protected CompositeBuffer(Buffer[] bufArr, int capacity, boolean frz) {
     // Call the super class initializer w/ BS values
-    super(0, 0, 0);
+    super(0, 0, 0, frz);
 
     // Create the buffer array and the index lookup array. These are created bigger
     // than needed to accomodate for any buffer growth.
@@ -33,6 +39,10 @@ public final class CompositeBuffer extends Buffer {
       // Add the buffer to the array
       Buffer buf = bufArr[i];
       bufs[i]    = buf;
+
+      if (buf.isFrozen()) {
+        freeze();
+      }
 
       // Update the index array
       currentCapacity = indices[i + 1] = indices[i] + buf.limit();
