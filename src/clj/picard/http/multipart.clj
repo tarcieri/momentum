@@ -1,6 +1,6 @@
 (ns picard.http.multipart
   (use
-   picard.utils.buffer)
+   picard.core.buffer)
   (:import
    [picard.http
     MultipartParser

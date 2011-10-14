@@ -347,6 +347,13 @@ public abstract class Buffer {
     return this;
   }
 
+  public String toString() {
+    return getClass().getSimpleName() + '(' +
+      "pos=" + position + ", " +
+      "lim=" + limit + ", "    +
+      "cap=" + capacity + ")";
+  }
+
   public final Buffer window(int pos, int len) {
     return position(pos).limit(pos + len);
   }
@@ -380,12 +387,12 @@ public abstract class Buffer {
 
   public final String toString(String charsetName)
       throws UnsupportedEncodingException {
-    return toString(0, capacity, charsetName);
-  }
 
-  public String toString(int off, int len, String charsetName)
-      throws UnsupportedEncodingException {
-    return new String(toByteArray(), off, len, charsetName);
+    byte[] arr = new byte[remaining()];
+
+    _get(position, arr, 0, arr.length);
+
+    return new String(arr, charsetName);
   }
 
   /*

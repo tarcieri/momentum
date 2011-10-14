@@ -23,7 +23,9 @@ public final class HeapBuffer extends Buffer {
   }
 
   public ChannelBuffer toChannelBuffer() {
-    return ChannelBuffers.wrappedBuffer(arr, offset, capacity);
+    ChannelBuffer ret = ChannelBuffers.wrappedBuffer(arr, offset, capacity);
+    ret.setIndex(position, limit);
+    return ret;
   }
 
   public byte[] toByteArray() {

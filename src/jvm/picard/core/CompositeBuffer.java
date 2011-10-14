@@ -77,7 +77,10 @@ public final class CompositeBuffer extends Buffer {
       arr[i] = curr;
     }
 
-    return ChannelBuffers.wrappedBuffer(arr);
+    ChannelBuffer ret = ChannelBuffers.wrappedBuffer(arr);
+    ret.setIndex(position, limit);
+
+    return ret;
   }
 
   public byte[] toByteArray() {

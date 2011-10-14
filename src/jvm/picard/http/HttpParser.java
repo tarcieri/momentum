@@ -2,10 +2,10 @@
 // line 1 "src/rl/picard/http/HttpParser.rl"
 package picard.http;
 
-import clojure.lang.AFn;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.ByteBuffer;
+import clojure.lang.AFn;
+import picard.core.Buffer;
 
 /**
  * TODO:
@@ -59,7 +59,7 @@ public final class HttpParser extends AFn {
     public static final String SLASH = new String("/").intern();
     public static final String EMPTY_STRING = new String("").intern();
     public static final byte[] EMPTY_BUFFER = new byte[0];
-    public static final ByteBuffer SPACE = ByteBuffer.wrap(new byte[] { SP });
+    public static final Buffer SPACE = Buffer.wrap(new byte[] { SP });
 
     // Map of hexadecimal chars to their numeric value
     public static final byte[] HEX_MAP = new byte [] {
@@ -2829,12 +2829,7 @@ static final int http_en_main = 1;
         return qs;
     }
 
-    public int execute(String str) {
-        ByteBuffer buf = ByteBuffer.wrap(str.getBytes());
-        return execute(buf);
-    }
-
-    public int execute(ByteBuffer buf) {
+    public int execute(Buffer buf) {
         // First make sure that the parser isn't in an error state
         if (isError()) {
             throw new HttpParserException("The parser is in an error state.");
@@ -2854,9 +2849,9 @@ static final int http_en_main = 1;
         try {
             parseLoop: {
                 
-// line 667 "src/rl/picard/http/HttpParser.rl"
+// line 662 "src/rl/picard/http/HttpParser.rl"
                 
-// line 2860 "src/jvm/picard/http/HttpParser.java"
+// line 2855 "src/jvm/picard/http/HttpParser.java"
 	{
 	int _klen;
 	int _trans = 0;
@@ -3468,7 +3463,7 @@ case 1:
             // Not parsing the HTTP message head anymore
             flags ^= PARSING_HEAD;
 
-            ByteBuffer body = null;
+            Buffer body = null;
 
             if (isUpgrade()) {
                 cs = 736;
@@ -3653,7 +3648,7 @@ case 1:
       }
   }
 	break;
-// line 3657 "src/jvm/picard/http/HttpParser.java"
+// line 3652 "src/jvm/picard/http/HttpParser.java"
 			}
 		}
 	}
@@ -3669,7 +3664,7 @@ case 2:
             cs = 1;
         }
 	break;
-// line 3673 "src/jvm/picard/http/HttpParser.java"
+// line 3668 "src/jvm/picard/http/HttpParser.java"
 		}
 	}
 
@@ -3714,7 +3709,7 @@ case 4:
             }
         }
 	break;
-// line 3718 "src/jvm/picard/http/HttpParser.java"
+// line 3713 "src/jvm/picard/http/HttpParser.java"
 		}
 	}
 	}
@@ -3724,7 +3719,7 @@ case 5:
 	break; }
 	}
 
-// line 668 "src/rl/picard/http/HttpParser.rl"
+// line 663 "src/rl/picard/http/HttpParser.rl"
             }
         }
         catch (RuntimeException e) {
@@ -3740,7 +3735,7 @@ case 5:
         headerNameChunks = null;
     }
 
-    private void bridge(ByteBuffer buf, ChunkedValue chunk) {
+    private void bridge(Buffer buf, ChunkedValue chunk) {
         if (chunk != null) {
             chunk.bridge(buf);
         }
@@ -3765,8 +3760,8 @@ case 5:
         headerValue      = null;
     }
 
-    private ByteBuffer slice(ByteBuffer buf, int from, int to) {
-        ByteBuffer retval = buf.asReadOnlyBuffer();
+    private Buffer slice(Buffer buf, int from, int to) {
+        Buffer retval = buf.toReadOnlyBuffer();
 
         retval.position(from);
         retval.limit(to);
@@ -3779,12 +3774,12 @@ case 5:
         return Math.min((int) cappedA, b);
     }
 
-    private String parseErrorMsg(ByteBuffer buf, int fpc) {
+    private String parseErrorMsg(Buffer buf, int fpc) {
         int from = Math.max(0, fpc - 35);
         int to   = Math.min(fpc + 35, buf.limit());
 
-        ByteBuffer before = slice(buf, from, fpc);
-        ByteBuffer after  = slice(buf, fpc, to);
+        Buffer before = slice(buf, from, fpc);
+        Buffer after  = slice(buf, fpc, to);
 
         byte[] beforeBytes = new byte[before.remaining()];
         byte[] afterBytes  = new byte[after.remaining()];

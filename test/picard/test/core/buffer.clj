@@ -632,7 +632,7 @@
 
     (is (arr= (.toByteArray buf) d-at-50))))
 
-(deftest wrapped-arry-with-offset
+(deftest wrapped-arry-with-offset-usage
   (let [arr (byte-array 102)]
     (aset-byte arr 0 79)
     (aset-byte arr 101 81)
@@ -640,13 +640,13 @@
     (is (= 79 (aget arr 0)))
     (is (= 81 (aget arr 101)))))
 
-(deftest byte-buffer-backed-buffers
+(deftest byte-buffer-backed-buffers-usage
   (test-buffer (Buffer/wrap (ByteBuffer/allocate 100))))
 
-(deftest channel-buffer-backed-buffers
+(deftest channel-buffer-backed-buffers-usage
   (test-buffer (Buffer/wrap (ChannelBuffers/buffer 100))))
 
-(deftest composite-buffer
+(deftest composite-buffer-usage
   (test-buffer
    (Buffer/wrap
     (Buffer/allocate 20)
@@ -655,7 +655,7 @@
     (Buffer/allocate 20)
     (Buffer/allocate 20))))
 
-(deftest dynamic-buffer
+(deftest dynamic-buffer-usage
   (let [buf (Buffer/dynamic 1 100)]
     (is (= 1 (.limit buf)))
     (.limit buf 100)

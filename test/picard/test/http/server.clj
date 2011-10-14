@@ -2,6 +2,7 @@
   (:use
    clojure.test
    support.helpers
+   picard.core.buffer
    picard.http.server))
 
 (defn- start-hello-world-app
@@ -13,7 +14,7 @@
        (when (= :request evt)
          (dn :response [200 {"content-type"   "text/plain"
                              "content-length" "5"
-                             "connection"     "close"} "Hello"]))))))
+                             "connection"     "close"} (buffer "Hello")]))))))
 
 (defcoretest simple-requests
   [ch1]
@@ -107,7 +108,7 @@
      (fn [evt val]
        (when (= :request evt)
          (dn :response [200 {"content-length" 5
-                             "connection" "close"} "Hello"])))))
+                             "connection" "close"} (buffer "Hello")])))))
 
   (with-socket
     (write-socket "GET / HTTP/1.1\r\n\r\n")
@@ -126,7 +127,7 @@
    (fn [dn]
      (fn [evt val]
        (when (= :request evt)
-         (dn :response [200 {:http-version [1 0]} "Hello"])))))
+         (dn :response [200 {:http-version [1 0]} (buffer "Hello")])))))
 
   (with-socket
     (write-socket "GET / HTTP/1.1\r\n\r\n")
@@ -163,7 +164,7 @@
      (fn [evt val]
        (when (= :request evt)
          (let [[hdrs] val]
-           (dn :response [200 {"content-length" "5"} "Hello"]))))))
+           (dn :response [200 {"content-length" "5"} (buffer "Hello")]))))))
 
   (with-socket
     (write-socket "HEAD / HTTP/1.1\r\n"
@@ -182,7 +183,7 @@
      (fn [evt val]
        (when (= :request evt)
          (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
-         (dn :body "Hello")
+         (dn :body (buffer "Hello"))
          (dn :body nil)))))
 
   (with-socket
@@ -210,9 +211,9 @@
        (when (= :request evt)
          (let [[hdrs] val]
            (try
-             (dn :response [204 {"content-length" "5"} "Hello"])
+             (dn :response [204 {"content-length" "5"} (buffer "Hello")])
              (catch Exception _
-               (dn :response [200 {"content-length" "4"} "ZOMG"]))))))))
+               (dn :response [200 {"content-length" "4"} (buffer "ZOMG")]))))))))
 
   (with-socket
     (write-socket "GET / HTTP/1.1\r\n"
@@ -234,9 +235,9 @@
        (when (= :request evt)
          (let [[hdrs] val]
            (try
-             (dn :response [304 {"content-length" "5"} "Hello"])
+             (dn :response [304 {"content-length" "5"} (buffer "Hello")])
              (catch Exception _
-               (dn :response [200 {"content-length" "4"} "ZOMG"]))))))))
+               (dn :response [200 {"content-length" "4"} (buffer "ZOMG")]))))))))
 
   (with-socket
     (write-socket "GET / HTTP/1.1\r\n"
@@ -280,7 +281,7 @@
                    "connection"     "close"
                    "foo"            "lol"
                    "bar"            ["omg" "hi2u"]
-                   "baz"            ["1" "2" "3"]} ""])))))
+                   "baz"            ["1" "2" "3"]} (buffer "")])))))
 
   (with-socket
     (write-socket "GET / HTTP/1.1\r\n"
@@ -324,7 +325,7 @@
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
-         (dn :response [200 {"content-length" "5"} "Hello"])))))
+         (dn :response [200 {"content-length" "5"} (buffer "Hello")])))))
 
   (with-socket
     (write-socket "GET / HTTP/1.1\r\n\r\n")
@@ -378,17 +379,17 @@
          (when (= :request evt)
            (if @latch
              (do
-               (dn :response [200 {"content-length" "5"} "Hello"])
+               (dn :response [200 {"content-length" "5"} (buffer "Hello")])
                (future
                  (Thread/sleep 50)
                  (try
-                   (dn :response [200 {"content-length" "5"} "FAIL!"])
+                   (dn :response [200 {"content-length" "5"} (buffer "FAIL!")])
                    (catch Exception e
                      (enqueue ch1 [:error e]))))
                (reset! latch false))
              (future
                (Thread/sleep 100)
-               (dn :response [200 {"content-length" "5"} "World"]))))))))
+               (dn :response [200 {"content-length" "5"} (buffer "World")]))))))))
 
   (with-socket
     (write-socket "GET / HTTP/1.1\r\n\r\n")
@@ -416,7 +417,7 @@
        (enqueue ch1 [evt val])
        (when (= :request evt)
          (dn :response [200 {"content-type"   "text/plain"
-                             "content-length" "5"} "Hello"])))))
+                             "content-length" "5"} (buffer "Hello")])))))
 
   (with-socket
     (write-socket "HEAD / HTTP/1.1\r\n\r\n")
@@ -543,7 +544,7 @@
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
-         (dn :response [200 {"connection" "close"} "Hello"])))))
+         (dn :response [200 {"connection" "close"} (buffer "Hello")])))))
 
   (with-socket
     (write-socket "GET / HTTP/1.1\r\n\r\n")
@@ -563,8 +564,8 @@
        (enqueue ch1 [evt val])
        (when (= :request evt)
          (dn :response [200 {"connection" "close"} :chunked])
-         (dn :body "Hello ")
-         (dn :body "world")
+         (dn :body (buffer "Hello "))
+         (dn :body (buffer "world"))
          (dn :body nil)))))
 
   (with-socket
@@ -592,8 +593,8 @@
            (if (= "GET" (hdrs :request-method))
              (do
                (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
-               (dn :body "Hello")
-               (dn :body "World")
+               (dn :body (buffer "Hello"))
+               (dn :body (buffer "World"))
                (dn :body nil))
              (dn :response [202 {"content-length" "0"}])))))))
 
@@ -651,7 +652,7 @@
      (fn [evt val]
        (when (= :request evt)
          (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
-         (dn :body "Hello")
+         (dn :body (buffer "Hello"))
          (dn :body nil)))))
 
   (with-socket
@@ -674,7 +675,7 @@
        (try
          (when (= :request evt)
            (dn :response [200 {"content-length" "5"} :chunked])
-           (dn :body "Hello")
+           (dn :body (buffer "Hello"))
            (dn :body nil))
          (catch Exception err
            (enqueue ch2 [:error err]))))))
@@ -701,7 +702,7 @@
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
-         (dn :response [200 {"content-length" "5"} "Hello"])))))
+         (dn :response [200 {"content-length" "5"} (buffer "Hello")])))))
 
   (with-socket
     (write-socket "POST / HTTP/1.1\r\n"
@@ -781,7 +782,7 @@
        (when (= :request evt)
          (dn :response [200 {"content-type"   "text/plain"
                              "content-length" "5"
-                             "connection"     "close"} "Hello"])))))
+                             "connection"     "close"} (buffer "Hello")])))))
   (with-socket
     (write-socket "POST / HTTP/1.1\r\n"
                   "Connection: close\r\n"
@@ -812,7 +813,7 @@
         (dn :response [100])
 
         (= [:body nil] [evt val])
-        (dn :response [200 {"content-length" "5"} "Hello"])))))
+        (dn :response [200 {"content-length" "5"} (buffer "Hello")])))))
 
   (with-socket
     (write-socket "POST / HTTP/1.1\r\n"
@@ -843,8 +844,8 @@
        (when (= :request evt)
          (let [[{request-method :request-method}] val]
            (if (= "GET" request-method)
-             (dn :response [200 {"content-length" "5"} "Hello"])
-             (dn :response [417 {"content-length" "0"} ""])))))))
+             (dn :response [200 {"content-length" "5"} (buffer "Hello")])
+             (dn :response [417 {"content-length" "0"} (buffer "")])))))))
 
   (with-socket
     (write-socket "POST / HTTP/1.1\r\n"
@@ -891,7 +892,7 @@
             (enqueue ch1 [:error err])))
 
         (= [:body nil] [evt val])
-        (dn :response [204 {"connection" "close"} ""])))))
+        (dn :response [204 {"connection" "close"} nil])))))
 
   (with-socket
     (write-socket "POST / HTTP/1.1\r\n"
@@ -947,7 +948,7 @@
         (dn :response [100])
 
         (= [:body nil] [evt val])
-        (dn :response [204 {"connection" "close"} ""])))))
+        (dn :response [204 {"connection" "close"} nil])))))
 
   (with-socket
     (write-socket "POST / HTTP/1.1\r\n"
@@ -978,7 +979,7 @@
            (dn :response [100])
            (catch Exception err
              (enqueue ch1 [:error err])))
-         (dn :response [204 {} ""])))))
+         (dn :response [204 {} nil])))))
 
   (with-socket
     (write-socket "POST / HTTP/1.0\r\n"
@@ -1075,8 +1076,8 @@
        (enqueue ch1 [evt val])
        (when (= :request evt)
          (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
-         (dn :body "Hello")
-         (dn :body "World"))))
+         (dn :body (buffer "Hello"))
+         (dn :body (buffer "World")))))
    {:timeout 1})
 
   (with-socket
@@ -1096,7 +1097,7 @@
    (fn [dn]
      (fn [evt val]
        (enqueue ch1 [evt val])
-       (dn :response [200 {"content-length" "5"} "Hello"])))
+       (dn :response [200 {"content-length" "5"} (buffer "Hello")])))
    {:keepalive 1})
 
   (with-socket
@@ -1118,7 +1119,7 @@
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
-         (dn :response [200 {"content-length" "5"} "Hello"])))))
+         (dn :response [200 {"content-length" "5"} (buffer "Hello")])))))
 
   (with-socket
     (write-socket "GET / HTTP/1.1\r\n\r\n")
@@ -1146,7 +1147,7 @@
        (enqueue ch1 [evt val])
        (when (= :request evt)
          (future
-           (dn :response [200 {"content-length" "5"} "Hello"])))
+           (dn :response [200 {"content-length" "5"} (buffer "Hello")])))
        (when (= :done nil)
          (Thread/sleep 50)))))
 
@@ -1176,7 +1177,7 @@
        (enqueue ch1 [evt val])
        (when (= :request evt)
          (dn :response [200 {"content-length" 5} :chunked])
-         (dn :body "Hello")))))
+         (dn :body (buffer "Hello"))))))
 
   (with-socket
     (write-socket "GET / HTTP/1.1\r\n\r\n")
@@ -1282,7 +1283,7 @@
        (enqueue ch1 [evt val])
        (when (= :request evt)
          (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
-         (dn :body "Hello")
+         (dn :body (buffer "Hello"))
          (dn :close nil)))))
 
   (with-socket
@@ -1350,7 +1351,7 @@
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
-         (dn :response [400 {"content-length" "5"} "FAIL!"])))))
+         (dn :response [400 {"content-length" "5"} (buffer "FAIL!")])))))
 
   (with-socket
     (write-socket

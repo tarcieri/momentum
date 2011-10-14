@@ -13,7 +13,9 @@
 (declare
  flip
  remaining
- transfer!)
+ remaining?
+ transfer!
+ write)
 
 (defprotocol Conversion
   (^Buffer to-buffer [_]))
@@ -22,6 +24,10 @@
   (class (byte-array 0))
   (to-buffer [bytes]
     (Buffer/wrap bytes))
+
+  Buffer
+  (to-buffer [buf]
+    buf)
 
   ByteBuffer
   (to-buffer [buf]
@@ -47,32 +53,72 @@
   (to-buffer [_]
     nil))
 
+(defprotocol Manipulation
+  (^{:private true} put [_ buf]))
+
+(extend-protocol Manipulation
+  (class (byte-array 0))
+  (put [arr dst]
+    (.put dst arr))
+
+  Buffer
+  (put [src dst]
+    (.put dst src (.position src) (.remaining src))
+    dst)
+
+  Collection
+  (put [coll dst]
+    (doseq [src coll]
+      (put src dst))
+    dst)
+
+  String
+  (put [str dst]
+    (.put dst (.getBytes str "UTF-8"))
+    dst)
+
+  nil
+  (put [_ dst] dst)
+
+  Object
+  (put [o dst]
+    (.put dst (.getBytes (.toString o) "UTF-8"))
+    dst))
+
 (defn ^Buffer buffer
   ([] (Buffer/allocate 1024))
   ([val] (to-buffer val))
   ([int-or-buf & bufs]
      (if (number? int-or-buf)
-       (let [buf (Buffer/allocate int-or-buf)]
-         (doseq [src bufs]
-           (transfer! (to-buffer src) buf))
-         (flip buf))
-       (throw (Exception. "Not implemented")))))
+       (doto (Buffer/allocate int-or-buf)
+         (write bufs)
+         (flip))
+
+       (let [bufs (map to-buffer (concat [int-or-buf] bufs))]
+         (doto (Buffer/allocate (reduce #(+ %1 (remaining %2)) 0 bufs))
+           (write bufs)
+           (flip))))))
 
 (defn buffer?
   [maybe-buffer]
   (instance? Buffer maybe-buffer))
 
 (defn capacity
-  [^Buffer buf]
+  [buf]
   (.capacity buf))
 
 (defn collapsed?
-  [^Buffer buf]
-  (not (.hasRemaining buf)))
+  [buf]
+  (not (remaining? buf)))
 
 (defn direct-buffer
   [size]
   (Buffer/allocateDirect size))
+
+(defn ^Buffer dynamic-buffer
+  ([]        (Buffer/dynamic))
+  ([est]     (Buffer/dynamic est))
+  ([est max] (Buffer/dynamic est max)))
 
 (defn duplicate
   [^Buffer buf]
@@ -111,6 +157,14 @@
   ([^Buffer buf val]
      (.position buf val)))
 
+(defn remaining
+  [buf]
+  (.remaining buf))
+
+(defn remaining?
+  [buf]
+  (.hasRemaining buf))
+
 (defn reset
   [^Buffer buf]
   (.reset buf))
@@ -129,19 +183,24 @@
   ([^Buffer buf ^String encoding]
      (.toString buf encoding)))
 
+;; TODO: Revisit the transfer helper
 (defn transfer!
   [^Buffer src ^Buffer dst]
   (.put dst src))
 
 (defn transfer
-  [^Buffer src ^Buffer dst]
-  (if (holds? dst src)
-    (transfer! src dst)
-    (let [src-limit (limit src)]
-      (focus src (remaining dst))
-      (limit src src-limit)
-      false)))
+  ([^Buffer src ^Buffer dst]
+     (if (holds? dst src)
+       (transfer! src dst)
+       (let [src-limit (limit src)]
+         (focus src (remaining dst))
+         (limit src src-limit)
+         false))))
 
 (defn wrap
   [& bufs]
   (to-buffer bufs))
+
+(defn write
+  [^Buffer dst & srcs]
+  (put srcs dst))

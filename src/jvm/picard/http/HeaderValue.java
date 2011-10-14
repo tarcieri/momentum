@@ -1,14 +1,14 @@
- package picard.http;
+package picard.http;
 
-import java.nio.ByteBuffer;
+import picard.core.Buffer;
 
 public class HeaderValue extends ChunkedValue {
 
-    public HeaderValue(ByteBuffer buf, int offset) {
+    public HeaderValue(Buffer buf, int offset) {
         super(buf, offset);
     }
 
-    public void startLine(ByteBuffer buf, int offset) {
+    public void startLine(Buffer buf, int offset) {
         concat(HttpParser.SPACE);
         start(buf, offset);
     }

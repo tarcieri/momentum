@@ -1,9 +1,10 @@
 (ns support.parsing
-  (:require
-   [picard.http.parser :as http])
   (:use
    clojure.test
-   support.helpers)
+   support.helpers
+   picard.core.buffer)
+  (:require
+   [picard.http.parser :as http])
   (:import
    [picard.http
     HttpParser]))
@@ -119,8 +120,8 @@
   [raw f]
   (let [p (*default-parser* (normalizing f))]
     (if (coll? raw)
-      (doseq [raw raw] (p raw))
-      (p raw))))
+      (doseq [raw raw] (p (buffer raw)))
+      (p (buffer raw)))))
 
 (defn parsing
   [raw]

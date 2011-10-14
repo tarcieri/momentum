@@ -1,6 +1,6 @@
 package picard.http;
 
-import java.nio.ByteBuffer;
+import picard.core.Buffer;
 
 // A helper class that can be used to mark points of interest in
 // the buffers that are being parsed. Whenever a point of interest
@@ -15,7 +15,7 @@ public class Mark {
     protected final Mark previous;
 
     // The byte buffer that this mark points to
-    protected final ByteBuffer buf;
+    protected final Buffer buf;
 
     // The offset in the buffer that the mark starts at
     protected final int from;
@@ -27,11 +27,11 @@ public class Mark {
     // combined.
     protected int total;
 
-    public Mark(ByteBuffer buf, int from) {
+    public Mark(Buffer buf, int from) {
         this(buf, from, null);
     }
 
-    public Mark(ByteBuffer buf, int from, Mark previous) {
+    public Mark(Buffer buf, int from, Mark previous) {
         this.buf      = buf;
         this.from     = from;
         this.to       = from;
@@ -47,7 +47,7 @@ public class Mark {
     }
 
     public String toString() {
-        String str = new String(buf.array());
+        String str = buf.toString();
 
         return "Mark('" + str + "', " + from + ", " + to + ")";
     }
@@ -65,7 +65,7 @@ public class Mark {
         finalize();
     }
 
-    public Mark bridge(ByteBuffer nextBuf) {
+    public Mark bridge(Buffer nextBuf) {
         finalize(buf.limit());
         return new Mark(nextBuf, 0, this);
     }
