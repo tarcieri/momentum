@@ -1,5 +1,6 @@
 (ns picard.http.server
   (:use
+   picard.core.buffer
    picard.http.core
    picard.utils.core)
   (:require
@@ -198,20 +199,26 @@
   (swap-then!
    state
    (fn [current-state]
-     (if chunk
-       (let [bytes-sent     (.bytes-to-send current-state)
-             bytes-expected (.bytes-expected current-state)
-             bytes-to-send  (+ bytes-sent (chunk-size chunk))
-             responded?     (= bytes-expected bytes-to-send)]
-         (assoc current-state
-           :bytes-to-send bytes-to-send
-           :responded?    responded?
-           :next-dn-fn    (when-not responded? stream-or-finalize-response)))
-       ;; This is the final chunk
-       ;; TODO: Check that the content-length is correct
-       (assoc current-state
-         :responded? true
-         :next-dn-fn nil)))
+     (cond
+      (buffer? chunk)
+      (let [bytes-sent     (.bytes-to-send current-state)
+            bytes-expected (.bytes-expected current-state)
+            bytes-to-send  (+ bytes-sent (remaining chunk))
+            responded?     (= bytes-expected bytes-to-send)]
+        (assoc current-state
+          :bytes-to-send bytes-to-send
+          :responded?    responded?
+          :next-dn-fn    (when-not responded? stream-or-finalize-response)))
+
+      ;; This is the final chunk
+      ;; TODO: Check that the content-length is correct
+      (nil? chunk)
+      (assoc current-state
+        :responded? true
+        :next-dn-fn nil)
+
+      :else
+      (throw (Exception. "Not a valid body chunk type"))))
    (fn [current-state]
      (let [downstream (.downstream current-state)]
        (maybe-finalizing-exchange
@@ -225,10 +232,9 @@
 
   (let [[status hdrs body] response
         hdrs           (or hdrs {})
-        body           (and (not (.head? current-state)) body)
+        body           (when-not (.head? current-state) body)
         bytes-expected (content-length hdrs)
-        bytes-to-send  (chunk-size body)
-        message        (response->netty-response status hdrs body)]
+        bytes-to-send  (chunk-size body)]
 
     ;; 100 responses mean there will be other responses following. When
     ;; this is the final response header, track the number of bytes about
@@ -251,7 +257,7 @@
 
     ;; 100, 101, 204, and 304 responses MUST NOT have a response body,
     ;; so if we get one, throw an exception.
-    (when (not (or (status-expects-body? status) (empty? body)))
+    (when (not (or (status-expects-body? status) (nil? body)))
       (throw (Exception. (str status " responses must not include a body."))))
 
     (swap-then!

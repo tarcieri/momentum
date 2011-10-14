@@ -2,6 +2,7 @@
   (:use
    clojure.test
    support.helpers
+   picard.core.buffer
    picard.net.client)
   (:require
    [picard.net.pool   :as pool]
@@ -127,7 +128,7 @@
          (fn [evt val]
            (enqueue ch2 [evt val])
            (when (= :open evt)
-             (dn :message (str "ZOMG! " i)))
+             (dn :message (buffer (str "ZOMG! " i))))
            (when (= :message evt)
              (dn :close true))))
        {:host "localhost" :port 4040})
@@ -163,7 +164,7 @@
   (start echo-server ch1)
 
   (let [pool (client {:pool true})]
-    (run-echo-client ch2 pool "Hello world")
+    (run-echo-client ch2 pool (buffer "Hello world"))
 
     (is (next-msgs
          ch1
@@ -179,7 +180,7 @@
 
     (Thread/sleep 50)
 
-    (run-echo-client ch2 pool "Goodbye world")
+    (run-echo-client ch2 pool (buffer "Goodbye world"))
 
     (is (next-msgs ch1 :message "Goodbye world"))
 
@@ -201,7 +202,7 @@
        (fn [evt val]
          (enqueue ch2 [evt val])
          (when (= :open evt)
-           (dn :message "Hello world"))
+           (dn :message (buffer "Hello world")))
          (when (= :message evt)
            (dn :close false))))
      {:host "localhost" :port 4040})
@@ -220,7 +221,7 @@
 
     (Thread/sleep 50)
 
-    (run-echo-client ch2 pool "Goodbye world")
+    (run-echo-client ch2 pool (buffer "Goodbye world"))
 
     (is (next-msgs ch1 :message "Goodbye world"))
 
@@ -249,7 +250,7 @@
          (fn [evt val]
            (enqueue ch [evt val])
            (when (= :open evt)
-             (dn :message "ZOMG!"))
+             (dn :message (buffer "ZOMG!")))
            (when (= :message evt)
              (dn :close nil))))
        {:host "localhost" :port 4040}))
@@ -290,7 +291,7 @@
          (fn [evt val]
            (enqueue ch2 [evt val])
            (when (= :open evt)
-             (dn :message (str "Zomg! " i)))))
+             (dn :message (buffer (str "Zomg! " i))))))
        {:host "localhost" :port 4040})
 
       (is (next-msgs
@@ -329,7 +330,7 @@
              (enqueue ch3 [evt val]))
 
            (when (= :open evt)
-             (dn :message "ZOMG"))
+             (dn :message (buffer "ZOMG")))
 
            (when (= :message evt)
              (enqueue ch2 [:success nil])
@@ -369,7 +370,7 @@
          (fn [evt val]
            (enqueue ch [evt val])
            (when (= :open evt)
-             (dn :message "Hello"))
+             (dn :message (buffer "Hello")))
            (when (= :message evt)
              (dn :close nil))))
        {:host "localhost" :port 4040}))
@@ -400,7 +401,7 @@
          (fn [evt val]
            (enqueue ch [evt val])
            (when (= :open evt)
-             (dn :message "Hello"))
+             (dn :message (buffer "Hello")))
 
            (when (= :message evt)
              (dn :close nil))))
@@ -431,7 +432,7 @@
          (fn [evt val]
            (enqueue ch [evt val])
            (when (= :open evt)
-             (dn :message "Hello"))
+             (dn :message (buffer "Hello")))
            (when (= :message evt)
              (dn :close nil))))
        {:host "localhost" :port 4040}))
@@ -463,7 +464,7 @@
          (fn [evt val]
            (enqueue ch [evt val])
            (when (= :open evt)
-             (dn :message "Hello"))
+             (dn :message (buffer "Hello")))
            (when (= :message evt)
              (dn :close nil))))
        {:host "localhost" :port (if (= ch3 ch) 4040 4041)}))
@@ -495,7 +496,7 @@
          (fn [evt val]
            (enqueue ch [evt val])
            (when (= :open evt)
-             (dn :message "Hello"))
+             (dn :message (buffer "Hello")))
            (when (= :message evt)
              (dn :close nil))))
        {:host "localhost" :port (if (= ch1 ch) 4040 4041)})
@@ -517,7 +518,7 @@
 
   (let [connect (client {:pool {:keepalive 1}})]
     (dotimes [_ 2]
-      (run-echo-client ch2 connect "Hello")
+      (run-echo-client ch2 connect (buffer "Hello"))
 
       (is (next-msgs
            ch2
@@ -551,7 +552,7 @@
              (cond
               (= :open evt)
               (try
-                (dn :message "Hello")
+                (dn :message (buffer "Hello"))
                 ;; If this doesn't throw an exception, put a fake
                 ;; :open event on the channel
                 (when-not @reopened?

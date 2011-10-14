@@ -1,6 +1,6 @@
 package picard.http;
 
-import java.nio.ByteBuffer;
+import picard.core.Buffer;
 
 public final class MultipartParser {
 
@@ -193,16 +193,16 @@ public final class MultipartParser {
     private ChunkedValue headerNameChunks;
     private HeaderValue  headerValue;
 
-    private final ByteBuffer delimiter;
+    private final Buffer delimiter;
 
     private final MultipartParserCallback callback;
 
     %% write data;
 
-    public MultipartParser(ByteBuffer boundary, MultipartParserCallback callback) {
+    public MultipartParser(Buffer boundary, MultipartParserCallback callback) {
         %% write init;
 
-        ByteBuffer delimiter = ByteBuffer.allocate(4 + boundary.remaining());
+        Buffer delimiter = Buffer.allocate(4 + boundary.remaining());
 
         delimiter.put(PREFIX);
         delimiter.put(boundary);
@@ -212,7 +212,7 @@ public final class MultipartParser {
         this.callback  = callback;
     }
 
-    public void execute(ByteBuffer buf) {
+    public void execute(Buffer buf) {
         int bodyStart = 0;
         int bodyEnd   = 0;
 
@@ -249,14 +249,14 @@ public final class MultipartParser {
         }
     }
 
-    private void bridge(ByteBuffer buf, ChunkedValue chunk) {
+    private void bridge(Buffer buf, ChunkedValue chunk) {
         if (chunk != null) {
             chunk.bridge(buf);
         }
     }
 
-    private ByteBuffer slice(ByteBuffer buf, int from, int to) {
-        ByteBuffer chunk = buf.asReadOnlyBuffer();
+    private Buffer slice(Buffer buf, int from, int to) {
+        Buffer chunk = buf.toReadOnlyBuffer();
 
         chunk.position(from);
         chunk.limit(to);

@@ -1,12 +1,13 @@
 (ns picard.test.http.client
-  (:require
-   [picard.net.server  :as net]
-   [picard.http.server :as server])
   (:use
    clojure.test
    support.helpers
+   picard.core.buffer
    picard.utils.helpers
-   picard.http.client))
+   picard.http.client)
+  (:require
+   [picard.net.server  :as net]
+   [picard.http.server :as server]))
 
 (defn- tracking-connections
   [ch app]
@@ -25,7 +26,7 @@
    ch (fn [dn]
         (fn [evt val]
           (when (= :request evt)
-            (dn :response [200 {"content-length" "5"} "Hello"]))))))
+            (dn :response [200 {"content-length" "5"} (buffer "Hello")]))))))
 
 (defn- start-hello-world-app
   ([] (start-hello-world-app nil))
@@ -37,7 +38,7 @@
           (when (= :request evt)
             (dn :response [200 {"content-type"   "text/plain"
                                 "content-length" "5"
-                                "connection"     "close"} "Hello"])))))))
+                                "connection"     "close"} (buffer "Hello")])))))))
 
 (defcoretest simple-requests
   [ch1 ch2]
@@ -49,7 +50,7 @@
        (fn [evt val]
          (enqueue ch2 [evt val])
          (when (= :open evt)
-           (dn :request [{:path-info "/" :request-method method} ""]))))
+           (dn :request [{:path-info "/" :request-method method} (buffer "")]))))
      {:host "localhost" :port 4040})
 
     (is (next-msgs
@@ -118,7 +119,7 @@
                              "connection"     "close"
                              "foo"            "lol"
                              "bar"            ["omg" "hi2u"]
-                             "baz"            ["1" "2" "3"]} ""])))))
+                             "baz"            ["1" "2" "3"]} (buffer "")])))))
 
   (connect
    (fn [dn]
@@ -154,8 +155,8 @@
      (fn [evt val]
        (when (= :request evt)
          (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
-         (dn :body "Hello")
-         (dn :body "World")
+         (dn :body (buffer"Hello"))
+         (dn :body (buffer "World"))
          (dn :body nil)))))
 
   (connect
@@ -191,8 +192,8 @@
          (dn :request [{:request-method "GET"
                         :path-info      "/"
                         "transfer-encoding" "chunked"} :chunked])
-         (dn :body "Foo!")
-         (dn :body "Bar!")
+         (dn :body (buffer "Foo!"))
+         (dn :body (buffer "Bar!"))
          (dn :body nil))))
    {:host "localhost" :port 4040})
 
@@ -238,8 +239,8 @@
        (when (= :open evt)
          (dn :request [{:request-method "GET" :path-info "/zomg"
                         "transfer-encoding" "chunked" "connection" "close"} :chunked])
-         (dn :body "HELLO")
-         (dn :body "WORLD")
+         (dn :body (buffer "HELLO"))
+         (dn :body (buffer "WORLD"))
          (dn :body nil))))
    {:host "localhost" :port 4040})
 

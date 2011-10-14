@@ -1,8 +1,6 @@
 package picard.http;
 
-import java.nio.ByteBuffer;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBuffers;
+import picard.core.Buffer;
 
 public class WsFrameEncoder {
 

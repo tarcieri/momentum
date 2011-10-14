@@ -1,6 +1,7 @@
 (ns support.helpers
   (:use
-   clojure.test)
+   clojure.test
+   picard.core.buffer)
   (:require
    [lamina.core :as l]
    [picard.net.server :as server])
@@ -135,6 +136,9 @@
 
      (map? val)
      (into {} (map (comp vec normalize vec) val))
+
+     (buffer? val)
+     (to-string val)
 
      (instance? ChannelBuffer val)
      (.toString val "UTF-8")

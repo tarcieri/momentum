@@ -1,7 +1,7 @@
 (ns picard.http.test
   (:use
    clojure.test
-   picard.utils.buffer)
+   picard.core.buffer)
   (:require
    [picard.http.server :as server]
    [picard.net.test    :as net]))
@@ -12,6 +12,11 @@
    :http-version [1 1]
    "host"        "example.org"})
 
+(defn- normalize-request-body
+  [o]
+  (if (or (nil? o) (keyword? o))
+    o (buffer o)))
+
 (defmacro with-app
   [app & stmts]
   `(net/with-app (server/handler ~app {}) ~@stmts))
@@ -20,7 +25,7 @@
   [method path hdrs body]
   (let [conn (net/open)
         hdrs (merge default-hdrs hdrs {:request-method method :path-info path})]
-    (conn :request [hdrs body])
+    (conn :request [hdrs (normalize-request-body body)])
     conn))
 
 (defn request
@@ -43,11 +48,11 @@
 
 (defn- normalize-response
   [[status hdrs body]]
-  [status hdrs (to-byte-buffer body)])
+  [status hdrs (buffer body)])
 
 (defn- stringify-response
   [[status hdrs body]]
-  [status hdrs (to-string body)])
+  [status hdrs (if (buffer? body) (to-string body) body)])
 
 (defn response
   [& args]
@@ -67,6 +72,7 @@
   (let [actual (response conn)
         match? (= (normalize-response expected)
                   (normalize-response actual))]
+
     (f {:type     (if match? :pass :fail)
         :message  msg
         :expected (stringify-response expected)

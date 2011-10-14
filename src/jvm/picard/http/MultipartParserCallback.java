@@ -1,6 +1,6 @@
 package picard.http;
 
-import java.nio.ByteBuffer;
+import picard.core.Buffer;
 
 public interface MultipartParserCallback {
     // Return an object that will contain the HTTP message's headers
@@ -10,9 +10,9 @@ public interface MultipartParserCallback {
     void header(Object headers, String name, String value);
 
     // The HTTP request head is parsed
-    void part(Object headers, ByteBuffer body);
+    void part(Object headers, Buffer body);
 
-    void chunk(ByteBuffer chunk);
+    void chunk(Buffer chunk);
 
     void done();
 }

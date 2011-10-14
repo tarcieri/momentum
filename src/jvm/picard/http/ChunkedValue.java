@@ -1,6 +1,6 @@
 package picard.http;
 
-import java.nio.ByteBuffer;
+import picard.core.Buffer;
 
 public class ChunkedValue {
     private   int  bridgeCount;
@@ -8,7 +8,7 @@ public class ChunkedValue {
     protected Mark current;
     protected Mark tenative;
 
-    public ChunkedValue(ByteBuffer buf, int offset) {
+    public ChunkedValue(Buffer buf, int offset) {
         current = new Mark(buf, offset);
         current.mark(buf.limit());
     }
@@ -27,13 +27,13 @@ public class ChunkedValue {
         }
     }
 
-    public void concat(ByteBuffer buf) {
+    public void concat(Buffer buf) {
         start(buf, 0);
         mark(buf.limit());
         push();
     }
 
-    public void start(ByteBuffer buf, int offset) {
+    public void start(Buffer buf, int offset) {
         if (current != null || tenative != null) {
             throw new HttpParserException("Cannot start a new segment at this time");
         }
@@ -77,7 +77,7 @@ public class ChunkedValue {
         return new String(materialized);
     }
 
-    public void bridge(ByteBuffer buf) {
+    public void bridge(Buffer buf) {
         if (++bridgeCount > 10) {
             String msg = "Value broken into too many chunks";
             throw new HttpParserException(msg);

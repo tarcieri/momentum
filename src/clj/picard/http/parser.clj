@@ -1,9 +1,7 @@
 (ns picard.http.parser
   (:use
-   picard.utils.buffer)
+   picard.core.buffer)
   (:import
-   [java.nio
-    ByteBuffer]
    [picard.http
     HttpParser
     HttpParserCallback]))
@@ -39,7 +37,7 @@
          :else
          (assoc! headers name (conj existing value)))))
 
-    (^void message [_ ^HttpParser parser ^Object hdrs ^ByteBuffer body]
+    (message [_ parser hdrs body]
       (let [hdrs (request-headers parser hdrs)
             body (cond
                   body
@@ -52,13 +50,13 @@
                   :upgraded)]
         (f :request [hdrs body])))
 
-    (^void body [_ ^HttpParser parser ^ByteBuffer buf]
+    (body [_ parser buf]
       (f :body buf))
 
-    (^void message [_ ^HttpParser parser ^ByteBuffer buf]
+    (message [_ parser buf]
       (f :message buf))))
 
 (defn parser
   [f]
   (let [parser (HttpParser. (mk-callback f))]
-    (fn [buf] (.execute parser (to-byte-buffer buf)))))
+    (fn [buf] (.execute parser buf))))

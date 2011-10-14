@@ -2,7 +2,7 @@
 // line 1 "src/rl/picard/http/MultipartParser.rl"
 package picard.http;
 
-import java.nio.ByteBuffer;
+import picard.core.Buffer;
 
 public final class MultipartParser {
 
@@ -25,7 +25,7 @@ public final class MultipartParser {
     private ChunkedValue headerNameChunks;
     private HeaderValue  headerValue;
 
-    private final ByteBuffer delimiter;
+    private final Buffer delimiter;
 
     private final MultipartParserCallback callback;
 
@@ -169,7 +169,7 @@ static final int multipart_en_main_multipart_epilogue = 17;
 
 // line 201 "src/rl/picard/http/MultipartParser.rl"
 
-    public MultipartParser(ByteBuffer boundary, MultipartParserCallback callback) {
+    public MultipartParser(Buffer boundary, MultipartParserCallback callback) {
         
 // line 175 "src/jvm/picard/http/MultipartParser.java"
 	{
@@ -178,7 +178,7 @@ static final int multipart_en_main_multipart_epilogue = 17;
 
 // line 204 "src/rl/picard/http/MultipartParser.rl"
 
-        ByteBuffer delimiter = ByteBuffer.allocate(4 + boundary.remaining());
+        Buffer delimiter = Buffer.allocate(4 + boundary.remaining());
 
         delimiter.put(PREFIX);
         delimiter.put(boundary);
@@ -188,7 +188,7 @@ static final int multipart_en_main_multipart_epilogue = 17;
         this.callback  = callback;
     }
 
-    public void execute(ByteBuffer buf) {
+    public void execute(Buffer buf) {
         int bodyStart = 0;
         int bodyEnd   = 0;
 
@@ -585,14 +585,14 @@ case 5:
         }
     }
 
-    private void bridge(ByteBuffer buf, ChunkedValue chunk) {
+    private void bridge(Buffer buf, ChunkedValue chunk) {
         if (chunk != null) {
             chunk.bridge(buf);
         }
     }
 
-    private ByteBuffer slice(ByteBuffer buf, int from, int to) {
-        ByteBuffer chunk = buf.asReadOnlyBuffer();
+    private Buffer slice(Buffer buf, int from, int to) {
+        Buffer chunk = buf.toReadOnlyBuffer();
 
         chunk.position(from);
         chunk.limit(to);

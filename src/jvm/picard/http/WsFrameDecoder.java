@@ -1,7 +1,6 @@
 package picard.http;
 
-import java.nio.ByteBuffer;
-import org.jboss.netty.buffer.ChannelBuffer;
+import picard.core.Buffer;
 
 // TODO: Maybe abstract away the framing logic
 public class WsFrameDecoder {
@@ -22,11 +21,7 @@ public class WsFrameDecoder {
         cs = State.OP_CODE;
     }
 
-    public Object decode(ChannelBuffer buf) {
-        return decode(buf.toByteBuffer());
-    }
-
-    public Object decode(ByteBuffer buf) {
+    public Object decode(Buffer buf) {
         byte b;
         try {
             while (buf.hasRemaining()) {

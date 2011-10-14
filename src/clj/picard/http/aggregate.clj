@@ -1,6 +1,6 @@
 (ns picard.http.aggregate
   (:use
-   picard.utils.buffer
+   picard.core.buffer
    picard.utils.core))
 
 (def request-entity-too-large

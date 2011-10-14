@@ -2,6 +2,7 @@
   (:use
    clojure.test
    support.helpers
+   picard.core.buffer
    picard.net.client)
   (:require
    [picard.net.server :as server])
@@ -32,8 +33,8 @@
   (start-echo-server ch1)
 
   (enqueue ch3
-           [:message "Hello world"]
-           [:message "Goodbye world"]
+           [:message (buffer "Hello world")]
+           [:message (buffer "Goodbye world")]
            [:close   nil])
 
   (connect
@@ -74,7 +75,7 @@
          (future
            (Thread/sleep 60)
            (try
-             (dn :message "Hello")
+             (dn :message (buffer "Hello"))
              (catch Exception err
                (enqueue ch1 [:abort err])))))))
    {:host "localhost" :port 4040})
@@ -150,7 +151,7 @@
      (fn [evt val]
        (enqueue ch2 [evt val])
        (when (= :open evt)
-         (dn :message "Hello world"))
+         (dn :message (buffer "Hello world")))
        (when (= :message evt)
          (throw (Exception. "TROLLOLOL")))))
    {:host "localhost" :port 4040})
@@ -223,7 +224,7 @@
      (fn [evt val]
        (enqueue ch2 [evt val])
        (when (= :open evt)
-         (dn :message "Hello world"))
+         (dn :message (buffer "Hello world")))
        (when (= :message evt)
          (dn :close nil)
          (throw (Exception. "TROLLOLOL")))))
@@ -258,7 +259,7 @@
           (future
             (loop [continue? @latch]
               (when continue?
-                (dn :message "HAMMER TIME!")
+                (dn :message (buffer "HAMMER TIME!"))
                 (recur @latch))))
 
           (= :pause evt)
@@ -294,7 +295,7 @@
            (future
              (loop [continue? @latch]
                (when continue?
-                 (dn :message "HAMMER TIME!")
+                 (dn :message (buffer "HAMMER TIME!"))
                  (recur @latch)))))
 
          (when (= :pause evt)
@@ -322,7 +323,7 @@
           (future
             (loop [continue? @latch]
               (when continue?
-                (dn :message "HAMMER TIME!")
+                (dn :message (buffer "HAMMER TIME!"))
                 (recur @latch))))
 
           (= :pause evt)
@@ -350,11 +351,11 @@
    (fn [dn]
      (receive
       ch2 (fn [_]
-            (dn :message "Goodbye world")
+            (dn :message (buffer "Goodbye world"))
             (dn :close nil)))
      (fn [evt val]
        (when (= :open evt)
-         (dn :message "Hello world")))))
+         (dn :message (buffer "Hello world"))))))
 
   (connect
    (fn [dn]

@@ -1,11 +1,13 @@
 (ns picard.http.core
   (:use
-   picard.utils.buffer
+   picard.core.buffer
    picard.http.parser)
   (:require
    [clojure.string     :as str]
    [picard.net.message :as msg])
   (:import
+   [picard.core
+    Buffer]
    [org.jboss.netty.buffer
     ChannelBuffer
     ChannelBuffers]
@@ -26,12 +28,12 @@
    [java.net
     URI]))
 
-(def SP          (to-bytes " "))
-(def CRLF        (to-bytes "\r\n"))
+(def SP          (buffer " "))
+(def CRLF        (buffer "\r\n"))
 (def http-1-0    [1 0])
 (def http-1-1    [1 1])
 (def last-chunk  HttpChunk/LAST_CHUNK)
-(def last-chunk* (to-bytes "0\r\n\r\n"))
+(def last-chunk* (buffer "0\r\n\r\n"))
 
 (def response-status-reasons
   {100 "Continue"
@@ -170,8 +172,8 @@
 ;; Converting HTTP messages to buffers
 
 (def http-version-bytes
-  {http-1-0 (to-bytes "HTTP/1.0")
-   http-1-1 (to-bytes "HTTP/1.1")})
+  {http-1-0 (buffer "HTTP/1.0")
+   http-1-1 (buffer "HTTP/1.1")})
 
 (defn- http-version-to-bytes
   [v]
@@ -183,35 +185,31 @@
   (or (response-status-reasons s)
       (throw (Exception. (str "Invalid HTTP status: " s)))))
 
-(defn- send-message-header
-  [b name val]
+(defn- write-message-header
+  [buf name val]
   (when-not (or (nil? val) (= "" val))
-    (b name ": " val CRLF)))
+    (write buf name ": " val CRLF)))
 
-(defn- send-message-headers
-  [b hdrs]
+(defn- write-message-headers
+  [buf hdrs]
   (doseq [[name v-or-vals] hdrs]
     (when (string? name)
       (if (sequential? v-or-vals)
         (doseq [val v-or-vals]
-          (send-message-header b name val))
-        (send-message-header b name v-or-vals))))
+          (write-message-header buf name val))
+        (write-message-header buf name v-or-vals))))
 
   ;; Send the final CRLF
-  (b CRLF))
+  (write buf CRLF))
 
 (defn send-response
   [dn status {version :http-version :as hdrs} body]
-  (batch
-   1024
-   (fn [b]
-     ;; First send the response line
-     (b (http-version-to-bytes version) SP
-        (str status) SP
-        (status-to-reason status) CRLF)
-     ;; Then send the headers
-     (send-message-headers b hdrs))
-   #(dn :message %))
+  (let [buf (dynamic-buffer)
+        ver (http-version-to-bytes version)
+        rea (status-to-reason status)]
+    (write buf ver SP status SP rea CRLF)
+    (write-message-headers buf hdrs)
+    (dn :message (flip buf)))
 
   (when (and body (not (keyword? body)))
     (dn :message body)))
@@ -250,7 +248,7 @@
    (.setChunked msg true)
 
    body
-   (.setContent msg (msg/to-channel-buffer body))))
+   (.setContent msg (to-channel-buffer body))))
 
 (def netty-versions
   {[1 0] HttpVersion/HTTP_1_0
@@ -289,7 +287,7 @@
 
 (defn chunk->netty-chunk
   [chunk]
-  (DefaultHttpChunk. (msg/to-channel-buffer chunk)))
+  (DefaultHttpChunk. (to-channel-buffer chunk)))
 
 (defn- netty-message->version
   [msg]
@@ -367,16 +365,19 @@
     [:body (when-not (.isLast chunk) (.getContent chunk))]))
 
 (defprotocol ChunkSize
-  (chunk-size [chunk]))
+  (chunk-size [_]))
 
 (extend-protocol ChunkSize
   clojure.lang.Keyword
   (chunk-size [_] 0)
+
   nil
   (chunk-size [_] 0)
-  ChannelBuffer
-  (chunk-size [c] (.readableBytes c))
-  Boolean
-  (chunk-size [c] 0)
+
+  Buffer
+  (chunk-size [buf]
+    (remaining buf))
+
   Object
-  (chunk-size [c] (count c)))
+  (chunk-size [o]
+    (throw (Exception. (str "Not a valid body chunk type: " o)))))

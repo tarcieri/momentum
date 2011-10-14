@@ -2,6 +2,7 @@
   (:use
    clojure.test
    support.helpers
+   picard.core.buffer
    picard.net.server))
 
 (def addr-info
@@ -57,7 +58,7 @@
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :open evt)
-         (dn :message "Hello world")
+         (dn :message (buffer "Hello world"))
          (dn :close nil)))))
 
   (with-socket
@@ -79,7 +80,7 @@
          (future
           (Thread/sleep 30)
           (try
-            (dn :message "Hello")
+            (dn :message (buffer "Hello"))
             (catch Exception err
               (enqueue ch1 [:abort err]))))))))
 
@@ -209,7 +210,7 @@
              (loop [continue? @latch]
                (if continue?
                  (do
-                   (dn :message "HAMMER TIME!")
+                   (dn :message (buffer "HAMMER TIME!"))
                    (recur @latch))
                  (do
                    (Thread/sleep 100)
@@ -239,7 +240,7 @@
            (future
              (loop [continue? @latch]
                (when continue?
-                 (dn :message "HAMMER TIME!")
+                 (dn :message (buffer "HAMMER TIME!"))
                  (recur @latch)))))
          (when (= :pause evt)
            (reset! latch false)
@@ -269,7 +270,7 @@
              (loop [continue? @latch]
                (if continue?
                  (do
-                   (dn :message "HAMMER TIME!")
+                   (dn :message (buffer "HAMMER TIME!"))
                    (recur @latch))))))
 
          (when (= :pause evt)

@@ -1,5 +1,6 @@
 (ns picard.net.core
   (:use
+   picard.core.buffer
    picard.core.deferred
    picard.net.message
    picard.utils.core)
@@ -291,6 +292,12 @@
               (send-upstream state evt val current-state)))
           (catch Exception err
             (handle-err state err @state)))))))
+
+(defn- encode
+  [val]
+  (if (buffer? val)
+    (to-channel-buffer val)
+    val))
 
 (defn- mk-netty-downstream-fn
   [state]

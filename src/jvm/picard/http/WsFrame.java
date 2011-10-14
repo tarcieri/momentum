@@ -1,75 +1,134 @@
 package picard.http;
 
-import org.jboss.netty.buffer.ChannelBuffer;
+import picard.core.Buffer;
 
-public class WsFrame {
+public final class WsFrame {
 
-    public static int FIN_MASK    = 0x80;
-    public static int LOWER_SEVEN = 0x7F;
+  public static final int MAX_PAYLOAD = 64 * 1024;
+  public static final int FIN_MASK    = 0x80;
+  public static final int LOWER_SEVEN = 0x7F;
 
-    protected WsFrameType type;
-    protected boolean isMasked;
-    protected boolean isFinal;
-    protected int maskingKey;
-    protected long length;
-    protected ChannelBuffer payload;
+  protected WsFrameType type;
+  protected boolean     isMasked;
+  protected boolean     isFinal;
+  protected int         maskingKey;
+  protected Buffer      payload;
 
-    public WsFrame() {
-        this(null, false, true);
+  public WsFrame() {
+    this(null, false, true, null);
+  }
+
+  public WsFrame(WsFrameType type) {
+    this(type, false, true, null);
+  }
+
+  public WsFrame(WsFrameType type, Buffer payload) {
+    this(type, false, true, payload);
+  }
+
+  public WsFrame(WsFrameType type, boolean isFinal, Buffer payload) {
+    this(type, false, isFinal, payload);
+  }
+
+  public WsFrame(WsFrameType type, boolean isMasked, boolean isFinal, Buffer payload) {
+    this.type     = type;
+    this.isMasked = isMasked;
+    this.isFinal  = isFinal;
+    this.payload  = payload;
+  }
+
+  public WsFrameType type() {
+    return type;
+  }
+
+  public WsFrameType type(WsFrameType val) {
+    type = val;
+    return val;
+  }
+
+  public boolean isMasked() {
+    return isMasked;
+  }
+
+  public boolean isMasked(boolean val) {
+    isMasked = val;
+    return val;
+  }
+
+  public boolean isFinal() {
+    return isFinal;
+  }
+
+  public boolean isFinal(boolean val) {
+    isFinal = val;
+    return val;
+  }
+
+  public int maskingKey() {
+    return maskingKey;
+  }
+
+  public int maskingKey(int val) {
+    maskingKey = val;
+    return val;
+  }
+
+  public Buffer payload() {
+    return payload;
+  }
+
+  public Buffer payload(Buffer val) {
+    payload = val
+    return val;
+  }
+
+  public Buffer encode() {
+    int length = payload.remaining();
+    Buffer buf = Buffer.allocate(16);
+
+    // Write the OPCODE and a mark the frame as final
+    buf.put((byte) (opCode() | WsFrame.FIN_MASK));
+
+    // Write the size
+    if (length <= 125) {
+      buf.put((byte) length);
+    }
+    else if (length <= 65535) {
+      buf.put((byte) 126);
+      buf.putShort((short) length);
+    }
+    else {
+      buf.put((byte) 127);
+      buf.putLong(length);
     }
 
-    public WsFrame(WsFrameType type) {
-        this(type, false, true);
-    }
+    buf.flip();
 
-    public WsFrame(WsFrameType type, boolean isMasked, boolean isFinal) {
-        this.type     = type;
-        this.isMasked = isMasked;
-        this.isFinal  = isFinal;
-    }
+    return Buffer.wrap(buf, payload);
+  }
 
-    public WsFrameType type() {
-        return type;
-    }
+  private int opCode() {
+    switch (frame.type()) {
+    case CONTINUATION:
+      return 0x00;
 
-    public WsFrameType type(WsFrameType val) {
-        type = val;
-        return val;
-    }
+    case TEXT:
+      return 0x01;
 
-    public boolean isMasked() {
-        return isMasked;
-    }
+    case BINARY:
+      return 0x02;
 
-    public boolean isMasked(boolean val) {
-        isMasked = val;
-        return val;
-    }
+    case CLOSE:
+      return 0x08;
 
-    public boolean isFinal() {
-        return isFinal;
-    }
+    case PING:
+      return 0x09;
 
-    public boolean isFinal(boolean val) {
-        isFinal = val;
-        return val;
-    }
+    case PONG:
+      return 0x0A;
 
-    public int maskingKey() {
-        return maskingKey;
+    default:
+      throw new RuntimeException("Unknown frame type");
     }
-
-    public int maskingKey(int val) {
-        maskingKey = val;
-        return val;
-    }
-
-    public long length() {
-        return length;
-    }
-
-    public long length(long val) {
-        length = val;
-        return val;
-    }
+  }
 }
