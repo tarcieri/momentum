@@ -1,8 +1,8 @@
 (ns picard.test.http.aggregate
   (:use
    clojure.test
-   picard.http.test
-   picard.utils.buffer)
+   picard.core.buffer
+   picard.http.test)
   (:require
    [picard.http.aggregate :as aggregate]))
 
