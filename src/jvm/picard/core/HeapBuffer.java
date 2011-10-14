@@ -19,7 +19,17 @@ public final class HeapBuffer extends Buffer {
   }
 
   public ByteBuffer toByteBuffer() {
-    return ByteBuffer.wrap(arr, offset, capacity);
+    ByteBuffer ret = ByteBuffer.wrap(arr, offset, capacity);
+
+    ret.position(position);
+    ret.limit(limit);
+    ret.order(order());
+
+    if (isFrozen) {
+      return ret.asReadOnlyBuffer();
+    }
+
+    return ret;
   }
 
   public ChannelBuffer toChannelBuffer() {

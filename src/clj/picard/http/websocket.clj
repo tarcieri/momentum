@@ -1,6 +1,6 @@
 (ns picard.http.websocket
   (:use
-   picard.utils.buffer
+   picard.core.buffer
    picard.utils.core)
   (:require
    [picard.utils.base64 :as base64]
@@ -8,7 +8,7 @@
   (:import
    [picard.http
     WsFrame
-    WsFrameEncoder
+    WsFrameDecoder
     WsFrameType]))
 
 (defrecord Socket
@@ -28,10 +28,15 @@
   []
   (atom (Socket. :CONNECTING nil nil)))
 
+(defn- accept-key
+  [key]
+  (base64/encode
+   (digest/sha1
+    (str key "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))))
+
 (defn- frame
   [type data]
-  (.. (WsFrameEncoder. (WsFrame. (opcodes type)))
-      (encode (buffer data))))
+  (.encode (WsFrame. (opcodes type) data)))
 
 (defn- abort-socket
   [state dn]
@@ -39,17 +44,15 @@
 
 (defn- accept-socket
   [state dn key]
-  (let [sig  (digest/sha1 (str key "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
-        hdrs {"connection"   "upgrade"
-              "upgrade"      "websocket"
-              "content-type" "utf-8"
-              "sec-websocket-accept" (base64/encode sig)}]
+  (let [hdrs {"connection"           "upgrade"
+              "upgrade"              "websocket"
+              "content-type"         "utf-8"
+              "sec-websocket-accept" (accept-key key)}]
 
     (swap! state #(assoc % :state :OPEN))
-    (println "SENDING HANDSHAKE")
 
-    (dn :response [101 hdrs ""])
-    (dn :message (frame :text "HELLO"))))
+    (dn :response [101 hdrs])
+    (dn :message (frame :text (buffer "HELLO")))))
 
 (defn- handshake
   [state dn [{upgrade    "upgrade"
@@ -67,25 +70,33 @@
       (abort-socket state dn))
     true))
 
+(defn- handle-frame
+  [frame]
+  (println frame ": " (.text frame)))
+
+(defn- mk-decoder
+  [up]
+  (let [decoder (WsFrameDecoder. true handle-frame)]
+    (fn [buf]
+      (.decode decoder buf))))
+
 (defn proto
   [app]
   (fn [dn]
-    (println "ZOOOOOOOOOMG")
-    (let [up (app dn)
-          state (mk-socket)]
+    (let [up     (app dn)
+          state  (mk-socket)
+          decode (mk-decoder up)]
+
       (defstream
         (request [request]
-          (println "UP: " [:request request])
           (when-not (handshake state dn request)
-            (println "NO HANDSHAKE")
             (up :request request)))
 
         (message [buf]
-          (println "UP: " [:message buf]))
+          (decode buf))
 
         (abort [err]
           (.printStackTrace err))
 
         (else [evt val]
-          (println "UP: " [evt val])
           (up evt val))))))

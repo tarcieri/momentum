@@ -136,9 +136,12 @@
   [^Buffer buf]
   (.freeze buf))
 
-(defn frozen
+(defn frozen?
   [^Buffer buf]
   (.isFrozen buf))
+
+;; Temporary
+(def frozen frozen?)
 
 (defn holds?
   [^Buffer dst ^Buffer src]

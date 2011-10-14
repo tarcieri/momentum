@@ -25,9 +25,6 @@ More details will come, but for now, there are fairly extensive tests.
 ## Todo
 
 * More documentation
-* A lot of refactoring
-* A generic networking abstraction
-* A future abstraction
 * A lot more goodness
 
 ## Why the Java?

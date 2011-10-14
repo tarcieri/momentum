@@ -1,18 +1,18 @@
 package picard.http;
 
+import java.io.UnsupportedEncodingException;
 import picard.core.Buffer;
 
 public final class WsFrame {
 
-  public static final int MAX_PAYLOAD = 64 * 1024;
   public static final int FIN_MASK    = 0x80;
   public static final int LOWER_SEVEN = 0x7F;
 
-  protected WsFrameType type;
-  protected boolean     isMasked;
-  protected boolean     isFinal;
-  protected int         maskingKey;
-  protected Buffer      payload;
+  WsFrameType type;
+  boolean     isMasked;
+  boolean     isFinal;
+  int         maskingKey;
+  Buffer      payload;
 
   public WsFrame() {
     this(null, false, true, null);
@@ -78,8 +78,12 @@ public final class WsFrame {
   }
 
   public Buffer payload(Buffer val) {
-    payload = val
+    payload = val;
     return val;
+  }
+
+  public String text() throws UnsupportedEncodingException {
+    return payload.toString("UTF-8");
   }
 
   public Buffer encode() {
@@ -108,7 +112,7 @@ public final class WsFrame {
   }
 
   private int opCode() {
-    switch (frame.type()) {
+    switch (type) {
     case CONTINUATION:
       return 0x00;
 

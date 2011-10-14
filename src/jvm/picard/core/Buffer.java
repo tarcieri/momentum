@@ -126,6 +126,9 @@ public abstract class Buffer {
     else if (obj instanceof ChannelBuffer) {
       return wrap((ChannelBuffer) obj);
     }
+    else if (obj instanceof Collection<?>) {
+      return wrap((Collection<Object>) obj);
+    }
     else {
       String msg = "Object " + obj + " not bufferable";
       throw new IllegalArgumentException();
@@ -251,6 +254,16 @@ public abstract class Buffer {
     return this;
   }
 
+  public final Buffer focus(int len) {
+    if (len < 0) {
+      throw new IllegalArgumentException("length must be positive");
+    }
+
+    limit(position + len);
+
+    return this;
+  }
+
   public final Buffer freeze() {
     isFrozen = true;
     return this;
@@ -324,6 +337,12 @@ public abstract class Buffer {
     }
 
     position = newPosition;
+
+    return this;
+  }
+
+  public final Buffer skip(int len) {
+    position(position + len);
 
     return this;
   }
@@ -610,6 +629,10 @@ public abstract class Buffer {
     _put(idx, b);
 
     return this;
+  }
+
+  public final Buffer put(int idx, int b) {
+    return put(idx, (byte) (b & 0xff));
   }
 
   public final Buffer put(byte[] src) {

@@ -45,7 +45,7 @@ public final class CompositeBuffer extends Buffer {
       }
 
       // Update the index array
-      currentCapacity = indices[i + 1] = indices[i] + buf.limit();
+      currentCapacity = indices[i + 1] = indices[i] + buf.remaining();
     }
 
     this.capacity = Math.max(capacity, currentCapacity);
@@ -102,7 +102,10 @@ public final class CompositeBuffer extends Buffer {
     }
 
     int bufIdx = bufferIndex(idx);
-    return bufs[bufIdx].get(idx - indices[bufIdx]);
+
+    Buffer curr = bufs[bufIdx];
+
+    return curr.get(curr.position + idx - indices[bufIdx]);
   }
 
   public void _get(int idx, byte [] dst, int off, int len) {
@@ -112,12 +115,14 @@ public final class CompositeBuffer extends Buffer {
     }
 
     int bufIdx = bufferIndex(idx);
+    Buffer curr;
 
     while (len > 0) {
       int nextIdx = indices[bufIdx + 1];
       int chunk   = Math.min(nextIdx - idx, len);
 
-      bufs[bufIdx]._get(idx - indices[bufIdx], dst, off, chunk);
+      curr = bufs[bufIdx];
+      curr._get(curr.position + idx - indices[bufIdx], dst, off, chunk);
 
       idx  = nextIdx;
       off += chunk;
@@ -142,11 +147,13 @@ public final class CompositeBuffer extends Buffer {
       bufIdx = bufferIndex(idx);
     }
 
-    bufs[bufIdx].put(idx - indices[bufIdx], b);
+    Buffer curr = bufs[bufIdx];
+    curr.put(curr.position + idx - indices[bufIdx], b);
   }
 
   public void _put(int idx, byte [] src, int off, int len) {
     int bufIdx;
+    Buffer curr;
 
     if (idx >= currentCapacity) {
       bufIdx = growTo(idx, len);
@@ -163,7 +170,8 @@ public final class CompositeBuffer extends Buffer {
       int nextIdx = indices[bufIdx + 1];
       int chunk   = Math.min(nextIdx - idx, len);
 
-      bufs[bufIdx]._put(idx - indices[bufIdx], src, off, chunk);
+      curr = bufs[bufIdx];
+      curr._put(curr.position + idx - indices[bufIdx], src, off, chunk);
 
       idx  = nextIdx;
       off += chunk;

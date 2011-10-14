@@ -1,6 +1,9 @@
 package picard.http;
 
+import java.util.LinkedList;
+import java.util.List;
 import picard.core.Buffer;
+import clojure.lang.IFn;
 
 // TODO: Maybe abstract away the framing logic
 public class WsFrameDecoder {
@@ -13,15 +16,24 @@ public class WsFrameDecoder {
         ERROR
     }
 
-    private State   cs;
-    private WsFrame cf;
-    private long    remaining;
+    private State        cs;
+    private WsFrame      cf;
+    private IFn          cb;
+    private int          length;
+    private int          remaining;
+    private List<Buffer> chunks;
+    private boolean      requireMask;
+    private int          maskOffset;
 
-    public WsFrameDecoder() {
-        cs = State.OP_CODE;
+    public WsFrameDecoder(boolean requireMask, IFn callback) {
+        cs     = State.OP_CODE;
+        cb     = callback;
+        chunks = new LinkedList<Buffer>();
+
+        this.requireMask = requireMask;
     }
 
-    public Object decode(Buffer buf) {
+    public void decode(Buffer buf) throws Exception {
         byte b;
         try {
             while (buf.hasRemaining()) {
@@ -43,27 +55,35 @@ public class WsFrameDecoder {
                 case LENGTH:
                     b = buf.get();
 
-                    cf.isMasked(WsFrame.FIN_MASK == (b & WsFrame.FIN_MASK));
+                    boolean isMasked = WsFrame.FIN_MASK == (b & WsFrame.FIN_MASK);
 
-                    int length = b & WsFrame.LOWER_SEVEN;
+                    if (requireMask && !isMasked) {
+                      throw new RuntimeException("Mask is required, but none set.");
+                    }
+
+                    cf.isMasked(isMasked);
+
+                    length = b & WsFrame.LOWER_SEVEN;
 
                     if (length == 127) {
                         remaining = 8;
+                        length    = 0;
+
                         cs = State.LENGTH_EXT;
                     }
                     else if (length == 126) {
                         remaining = 2;
+                        length    = 0;
+
                         cs = State.LENGTH_EXT;
                     }
                     else {
-                        cf.length = length;
-
                         if (cf.isMasked()) {
                             remaining = 4;
                             cs = State.MASK_KEY;
                         }
                         else {
-                            remaining = cf.length;
+                            remaining = length;
                             cs = State.PAYLOAD;
                         }
                     }
@@ -73,8 +93,8 @@ public class WsFrameDecoder {
                 case LENGTH_EXT:
                     --remaining;
 
-                    cf.length *= 10;
-                    cf.length += buf.get() & 0xFF;
+                    length *= 10;
+                    length += buf.get() & 0xFF;
 
                     if (remaining == 0) {
                         if (cf.isMasked()) {
@@ -82,7 +102,7 @@ public class WsFrameDecoder {
                             cs = State.MASK_KEY;
                         }
                         else {
-                            remaining = cf.length;
+                            remaining = length;
                             cs = State.PAYLOAD;
                         }
                     }
@@ -96,21 +116,66 @@ public class WsFrameDecoder {
                     cf.maskingKey |= buf.get() & 0xFF;
 
                     if (remaining == 0) {
-                        remaining = cf.length;
+                        remaining = length;
                         cs = State.PAYLOAD;
                     }
 
                     break;
 
                 case PAYLOAD:
+                    Buffer payload = buf.duplicate();
+                    int chunkSize  = Math.min(remaining, payload.remaining());
+
+                    buf.skip(chunkSize);
+                    payload.focus(chunkSize);
+                    remaining -= chunkSize;
+
+                    chunks.add(payload);
+
+                    // Read the payload, so invoke the callback with the frame
+                    // and start everything over again
+                    if (remaining == 0) {
+                      payload = Buffer.wrap(chunks);
+
+                      // Not the most efficient way to unmask, but this will do
+                      // for now.
+                      if (cf.isMasked) {
+                        int pos  = payload.position();
+                        int len  = payload.remaining();
+                        int ints = pos + len - len % 4;
+                        int lim  = payload.limit();
+                        int mask = cf.maskingKey;
+
+                        while (pos < ints) {
+                          payload.putInt(pos, mask ^ payload.getInt(pos));
+                          pos += 4;
+                        }
+
+                        if (pos < lim) {
+                          payload.put(pos, (mask >>> 24 & 0xff) ^ payload.get(pos));
+
+                          if (++pos < lim) {
+                            payload.put(pos, (mask >>> 16 & 0xff) ^ payload.get(pos));
+
+                            if (++pos < lim) {
+                              payload.put(pos, (mask >>> 8 & 0xff) ^ payload.get(pos));
+                            }
+                          }
+                        }
+                      }
+
+                      cf.payload(payload);
+                      cb.invoke(cf);
+                      chunks.clear();
+                      cs = State.OP_CODE;
+                    }
+
                     break;
 
                 case ERROR:
                     throw new RuntimeException("The WS stream is invalid");
                 }
             }
-
-            return null;
         }
         catch (RuntimeException err) {
             this.cs = State.ERROR;

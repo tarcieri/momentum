@@ -3761,7 +3761,7 @@ case 5:
     }
 
     private Buffer slice(Buffer buf, int from, int to) {
-        Buffer retval = buf.toReadOnlyBuffer();
+        Buffer retval = buf.duplicate();
 
         retval.position(from);
         retval.limit(to);
