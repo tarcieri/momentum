@@ -293,6 +293,12 @@
           (catch Exception err
             (handle-err state err @state)))))))
 
+(defn- encode
+  [val]
+  (if (buffer? val)
+    (to-channel-buffer val)
+    val))
+
 (defn- mk-netty-downstream-fn
   [state]
   (fn [evt val]
@@ -303,7 +309,7 @@
          (when-not (.isOpen ch)
            (throw (ClosedChannelException.)))
 
-         (let [last-write (.write ch (to-channel-buffer val))]
+         (let [last-write (.write ch (encode val))]
            (swap! state #(assoc % :last-write last-write))))
 
        (= :close evt)
