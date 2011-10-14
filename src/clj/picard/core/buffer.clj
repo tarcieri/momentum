@@ -58,6 +58,10 @@
          (flip buf))
        (throw (Exception. "Not implemented")))))
 
+(defn buffer?
+  [maybe-buffer]
+  (instance? Buffer maybe-buffer))
+
 (defn capacity
   [^Buffer buf]
   (.capacity buf))
@@ -114,6 +118,16 @@
 (defn rewind
   [^Buffer buf]
   (.rewind buf))
+
+(defn to-channel-buffer
+  [^Buffer buf]
+  (.toChannelBuffer buf))
+
+(defn to-string
+  ([^Buffer buf]
+     (.toString buf "UTF-8"))
+  ([^Buffer buf ^String encoding]
+     (.toString buf encoding)))
 
 (defn transfer!
   [^Buffer src ^Buffer dst]

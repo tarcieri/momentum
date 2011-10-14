@@ -1,5 +1,6 @@
 (ns picard.net.core
   (:use
+   picard.core.buffer
    picard.core.deferred
    picard.net.message
    picard.utils.core)
@@ -302,7 +303,7 @@
          (when-not (.isOpen ch)
            (throw (ClosedChannelException.)))
 
-         (let [last-write (.write ch (encode val))]
+         (let [last-write (.write ch (to-channel-buffer val))]
            (swap! state #(assoc % :last-write last-write))))
 
        (= :close evt)
