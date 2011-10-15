@@ -4,6 +4,7 @@
   (:use
    clojure.test
    support.helpers
+   picard.core.buffer
    picard.http.server)
   (:require
    [picard.utils.base64 :as base64]
@@ -18,7 +19,7 @@
       (fn [evt val]
         (enqueue ch1 [evt val])
         (when (= :request evt)
-          (dn :response [200 {"content-length" "5"} "Hello"]))))))
+          (dn :response [200 {"content-length" "5"} (buffer "Hello")]))))))
 
   (with-socket
     (write-socket
