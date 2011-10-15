@@ -19,7 +19,7 @@ public final class HeapBuffer extends Buffer {
   }
 
   public ByteBuffer toByteBuffer() {
-    ByteBuffer ret = ByteBuffer.wrap(arr, offset, capacity);
+    ByteBuffer ret = ByteBuffer.wrap(arr, offset, capacity).slice();
 
     ret.position(position);
     ret.limit(limit);

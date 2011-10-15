@@ -1,6 +1,6 @@
 (ns picard.utils.random
   (:use
-   picard.utils.buffer)
+   picard.core.buffer)
   (:import
    [java.security
     SecureRandom]))

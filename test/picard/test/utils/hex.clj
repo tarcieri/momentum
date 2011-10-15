@@ -1,8 +1,10 @@
 (ns picard.test.utils.hex
  (:use
   clojure.test
-  picard.utils.buffer
-  picard.utils.hex))
+  picard.core.buffer
+  picard.utils.hex)
+ (:require
+  [picard.utils.hex :as hex]))
 
-(deftest zomg
-  (println (to-string (encode "HELLO"))))
+;; (deftest zomg
+;;   (println (to-string (hex/encode "HELLO"))))

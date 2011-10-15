@@ -1,8 +1,7 @@
 package picard.utils;
 
 import java.io.UnsupportedEncodingException;
-import java.nio.ByteBuffer;
-import org.jboss.netty.buffer.ChannelBuffer;
+import picard.core.Buffer;
 
 public class Hex {
 
@@ -53,13 +52,9 @@ public class Hex {
     };
 
 
-    public static ByteBuffer hexEncode(ChannelBuffer src) {
-        return hexEncode(src.toByteBuffer());
-    }
-
-    public static ByteBuffer hexEncode(ByteBuffer src) {
-        int remaining  = src.remaining();
-        ByteBuffer dst = ByteBuffer.allocate(remaining * 2);
+    public static Buffer hexEncode(Buffer src) {
+        int remaining = src.remaining();
+        Buffer dst    = Buffer.allocate(remaining * 2);
 
         for (int i = src.position(); i < remaining; ++i) {
             dst.putShort(TO_HEX[src.get(i) & 0xFF]);
@@ -70,22 +65,18 @@ public class Hex {
         return dst;
     }
 
-    public static ByteBuffer hexDecode(String src) throws UnsupportedEncodingException {
-        return hexEncode(ByteBuffer.wrap(src.getBytes("UTF-8")));
+    public static Buffer hexDecode(String src) throws UnsupportedEncodingException {
+        return hexEncode(Buffer.wrap(src.getBytes("UTF-8")));
     }
 
-    public static ByteBuffer hexDecode(ChannelBuffer src) {
-        return hexEncode(src.toByteBuffer());
-    }
-
-    public static ByteBuffer hexDecode(ByteBuffer src) {
+    public static Buffer hexDecode(Buffer src) {
         int remaining = src.remaining();
 
         if (remaining % 2 != 0) {
             throw new IllegalArgumentException("The src buffer must have an even number of bytes.");
         }
 
-        ByteBuffer dst = ByteBuffer.allocate(remaining / 2);
+        Buffer dst = Buffer.allocate(remaining / 2);
 
         while (src.hasRemaining()) {
             int  b = 0;

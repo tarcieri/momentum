@@ -1,6 +1,6 @@
 (ns picard.utils.hex
   (:use
-   picard.utils.buffer)
+   picard.core.buffer)
   (:import
    [picard.utils
     Hex]))

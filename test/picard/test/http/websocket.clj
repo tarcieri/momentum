@@ -36,37 +36,37 @@
          "content-length: 5\r\n\r\n"
          "Hello"))))
 
-(defcoretest simple-handshake
-  [ch1]
-  (start
-   (ws/proto
-    (fn [dn]
-      (fn [evt val]
-        (when (= :abort evt)
-          (.printStackTrace val))
-        (enqueue ch1 [evt val])
-        (when (= :request evt)
-          (dn :response [200 {"content-length" "5"} "Hello"]))))))
+;; (defcoretest simple-handshake
+;;   [ch1]
+;;   (start
+;;    (ws/proto
+;;     (fn [dn]
+;;       (fn [evt val]
+;;         (when (= :abort evt)
+;;           (.printStackTrace val))
+;;         (enqueue ch1 [evt val])
+;;         (when (= :request evt)
+;;           (dn :response [200 {"content-length" "5"} "Hello"]))))))
 
-  (with-socket
-    (write-socket
-     "GET / HTTP/1.1\r\n"
-     "Host: localhost\r\n"
-     "Upgrade: websocket\r\n"
-     "Connection: upgrade\r\n"
-     "Sec-WebSocket-Key: " (base64/encode (random/secure-random 16)) "\r\n"
-     "Sec-WebSocket-Origin: http://localhost\r\n"
-     "Sec-WebSocket-Version: 8\r\n"
-     "\r\n")
+;;   (with-socket
+;;     (write-socket
+;;      "GET / HTTP/1.1\r\n"
+;;      "Host: localhost\r\n"
+;;      "Upgrade: websocket\r\n"
+;;      "Connection: upgrade\r\n"
+;;      "Sec-WebSocket-Key: " (base64/encode (random/secure-random 16)) "\r\n"
+;;      "Sec-WebSocket-Origin: http://localhost\r\n"
+;;      "Sec-WebSocket-Version: 8\r\n"
+;;      "\r\n")
 
-    ;; (is (next-msgs
-    ;;      ch1
-    ;;      :request
-    ;;      :done nil))
+;;     ;; (is (next-msgs
+;;     ;;      ch1
+;;     ;;      :request
+;;     ;;      :done nil))
 
-    ;; (is (no-msgs ch1))
+;;     ;; (is (no-msgs ch1))
 
-    (is (receiving
-         "HTTP/1.1 200 OK\r\n"
-         "content-length: 5\r\n\r\n"
-         "Hello"))))
+;;     (is (receiving
+;;          "HTTP/1.1 200 OK\r\n"
+;;          "content-length: 5\r\n\r\n"
+;;          "Hello"))))

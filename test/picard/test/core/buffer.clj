@@ -598,7 +598,7 @@
 
   (let [buf (Buffer/wrapArray d-at-50 5 95)]
     (is (= (.toByteBuffer buf)
-           (ByteBuffer/wrap d-at-50 5 95)))
+           (.slice (ByteBuffer/wrap d-at-50 5 95))))
 
     (is (= (.toChannelBuffer buf)
            (ChannelBuffers/wrappedBuffer d-at-50 5 95)))
