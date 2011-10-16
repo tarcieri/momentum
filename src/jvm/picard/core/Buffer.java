@@ -31,24 +31,28 @@ public abstract class Buffer {
   // The byte order that any multibyte reads will use.
   boolean bigEndian = true;
 
-  public static Buffer allocate(int cap) {
+  public final static Buffer allocate(int cap) {
     return wrapArray(new byte[cap], 0, cap);
   }
 
-  public static Buffer allocateDirect(int cap) {
-    ByteBuffer buf = ByteBuffer.allocateDirect(cap);
-    return new ByteBufferBackedBuffer(buf, 0, cap, cap);
+  public final static Buffer allocateDirect(int cap) {
+    return wrap(ByteBuffer.allocateDirect(cap));
   }
 
-  public static Buffer wrapDynamic(Buffer buf, int max) {
-    return wrapDynamic(new Buffer[] { buf }, max);
+  public final static Buffer wrapDynamic(Buffer buf, int max) {
+    return new CompositeBuffer(new Buffer[] { buf.slice() }, max);
   }
 
-  public static Buffer wrapDynamic(Buffer[] bufs, int max) {
+  public final static Buffer wrapDynamic(Buffer[] bufs, int max) {
+    // Slice all the buffers
+    for (int i = 0; i < bufs.length; ++i) {
+      bufs[i] = bufs[i].slice();
+    }
+
     return new CompositeBuffer(bufs, max);
   }
 
-  public static Buffer wrapDynamic(Collection<Object> objs, int max) {
+  public final static Buffer wrapDynamic(Collection<Object> objs, int max) {
     Buffer[] bufs     = new Buffer[objs.size()];
     Iterator iterator = objs.iterator();
 
@@ -58,51 +62,52 @@ public abstract class Buffer {
       ++i;
     }
 
-    return wrapDynamic(bufs, max);
+    return new CompositeBuffer(bufs, max);
   }
 
-  public static Buffer dynamic() {
+  public final static Buffer dynamic() {
     return dynamic(1024, Integer.MAX_VALUE);
   }
 
-  public static Buffer dynamic(int est) {
+  public final static Buffer dynamic(int est) {
     return dynamic(est, Integer.MAX_VALUE);
   }
 
-  public static Buffer dynamic(int est, int max) {
-    return new CompositeBuffer(new Buffer[] { Buffer.allocate(est) }, max);
+  public final static Buffer dynamic(int est, int max) {
+    return new CompositeBuffer(new Buffer[] { allocate(est) }, max);
   }
 
-  public static Buffer wrap(byte[] arr) {
+  public final static Buffer wrap(byte[] arr) {
     return wrapArray(arr, 0, arr.length);
   }
 
-  public static Buffer wrapArray(byte[] arr, int offset, int len) {
+  public final static Buffer wrapArray(byte[] arr, int offset, int len) {
     return new HeapBuffer(arr, offset, 0, len, len);
   }
 
-  public static Buffer wrap(ByteBuffer buf) {
+  public final static Buffer wrap(ByteBuffer buf) {
     if (buf.hasArray()) {
-      return wrapArray(buf.array(), buf.arrayOffset(), buf.limit());
+      return wrapArray(buf.array(), buf.arrayOffset() + buf.position(), buf.remaining());
     }
     else {
-      buf = buf.duplicate();
-      return new ByteBufferBackedBuffer(buf, buf.position(), buf.limit(), buf.limit());
+      return new ByteBufferBackedBuffer(buf.slice());
     }
   }
 
   public static Buffer wrap(ChannelBuffer buf) {
+    // Slice first, axe questions later...
+    buf = buf.slice();
+
     if (buf.hasArray()) {
-      return wrapArray(buf.array(), buf.arrayOffset(), buf.capacity());
+      return wrapArray(buf.array(), buf.arrayOffset() + buf.readerIndex(), buf.readableBytes());
     }
     else {
-      int cap = buf.capacity();
-      return new ChannelBufferBackedBuffer(buf, buf.readerIndex(), cap, cap);
+      return new ChannelBufferBackedBuffer(buf);
     }
   }
 
   public static Buffer wrap(Buffer buf) {
-    return buf.duplicate();
+    return buf.slice();
   }
 
   public static Buffer wrap(Buffer[] bufs) {
@@ -126,9 +131,12 @@ public abstract class Buffer {
     else if (obj instanceof Collection<?>) {
       return wrap((Collection<?>) obj);
     }
+    else if (obj instanceof byte[]) {
+      return wrap((byte[]) obj);
+    }
     else {
       String msg = "Object " + obj + " not bufferable";
-      throw new IllegalArgumentException();
+      throw new IllegalArgumentException(msg);
     }
   }
 

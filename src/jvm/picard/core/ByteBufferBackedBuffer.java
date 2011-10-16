@@ -10,6 +10,10 @@ public final class ByteBufferBackedBuffer extends Buffer {
 
   final ByteBuffer buf;
 
+  protected ByteBufferBackedBuffer(ByteBuffer buf) {
+    this(buf, buf.position(), buf.limit(), buf.capacity());
+  }
+
   protected ByteBufferBackedBuffer(ByteBuffer buf, int pos, int lim, int cap) {
     super(pos, lim, cap);
     this.buf = buf;

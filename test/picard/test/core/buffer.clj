@@ -670,11 +670,18 @@
   (let [buf (ByteBuffer/allocate 200)]
     (.position buf 50)
     (.limit buf 150)
-    (test-buffer (Buffer/wrap (.slice buf)))))
+    (test-buffer (Buffer/wrap buf))))
 
 (deftest channel-buffer-backed-buffers-usage
-  (test-buffer (Buffer/wrap (ChannelBuffers/buffer 100)))
+  (let [cb (ChannelBuffers/buffer 100)]
+    (.writerIndex cb 100)
+    (test-buffer (Buffer/wrap cb)))
+
   (test-buffer (Buffer/wrap (mk-channel-buffer 100)))
+
+  (let [cb (mk-channel-buffer 200)]
+    (.setIndex cb 30 130)
+    (test-buffer (Buffer/wrap cb)))
 
   (let [cb  (mk-channel-buffer 100)
         buf (Buffer/wrap cb)]
@@ -699,8 +706,7 @@
 
 (deftest dynamic-buffer-usage
   (let [buf (Buffer/dynamic 1 100)]
-    (is (= 1 (.limit buf)))
-    (.limit buf 100)
+    (is (= 100 (.limit buf)))
     (test-buffer buf)))
 
 (deftest wrapping-non-buffer-object

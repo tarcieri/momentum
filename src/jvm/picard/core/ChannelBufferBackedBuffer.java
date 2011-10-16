@@ -10,14 +10,19 @@ public final class ChannelBufferBackedBuffer extends Buffer {
 
   final ChannelBuffer buf;
 
+  protected ChannelBufferBackedBuffer(ChannelBuffer buf) {
+    this(buf, buf.readerIndex(), buf.writerIndex(), buf.capacity());
+  }
+
   protected ChannelBufferBackedBuffer(ChannelBuffer buf, int pos, int lim, int cap) {
     super(pos, lim, cap);
-
     this.buf = buf;
   }
 
   protected ByteBuffer _toByteBuffer() {
-    return buf.toByteBuffer();
+    ByteBuffer ret = buf.toByteBuffer();
+
+    return ret.slice();
   }
 
   protected ChannelBuffer _toChannelBuffer() {
@@ -39,7 +44,9 @@ public final class ChannelBufferBackedBuffer extends Buffer {
         return ret;
       }
 
-      return Arrays.copyOfRange(ret, buf.arrayOffset(), capacity);
+      int offset = buf.arrayOffset();
+
+      return Arrays.copyOfRange(ret, offset, offset + buf.capacity());
     }
 
     return super._toByteArray();
