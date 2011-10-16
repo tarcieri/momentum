@@ -674,7 +674,19 @@
 
 (deftest channel-buffer-backed-buffers-usage
   (test-buffer (Buffer/wrap (ChannelBuffers/buffer 100)))
-  (test-buffer (Buffer/wrap (mk-channel-buffer 100))))
+  (test-buffer (Buffer/wrap (mk-channel-buffer 100)))
+
+  (let [cb  (mk-channel-buffer 100)
+        buf (Buffer/wrap cb)]
+
+    (is (= ByteOrder/BIG_ENDIAN
+           (.order buf)
+           (.order cb)))
+
+    (.order buf ByteOrder/LITTLE_ENDIAN)
+
+    (is (= ByteOrder/LITTLE_ENDIAN
+           (.order (.toChannelBuffer buf))))))
 
 (deftest composite-buffer-usage
   (test-buffer

@@ -21,7 +21,14 @@ public final class ChannelBufferBackedBuffer extends Buffer {
   }
 
   protected ChannelBuffer _toChannelBuffer() {
-    return buf;
+    if (order() == buf.order()) {
+      return buf;
+    }
+    else {
+      ByteBuffer bb = _toByteBuffer();
+      bb.order(order());
+      return ChannelBuffers.wrappedBuffer(bb);
+    }
   }
 
   protected byte[] _toByteArray() {
