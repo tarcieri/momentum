@@ -362,8 +362,22 @@ public abstract class Buffer {
    *
    */
 
-  public ByteBuffer toByteBuffer() {
-    ByteBuffer ret = ByteBuffer.wrap(toByteArray());
+  protected byte[] _toByteArray() {
+    byte[] arr = new byte[capacity];
+    _get(0, arr, 0, capacity);
+    return arr;
+  }
+
+  protected ByteBuffer _toByteBuffer() {
+    return ByteBuffer.wrap(toByteArray());
+  }
+
+  protected ChannelBuffer _toChannelBuffer() {
+    return ChannelBuffers.wrappedBuffer(_toByteBuffer());
+  }
+
+  public final ByteBuffer toByteBuffer() {
+    ByteBuffer ret = _toByteBuffer();
 
     ret.position(position);
     ret.limit(limit);
@@ -372,17 +386,14 @@ public abstract class Buffer {
     return ret;
   }
 
-  public ChannelBuffer toChannelBuffer() {
-    return ChannelBuffers.wrappedBuffer(toByteBuffer());
+  public final ChannelBuffer toChannelBuffer() {
+    ChannelBuffer ret = _toChannelBuffer();
+    ret.setIndex(position, limit);
+    return ret;
   }
 
-  // Stuff
-  public byte[] toByteArray() {
-    byte[] arr = new byte[capacity];
-
-    _get(0, arr, 0, capacity);
-
-    return arr;
+  public final byte[] toByteArray() {
+    return _toByteArray();
   }
 
   public final String toString(String charsetName)

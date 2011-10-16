@@ -18,28 +18,20 @@ public final class HeapBuffer extends Buffer {
     this.arr    = arr;
   }
 
-  public ByteBuffer toByteBuffer() {
-    ByteBuffer ret = ByteBuffer.wrap(arr, offset, capacity).slice();
-
-    ret.position(position);
-    ret.limit(limit);
-    ret.order(order());
-
-    return ret;
+  protected ByteBuffer _toByteBuffer() {
+    return ByteBuffer.wrap(arr, offset, capacity).slice();
   }
 
-  public ChannelBuffer toChannelBuffer() {
-    ChannelBuffer ret = ChannelBuffers.wrappedBuffer(arr, offset, capacity);
-    ret.setIndex(position, limit);
-    return ret;
+  protected ChannelBuffer _toChannelBuffer() {
+    return ChannelBuffers.wrappedBuffer(arr, offset, capacity);
   }
 
-  public byte[] toByteArray() {
+  protected byte[] _toByteArray() {
     if (offset == 0 && capacity == arr.length) {
       return arr;
     }
 
-    return Arrays.copyOfRange(arr, offset, capacity);
+    return Arrays.copyOfRange(arr, offset, offset + capacity);
   }
 
   public byte _get(int idx) {

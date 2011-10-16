@@ -16,26 +16,15 @@ public final class ChannelBufferBackedBuffer extends Buffer {
     this.buf = buf;
   }
 
-  public ByteBuffer toByteBuffer() {
-    ByteBuffer ret = buf.toByteBuffer();
-
-    ret.position(position());
-    ret.limit(limit());
-    ret.order(order());
-
-    return ret;
+  protected ByteBuffer _toByteBuffer() {
+    return buf.toByteBuffer();
   }
 
-  public ChannelBuffer toChannelBuffer() {
-    if (order() == buf.order()) {
-      buf.setIndex(position(), limit());
-      return buf;
-    }
-
-    return super.toChannelBuffer();
+  protected ChannelBuffer _toChannelBuffer() {
+    return buf;
   }
 
-  public byte[] toByteArray() {
+  protected byte[] _toByteArray() {
     if (buf.hasArray()) {
       byte[] ret = buf.array();
 
@@ -46,7 +35,7 @@ public final class ChannelBufferBackedBuffer extends Buffer {
       return Arrays.copyOfRange(ret, buf.arrayOffset(), capacity);
     }
 
-    return super.toByteArray();
+    return super._toByteArray();
   }
 
   protected byte _get(int idx) {

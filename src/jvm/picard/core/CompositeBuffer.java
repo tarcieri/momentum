@@ -58,22 +58,16 @@ public final class CompositeBuffer extends Buffer {
       ")";
   }
 
-  public ByteBuffer toByteBuffer() {
+  protected ByteBuffer _toByteBuffer() {
     if (bufCount == 1) {
-      ByteBuffer buf = bufs[0].toByteBuffer();
-
-      buf.position(position());
-      buf.limit(limit());
-      buf.order(order());
-
-      return buf;
+      return bufs[0]._toByteBuffer();
     }
     else {
-      return super.toByteBuffer();
+      return super._toByteBuffer();
     }
   }
 
-  public ChannelBuffer toChannelBuffer() {
+  protected ChannelBuffer _toChannelBuffer() {
     ByteBuffer[] arr = new ByteBuffer[bufCount];
     ByteBuffer curr;
 
@@ -93,15 +87,12 @@ public final class CompositeBuffer extends Buffer {
       arr[i] = curr;
     }
 
-    ChannelBuffer ret = ChannelBuffers.wrappedBuffer(arr);
-    ret.setIndex(position, limit);
-
-    return ret;
+    return ChannelBuffers.wrappedBuffer(arr);
   }
 
-  public byte[] toByteArray() {
+  protected byte[] _toByteArray() {
     if (bufCount == 1 && capacity == bufs[0].capacity) {
-      return bufs[0].toByteArray();
+      return bufs[0]._toByteArray();
     }
     else {
       int size   = Math.min(currentCapacity, capacity);

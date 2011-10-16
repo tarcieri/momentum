@@ -107,6 +107,8 @@
   (is (= 100 (.capacity buf)))
   (is (= 0 (.position buf)))
 
+  (.put buf 0 blank)
+
   ;; Absolute single byte get / put
   (is (= 0 (.get buf 50)))
   (.put buf 50 (byte 100))
@@ -433,10 +435,16 @@
     (is (arr= (arr-range increasing 5 90)
               (arr-get sliced 0 90))))
 
-  ;; toByteBuffer conversion
-
   (.clear buf)
   (.put buf 0 increasing)
+
+  ;; toByteArray conversions
+
+  (let [actual (.toByteArray buf)]
+    (is (arr= increasing actual)))
+
+  ;; toByteBuffer conversion
+  (.clear buf)
 
   (let [bb (.toByteBuffer buf)]
     (is (= 0 (.position bb)))
@@ -462,6 +470,17 @@
     (is (= 100 (.writerIndex cb)))
     (is (= 100 (.capacity cb)))
     (is (= cb (ChannelBuffers/wrappedBuffer increasing))))
+
+  (.position buf 10)
+  (.limit buf 90)
+
+  (let [cb (.toChannelBuffer buf)]
+    (is (= 10 (.readerIndex cb)))
+    (is (= 90 (.writerIndex cb)))
+    (is (= 100 (.capacity cb)))
+    (let [expected (ChannelBuffers/wrappedBuffer increasing)]
+      (.setIndex expected 10 90)
+      (is (= cb expected))))
 
   ;; Exceptional cases
   (is (thrown? IndexOutOfBoundsException (.get buf -1)))
@@ -625,65 +644,37 @@
 (deftest heap-allocated-buffers
   (test-buffer (Buffer/allocate 100)))
 
-(deftest converting-heap-allocated-buffers
-  (let [buf (Buffer/allocate 100)]
-    (.put buf d-at-50)
-    (.flip buf)
+(deftest wrapped-array-with-range
+  (let [arr (byte-array 110 (repeat (byte 79)))]
+    (test-buffer (Buffer/wrapArray arr 5 100))
 
-    (is (= (.toChannelBuffer buf)
-           (ChannelBuffers/wrappedBuffer d-at-50)))
+    (let [expected (byte-array 5 (repeat (byte 79)))]
+      (is (arr= expected (arr-range arr 0 5)))
+      (is (arr= expected (arr-range arr 105 5)))))
 
-    (is (arr= (.toByteArray buf) d-at-50)))
+  (let [arr (byte-array 105 (repeat (byte 79)))]
+    (test-buffer (Buffer/wrapArray arr 0 100))
 
-  (let [buf (Buffer/wrapArray d-at-50 5 95)]
-    (is (= (.toByteBuffer buf)
-           (.slice (ByteBuffer/wrap d-at-50 5 95))))
-
-    (is (= (.toChannelBuffer buf)
-           (ChannelBuffers/wrappedBuffer d-at-50 5 95)))
-
-    (is (arr= (.toByteArray buf)
-                       (Arrays/copyOfRange d-at-50 5 95))))
-
-  (let [buf (Buffer/wrapArray d-at-50 0 95)]
-    (is (= (.toByteBuffer buf)
-           (ByteBuffer/wrap d-at-50 0 95)))
-
-    (is (= (.toChannelBuffer buf)
-           (ChannelBuffers/wrappedBuffer d-at-50 0 95)))
-
-    (is (arr= (.toByteArray buf)
-                       (Arrays/copyOf d-at-50 95)))))
+    (let [expected (byte-array 5 (repeat (byte 79)))]
+      (is (arr= expected (arr-range arr 100 5))))))
 
 (deftest direct-allocated-buffers
-  (test-buffer (Buffer/allocateDirect 100)))
-
-(deftest converting-byte-buffer-backed-buffers
-  (let [buf (Buffer/allocateDirect 100)]
-    (.put buf d-at-50)
-    (.flip buf)
-
-    (is (= (.toByteBuffer buf)
-           (ByteBuffer/wrap d-at-50)))
-
-    (is (= (.toChannelBuffer buf)
-           (ChannelBuffers/wrappedBuffer d-at-50)))
-
-    (is (arr= (.toByteArray buf) d-at-50))))
-
-(deftest wrapped-arry-with-offset-usage
-  (let [arr (byte-array 102)]
-    (aset-byte arr 0 79)
-    (aset-byte arr 101 81)
-    (test-buffer (Buffer/wrapArray arr 1 100))
-    (is (= 79 (aget arr 0)))
-    (is (= 81 (aget arr 101)))))
+  (test-buffer (Buffer/allocateDirect 100))
+  (let [buf (ByteBuffer/allocateDirect 200)]
+    (.position buf 50)
+    (.limit buf 150)
+    (test-buffer (Buffer/wrap (.slice buf)))))
 
 (deftest byte-buffer-backed-buffers-usage
-  (test-buffer (Buffer/wrap (ByteBuffer/allocate 100))))
+  (test-buffer (Buffer/wrap (ByteBuffer/allocate 100)))
+  (let [buf (ByteBuffer/allocate 200)]
+    (.position buf 50)
+    (.limit buf 150)
+    (test-buffer (Buffer/wrap (.slice buf)))))
 
 (deftest channel-buffer-backed-buffers-usage
-  (test-buffer (Buffer/wrap (ChannelBuffers/buffer 100))))
+  (test-buffer (Buffer/wrap (ChannelBuffers/buffer 100)))
+  (test-buffer (Buffer/wrap (mk-channel-buffer 100))))
 
 (deftest composite-buffer-usage
   (test-buffer

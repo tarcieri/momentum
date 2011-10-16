@@ -15,16 +15,16 @@ public final class BufferBackedBuffer extends Buffer {
     this.buf    = buf;
   }
 
-  public ByteBuffer toByteBuffer() {
-    return buf.toByteBuffer();
+  protected ByteBuffer _toByteBuffer() {
+    return buf._toByteBuffer();
   }
 
-  public ChannelBuffer toChannelBuffer() {
-    return buf.toChannelBuffer();
+  protected ChannelBuffer _toChannelBuffer() {
+    return buf._toChannelBuffer();
   }
 
-  public byte[] toByteArray() {
-    return buf.toByteArray();
+  protected byte[] _toByteArray() {
+    return buf._toByteArray();
   }
 
   protected byte _get(int idx) {
