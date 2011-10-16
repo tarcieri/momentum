@@ -10,8 +10,8 @@ public final class ChannelBufferBackedBuffer extends Buffer {
 
   final ChannelBuffer buf;
 
-  protected ChannelBufferBackedBuffer(ChannelBuffer buf, int pos, int lim, int cap, boolean frz) {
-    super(pos, lim, cap, frz);
+  protected ChannelBufferBackedBuffer(ChannelBuffer buf, int pos, int lim, int cap) {
+    super(pos, lim, cap);
 
     this.buf = buf;
   }
@@ -66,6 +66,6 @@ public final class ChannelBufferBackedBuffer extends Buffer {
   }
 
   public Buffer duplicate() {
-    return new ChannelBufferBackedBuffer(buf, position, limit, capacity, isFrozen);
+    return new ChannelBufferBackedBuffer(buf, position, limit, capacity);
   }
 }

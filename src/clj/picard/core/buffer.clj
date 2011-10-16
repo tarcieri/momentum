@@ -132,16 +132,16 @@
   [^Buffer buf size]
   (.limit buf (+ size (.position buf))))
 
-(defn freeze
-  [^Buffer buf]
-  (.freeze buf))
+;; (defn freeze
+;;   [^Buffer buf]
+;;   (.freeze buf))
 
-(defn frozen?
-  [^Buffer buf]
-  (.isFrozen buf))
+;; (defn frozen?
+;;   [^Buffer buf]
+;;   (.isFrozen buf))
 
-;; Temporary
-(def frozen frozen?)
+;; ;; Temporary
+;; (def frozen frozen?)
 
 (defn holds?
   [^Buffer dst ^Buffer src]

@@ -31,16 +31,13 @@ public abstract class Buffer {
   // The byte order that any multibyte reads will use.
   boolean bigEndian = true;
 
-  // Whether the buffer is frozen or not
-  boolean isFrozen;
-
   public static Buffer allocate(int cap) {
     return wrapArray(new byte[cap], 0, cap);
   }
 
   public static Buffer allocateDirect(int cap) {
     ByteBuffer buf = ByteBuffer.allocateDirect(cap);
-    return new ByteBufferBackedBuffer(buf, 0, cap, cap, false);
+    return new ByteBufferBackedBuffer(buf, 0, cap, cap);
   }
 
   public static Buffer wrapDynamic(Buffer buf, int max) {
@@ -48,7 +45,7 @@ public abstract class Buffer {
   }
 
   public static Buffer wrapDynamic(Buffer[] bufs, int max) {
-    return new CompositeBuffer(bufs, max, false);
+    return new CompositeBuffer(bufs, max);
   }
 
   public static Buffer wrapDynamic(Collection<Object> objs, int max) {
@@ -73,7 +70,7 @@ public abstract class Buffer {
   }
 
   public static Buffer dynamic(int est, int max) {
-    return new CompositeBuffer(new Buffer[] { Buffer.allocate(est) }, max, false);
+    return new CompositeBuffer(new Buffer[] { Buffer.allocate(est) }, max);
   }
 
   public static Buffer wrap(byte[] arr) {
@@ -81,7 +78,7 @@ public abstract class Buffer {
   }
 
   public static Buffer wrapArray(byte[] arr, int offset, int len) {
-    return new HeapBuffer(arr, offset, 0, len, len, false);
+    return new HeapBuffer(arr, offset, 0, len, len);
   }
 
   public static Buffer wrap(ByteBuffer buf) {
@@ -90,7 +87,7 @@ public abstract class Buffer {
     }
     else {
       buf = buf.duplicate();
-      return new ByteBufferBackedBuffer(buf, buf.position(), buf.limit(), buf.limit(), false);
+      return new ByteBufferBackedBuffer(buf, buf.position(), buf.limit(), buf.limit());
     }
   }
 
@@ -100,7 +97,7 @@ public abstract class Buffer {
     }
     else {
       int cap = buf.capacity();
-      return new ChannelBufferBackedBuffer(buf, buf.readerIndex(), cap, cap, false);
+      return new ChannelBufferBackedBuffer(buf, buf.readerIndex(), cap, cap);
     }
   }
 
@@ -127,7 +124,7 @@ public abstract class Buffer {
       return wrap((ChannelBuffer) obj);
     }
     else if (obj instanceof Collection<?>) {
-      return wrap((Collection<Object>) obj);
+      return wrap((Collection<?>) obj);
     }
     else {
       String msg = "Object " + obj + " not bufferable";
@@ -215,13 +212,12 @@ public abstract class Buffer {
     return wrap(Arrays.asList(o1, o2, o3, o4, o5, o6));
   }
 
-  protected Buffer(int pos, int lim, int cap, boolean frz) {
+  protected Buffer(int pos, int lim, int cap) {
     if (cap < 0) {
       throw new IllegalArgumentException("Negative capacity: " + cap);
     }
 
     capacity = cap;
-    isFrozen = frz;
 
     limit(lim);
     position(pos);
@@ -244,7 +240,7 @@ public abstract class Buffer {
   }
 
   public Buffer duplicate() {
-    return new BufferBackedBuffer(this, position, limit, capacity, isFrozen);
+    return new BufferBackedBuffer(this, 0, position, limit, capacity);
   }
 
   public final Buffer flip() {
@@ -264,21 +260,8 @@ public abstract class Buffer {
     return this;
   }
 
-  public final Buffer freeze() {
-    isFrozen = true;
-    return this;
-  }
-
   public final boolean hasRemaining() {
     return position < limit;
-  }
-
-  public final boolean isFrozen() {
-    return isFrozen;
-  }
-
-  public final boolean isReadOnly() {
-    return isFrozen;
   }
 
   public final int limit() {
@@ -347,16 +330,9 @@ public abstract class Buffer {
     return this;
   }
 
-  public final Buffer slice() {
-    return duplicate();
-  }
-
-  public final Buffer slice(int len) {
-    return duplicate().limit(position + len);
-  }
-
-  public final Buffer slice(int pos, int len) {
-    return duplicate().position(pos).limit(pos + len);
+  public Buffer slice() {
+    int remaining = remaining();
+    return new BufferBackedBuffer(this, position, 0, remaining, remaining);
   }
 
   public final int remaining() {
@@ -387,7 +363,13 @@ public abstract class Buffer {
    */
 
   public ByteBuffer toByteBuffer() {
-    return ByteBuffer.wrap(toByteArray());
+    ByteBuffer ret = ByteBuffer.wrap(toByteArray());
+
+    ret.position(position);
+    ret.limit(limit);
+    ret.order(order());
+
+    return ret;
   }
 
   public ChannelBuffer toChannelBuffer() {
@@ -401,10 +383,6 @@ public abstract class Buffer {
     _get(0, arr, 0, capacity);
 
     return arr;
-  }
-
-  public final Buffer toReadOnlyBuffer() {
-    return duplicate().freeze();
   }
 
   public final String toString(String charsetName)
@@ -478,7 +456,6 @@ public abstract class Buffer {
       throw new BufferOverflowException();
     }
 
-    dst.assertReadable();
     dst._put(dst.position, this, position, remaining);
 
     position     += remaining;
@@ -501,7 +478,6 @@ public abstract class Buffer {
       throw new IndexOutOfBoundsException();
     }
 
-    dst.assertReadable();
     dst._put(off, this, position, len);
     position += len;
 
@@ -517,7 +493,6 @@ public abstract class Buffer {
       throw new BufferOverflowException();
     }
 
-    dst.assertReadable();
     dst._put(off, this, idx, len);
 
     return this;
@@ -552,7 +527,6 @@ public abstract class Buffer {
       throw new BufferOverflowException();
     }
 
-    assertReadable();
     _put(idx, src, off, len);
 
     return this;
@@ -611,7 +585,6 @@ public abstract class Buffer {
 
   public final Buffer put(byte b) {
     assertWalkable(1);
-    assertReadable();
 
     _put(position, b);
     ++position;
@@ -623,8 +596,6 @@ public abstract class Buffer {
     if (idx < 0 || idx >= capacity) {
       throw new IndexOutOfBoundsException();
     }
-
-    assertReadable();
 
     _put(idx, b);
 
@@ -654,8 +625,6 @@ public abstract class Buffer {
     else if (idx < 0 || offset + len > src.length) {
       throw new IndexOutOfBoundsException();
     }
-
-    assertReadable();
 
     _put(idx, src, offset, len);
 
@@ -1089,12 +1058,6 @@ public abstract class Buffer {
     put(idx + 1, short1(val));
 
     return this;
-  }
-
-  private final void assertReadable() {
-    if (isFrozen) {
-      throw new ReadOnlyBufferException();
-    }
   }
 
   private final void assertHolds(Buffer buf, int count) {

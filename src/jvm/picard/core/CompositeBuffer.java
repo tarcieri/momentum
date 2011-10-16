@@ -22,9 +22,9 @@ public final class CompositeBuffer extends Buffer {
   private int lastBufferIdx;
   private int bufCount;
 
-  protected CompositeBuffer(Buffer[] bufArr, int capacity, boolean frz) {
+  protected CompositeBuffer(Buffer[] bufArr, int capacity) {
     // Call the super class initializer w/ BS values
-    super(0, 0, 0, frz);
+    super(0, 0, 0);
 
     // Create the buffer array and the index lookup array. These are created bigger
     // than needed to accomodate for any buffer growth.
@@ -40,16 +40,22 @@ public final class CompositeBuffer extends Buffer {
       Buffer buf = bufArr[i];
       bufs[i]    = buf;
 
-      if (buf.isFrozen()) {
-        freeze();
-      }
-
       // Update the index array
       currentCapacity = indices[i + 1] = indices[i] + buf.remaining();
     }
 
     this.capacity = Math.max(capacity, currentCapacity);
     limit         = currentCapacity;
+  }
+
+  public String toString() {
+    return getClass().getSimpleName() + "(" +
+      "pos="       + position + ", " +
+      "lim="       + limit    + ", " +
+      "cap="       + capacity + ", " +
+      "parts="     + bufCount + ", " +
+      "allocated=" + currentCapacity +
+      ")";
   }
 
   public ByteBuffer toByteBuffer() {
@@ -71,9 +77,19 @@ public final class CompositeBuffer extends Buffer {
     ByteBuffer[] arr = new ByteBuffer[bufCount];
     ByteBuffer curr;
 
+    int size = Math.min(currentCapacity, capacity);
+
     for (int i = 0; i < bufCount; ++i) {
       curr = bufs[i].toByteBuffer();
       curr.order(order());
+
+      if (curr.capacity() > size) {
+        curr.limit(curr.position() + size);
+        curr = curr.slice();
+      }
+
+      size -= curr.capacity();
+
       arr[i] = curr;
     }
 
@@ -84,13 +100,14 @@ public final class CompositeBuffer extends Buffer {
   }
 
   public byte[] toByteArray() {
-    if (bufCount == 1) {
+    if (bufCount == 1 && capacity == bufs[0].capacity) {
       return bufs[0].toByteArray();
     }
     else {
-      byte[] arr = new byte[currentCapacity];
+      int size   = Math.min(currentCapacity, capacity);
+      byte[] arr = new byte[size];
 
-      _get(0, arr, 0, currentCapacity);
+      _get(0, arr, 0, size);
 
       return arr;
     }

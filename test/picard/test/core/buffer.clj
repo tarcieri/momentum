@@ -421,6 +421,48 @@
 
   (.order buf ByteOrder/BIG_ENDIAN)
 
+  ;; Slice
+  (.put buf 0 increasing)
+  (.position buf 5)
+  (.limit buf 95)
+
+  (let [sliced (.slice buf)]
+    (is (= 0 (.position sliced)))
+    (is (= 90 (.limit sliced)))
+    (is (= 90 (.capacity sliced)))
+    (is (arr= (arr-range increasing 5 90)
+              (arr-get sliced 0 90))))
+
+  ;; toByteBuffer conversion
+
+  (.clear buf)
+  (.put buf 0 increasing)
+
+  (let [bb (.toByteBuffer buf)]
+    (is (= 0 (.position bb)))
+    (is (= 100 (.limit bb)))
+    (is (= 100 (.capacity bb)))
+    (is (= bb (ByteBuffer/wrap increasing))))
+
+  (.position buf 10)
+  (.limit buf 90)
+
+  (let [bb (.toByteBuffer buf)]
+    (is (= 10 (.position bb)))
+    (is (= 90 (.limit bb)))
+    (is (= 100 (.capacity bb)))
+    (is (= bb (ByteBuffer/wrap increasing 10 80))))
+
+  ;; toChannelBuffer conversion
+
+  (.clear buf)
+
+  (let [cb (.toChannelBuffer buf)]
+    (is (= 0 (.readerIndex cb)))
+    (is (= 100 (.writerIndex cb)))
+    (is (= 100 (.capacity cb)))
+    (is (= cb (ChannelBuffers/wrappedBuffer increasing))))
+
   ;; Exceptional cases
   (is (thrown? IndexOutOfBoundsException (.get buf -1)))
   (is (thrown? IndexOutOfBoundsException (.get buf 100)))
@@ -588,9 +630,6 @@
     (.put buf d-at-50)
     (.flip buf)
 
-    (is (= (.toByteBuffer buf)
-           (ByteBuffer/wrap d-at-50)))
-
     (is (= (.toChannelBuffer buf)
            (ChannelBuffers/wrappedBuffer d-at-50)))
 
@@ -663,7 +702,6 @@
 
 (deftest wrapping-non-buffer-object
   (is (thrown? IllegalArgumentException (Buffer/wrap 1))))
-
 
 ;;
 ;; === Transfers ===
@@ -750,17 +788,17 @@
 ;; === Other stuff ===
 ;;
 
-(deftest wrapping-buffers-with-one-frozen
-  (is (frozen (wrap (freeze (buffer 10)) (buffer 10))))
-  (is (frozen (wrap (buffer 10) (freeze (buffer 10))))))
+;; (deftest wrapping-buffers-with-one-frozen
+;;   (is (frozen (wrap (freeze (buffer 10)) (buffer 10))))
+;;   (is (frozen (wrap (buffer 10) (freeze (buffer 10))))))
 
-(deftest duplicating-frozen-buffer-stays-frozen
-  (is (frozen (-> (buffer 10) freeze duplicate)))
-  (is (frozen (-> (mk-channel-buffer 10) buffer freeze duplicate)))
-  (is (frozen (-> (direct-buffer 10) freeze duplicate)))
-  (is (frozen (-> (wrap (buffer 10) (buffer 10)) freeze duplicate))))
+;; (deftest duplicating-frozen-buffer-stays-frozen
+;;   (is (frozen (-> (buffer 10) freeze duplicate)))
+;;   (is (frozen (-> (mk-channel-buffer 10) buffer freeze duplicate)))
+;;   (is (frozen (-> (direct-buffer 10) freeze duplicate)))
+;;   (is (frozen (-> (wrap (buffer 10) (buffer 10)) freeze duplicate))))
 
-(deftest throws-when-writing-to-frozen-buffer
-  (is (thrown?
-       ReadOnlyBufferException
-       (.put (freeze (buffer 10)) (byte 1)))))
+;; (deftest throws-when-writing-to-frozen-buffer
+;;   (is (thrown?
+;;        ReadOnlyBufferException
+;;        (.put (freeze (buffer 10)) (byte 1)))))

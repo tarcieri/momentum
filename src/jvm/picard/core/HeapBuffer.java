@@ -11,8 +11,8 @@ public final class HeapBuffer extends Buffer {
   final int offset;
   final byte [] arr;
 
-  protected HeapBuffer(byte [] arr, int offset, int pos, int lim, int cap, boolean frz) {
-    super(pos, lim, cap, frz);
+  protected HeapBuffer(byte [] arr, int offset, int pos, int lim, int cap) {
+    super(pos, lim, cap);
 
     this.offset = offset;
     this.arr    = arr;
@@ -24,10 +24,6 @@ public final class HeapBuffer extends Buffer {
     ret.position(position);
     ret.limit(limit);
     ret.order(order());
-
-    if (isFrozen) {
-      return ret.asReadOnlyBuffer();
-    }
 
     return ret;
   }
@@ -73,6 +69,6 @@ public final class HeapBuffer extends Buffer {
   }
 
   public Buffer duplicate() {
-    return new HeapBuffer(arr, offset, position, limit, capacity, isFrozen);
+    return new HeapBuffer(arr, offset, position, limit, capacity);
   }
 }

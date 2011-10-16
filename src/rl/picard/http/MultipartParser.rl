@@ -256,7 +256,7 @@ public final class MultipartParser {
     }
 
     private Buffer slice(Buffer buf, int from, int to) {
-        Buffer chunk = buf.toReadOnlyBuffer();
+        Buffer chunk = buf.duplicate();
 
         chunk.position(from);
         chunk.limit(to);

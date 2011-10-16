@@ -10,8 +10,8 @@ public final class ByteBufferBackedBuffer extends Buffer {
 
   final ByteBuffer buf;
 
-  protected ByteBufferBackedBuffer(ByteBuffer buf, int pos, int lim, int cap, boolean frz) {
-    super(pos, lim, cap, frz);
+  protected ByteBufferBackedBuffer(ByteBuffer buf, int pos, int lim, int cap) {
+    super(pos, lim, cap);
     this.buf = buf;
   }
 
@@ -57,6 +57,6 @@ public final class ByteBufferBackedBuffer extends Buffer {
   }
 
   public Buffer duplicate() {
-    return new ByteBufferBackedBuffer(buf, position, limit, capacity, isFrozen);
+    return new ByteBufferBackedBuffer(buf, position, limit, capacity);
   }
 }

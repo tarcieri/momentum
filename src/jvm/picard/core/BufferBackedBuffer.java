@@ -4,11 +4,15 @@ import java.nio.ByteBuffer;
 import org.jboss.netty.buffer.ChannelBuffer;
 
 public final class BufferBackedBuffer extends Buffer {
+
+  final int offset;
   final Buffer buf;
 
-  protected BufferBackedBuffer(Buffer buf, int pos, int lim, int cap, boolean frz) {
-    super(pos, lim, cap, frz);
-    this.buf = buf;
+  protected BufferBackedBuffer(Buffer buf, int offset, int pos, int lim, int cap) {
+    super(pos, lim, cap);
+
+    this.offset = offset;
+    this.buf    = buf;
   }
 
   public ByteBuffer toByteBuffer() {
@@ -24,22 +28,22 @@ public final class BufferBackedBuffer extends Buffer {
   }
 
   protected byte _get(int idx) {
-    return buf._get(idx);
+    return buf._get(offset + idx);
   }
 
   protected void _get(int idx, byte[] dst, int off, int len) {
-    buf._get(idx, dst, off, len);
+    buf._get(offset + idx, dst, off, len);
   }
 
   protected void _put(int idx, byte b) {
-    buf._put(idx, b);
+    buf._put(offset + idx, b);
   }
 
   protected void _put(int idx, byte[] src, int off, int len) {
-    buf._put(idx, src, off, len);
+    buf._put(offset + idx, src, off, len);
   }
 
   public Buffer duplicate() {
-    return new BufferBackedBuffer(buf, position, limit, capacity, isFrozen);
+    return new BufferBackedBuffer(buf, offset, position, limit, capacity);
   }
 }
