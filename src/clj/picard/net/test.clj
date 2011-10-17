@@ -56,8 +56,11 @@
        conn)))
 
 (defn last-connection
-  []
-  (first @*connections*))
+  ([] (first @*connections*))
+  ([evt val]
+     (let [conn (last-connection)]
+       (conn evt val)
+       conn)))
 
 (defn received
   ([] (received (last-connection)))

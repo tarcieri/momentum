@@ -44,7 +44,9 @@
 (defn PUT    [& args] (apply request "PUT"    args))
 (defn DELETE [& args] (apply request "DELETE" args))
 
-(def received net/received)
+(def received        net/received)
+(def last-connection net/last-connection)
+(def last-request    last-connection)
 
 (defn- normalize-response
   [[status hdrs body]]
