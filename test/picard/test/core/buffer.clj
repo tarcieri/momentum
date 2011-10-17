@@ -445,6 +445,17 @@
   (.order buf ByteOrder/LITTLE_ENDIAN)
   (is (= ByteOrder/LITTLE_ENDIAN (.order (.slice buf))))
 
+  (.order buf ByteOrder/BIG_ENDIAN)
+  (.clear buf)
+
+  ;; equals(other)
+  (is (= buf (Buffer/wrap increasing)))
+  (is (not= buf (Buffer/wrap decreasing)))
+
+  (.window buf 10 10)
+  (is (= buf (Buffer/wrap (arr-range increasing 10 10))))
+  (is (not= buf (Buffer/wrap increasing)))
+
   ;; toByteArray conversions
 
   (let [actual (.toByteArray buf)]

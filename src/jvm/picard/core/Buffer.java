@@ -260,6 +260,36 @@ public abstract class Buffer {
     return this;
   }
 
+  public final boolean equals(Buffer o) {
+    int remaining = remaining();
+
+    if (o.remaining() != remaining) {
+      return false;
+    }
+
+    int indexA = position;
+    int indexB = o.position;
+
+    while (remaining-- > 0) {
+      if (_get(indexA) != o._get(indexB)) {
+        return false;
+      }
+
+      ++indexA;
+      ++indexB;
+    }
+
+    return true;
+  }
+
+  public final boolean equals(Object o) {
+    if (o instanceof Buffer) {
+      return equals((Buffer) o);
+    }
+
+    return false;
+  }
+
   public final Buffer focus(int len) {
     if (len < 0) {
       throw new IllegalArgumentException("length must be positive");
