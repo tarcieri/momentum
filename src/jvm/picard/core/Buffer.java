@@ -95,7 +95,7 @@ public abstract class Buffer {
     }
   }
 
-  public static Buffer wrap(ChannelBuffer buf) {
+  public final static Buffer wrap(ChannelBuffer buf) {
     // Slice first, axe questions later...
     buf = buf.slice();
 
@@ -107,19 +107,19 @@ public abstract class Buffer {
     }
   }
 
-  public static Buffer wrap(Buffer buf) {
+  public final static Buffer wrap(Buffer buf) {
     return buf.slice();
   }
 
-  public static Buffer wrap(Buffer[] bufs) {
+  public final static Buffer wrap(Buffer[] bufs) {
     return wrapDynamic(bufs, 0);
   }
 
-  public static Buffer wrap(Collection<Object> objs) {
+  public final static Buffer wrap(Collection<Object> objs) {
     return wrapDynamic(objs, 0);
   }
 
-  public static Buffer wrap(Object obj) {
+  public final static Buffer wrap(Object obj) {
     if (obj instanceof Buffer) {
       return wrap((Buffer) obj);
     }
@@ -153,7 +153,7 @@ public abstract class Buffer {
    * @throws IllegalArgumentException
    *         If any of the arguments cannot be wrapped by a Buffer.
    */
-  public static Buffer wrap(Object o1, Object o2) {
+  public final static Buffer wrap(Object o1, Object o2) {
     return wrap(Arrays.asList(o1, o2));
   }
 
@@ -169,7 +169,7 @@ public abstract class Buffer {
    * @throws IllegalArgumentException
    *         If any of the arguments cannot be wrapped by a Buffer.
    */
-  public static Buffer wrap(Object o1, Object o2, Object o3) {
+  public final static Buffer wrap(Object o1, Object o2, Object o3) {
     return wrap(Arrays.asList(o1, o2, o3));
   }
 
@@ -185,7 +185,7 @@ public abstract class Buffer {
    * @throws IllegalArgumentException
    *         If any of the arguments cannot be wrapped by a Buffer.
    */
-  public static Buffer wrap(Object o1, Object o2, Object o3, Object o4) {
+  public final static Buffer wrap(Object o1, Object o2, Object o3, Object o4) {
     return wrap(Arrays.asList(o1, o2, o3, o4));
   }
 
@@ -201,7 +201,7 @@ public abstract class Buffer {
    * @throws IllegalArgumentException
    *         If any of the arguments cannot be wrapped by a Buffer.
    */
-  public static Buffer wrap(Object o1, Object o2, Object o3, Object o4, Object o5) {
+  public final static Buffer wrap(Object o1, Object o2, Object o3, Object o4, Object o5) {
     return wrap(Arrays.asList(o1, o2, o3, o4, o5));
   }
 
@@ -217,7 +217,7 @@ public abstract class Buffer {
    * @throws IllegalArgumentException
    *         If any of the arguments cannot be wrapped by a Buffer.
    */
-  public static Buffer wrap(Object o1, Object o2, Object o3, Object o4, Object o5, Object o6) {
+  public final static Buffer wrap(Object o1, Object o2, Object o3, Object o4, Object o5, Object o6) {
     return wrap(Arrays.asList(o1, o2, o3, o4, o5, o6));
   }
 
@@ -343,11 +343,11 @@ public abstract class Buffer {
     return new BufferBackedBuffer(this, idx, 0, len, len);
   }
 
-  public Buffer slice() {
+  public final Buffer slice() {
     return _slice(position, remaining());
   }
 
-  public Buffer slice(int idx, int len) {
+  public final Buffer slice(int idx, int len) {
     if (idx < 0 || idx > capacity) {
       throw new IndexOutOfBoundsException();
     }
