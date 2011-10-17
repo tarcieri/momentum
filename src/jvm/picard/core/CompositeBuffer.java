@@ -2,6 +2,7 @@ package picard.core;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 
 import org.jboss.netty.buffer.ChannelBuffer;
@@ -48,14 +49,13 @@ public final class CompositeBuffer extends Buffer {
     this.limit    = this.capacity;
   }
 
-  public String toString() {
-    return getClass().getSimpleName() + "(" +
-      "pos="       + position + ", " +
-      "lim="       + limit    + ", " +
-      "cap="       + capacity + ", " +
-      "parts="     + bufCount + ", " +
-      "allocated=" + currentCapacity +
-      ")";
+  protected HashMap<String,String> toStringAttrs() {
+    HashMap<String,String> ret = super.toStringAttrs();
+
+    ret.put("parts",     Integer.toString(bufCount));
+    ret.put("allocated", Integer.toString(currentCapacity));
+
+    return ret;
   }
 
   protected ByteBuffer _toByteBuffer() {
@@ -71,23 +71,20 @@ public final class CompositeBuffer extends Buffer {
     ByteBuffer[] arr = new ByteBuffer[bufCount];
     ByteBuffer curr;
 
-    int size = Math.min(currentCapacity, capacity);
-
     for (int i = 0; i < bufCount; ++i) {
-      curr = bufs[i].toByteBuffer();
+      curr = bufs[i]._toByteBuffer();
       curr.order(order());
-
-      if (curr.capacity() > size) {
-        curr.limit(size);
-        curr = curr.slice();
-      }
-
-      size -= curr.capacity();
-
       arr[i] = curr;
     }
 
-    return ChannelBuffers.wrappedBuffer(arr);
+    ChannelBuffer ret = ChannelBuffers.wrappedBuffer(arr);
+
+    if (ret.capacity() > capacity) {
+      ret.writerIndex(capacity);
+      ret = ret.slice();
+    }
+
+    return ret;
   }
 
   protected byte[] _toByteArray() {

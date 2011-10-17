@@ -8,6 +8,7 @@ import java.nio.BufferUnderflowException;
 import java.nio.ReadOnlyBufferException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Iterator;
 
 import org.jboss.netty.buffer.ChannelBuffer;
@@ -338,9 +339,24 @@ public abstract class Buffer {
     return this;
   }
 
+  protected Buffer _slice(int idx, int len) {
+    return new BufferBackedBuffer(this, idx, 0, len, len);
+  }
+
   public Buffer slice() {
-    int remaining = remaining();
-    return new BufferBackedBuffer(this, position, 0, remaining, remaining);
+    return _slice(position, remaining());
+  }
+
+  public Buffer slice(int idx, int len) {
+    if (idx < 0 || idx > capacity) {
+      throw new IndexOutOfBoundsException();
+    }
+
+    if (len < 0 || idx + len > capacity) {
+      throw new IndexOutOfBoundsException();
+    }
+
+    return _slice(idx, len);
   }
 
   public final int remaining() {
@@ -353,11 +369,23 @@ public abstract class Buffer {
     return this;
   }
 
-  public String toString() {
-    return getClass().getSimpleName() + '(' +
-      "pos=" + position + ", " +
-      "lim=" + limit + ", "    +
-      "cap=" + capacity + ")";
+  protected HashMap<String,String> toStringAttrs() {
+    HashMap<String,String> ret = new HashMap<String,String>();
+
+    ret.put("pos", Integer.toString(position));
+    ret.put("lim", Integer.toString(limit));
+    ret.put("cap", Integer.toString(capacity));
+
+    return ret;
+  }
+
+  public final String toString() {
+    String str = getClass().getSimpleName();
+
+    str += "#" + Integer.toHexString(System.identityHashCode(this));
+    str += toStringAttrs().toString();
+
+    return str;
   }
 
   public final Buffer window(int pos, int len) {

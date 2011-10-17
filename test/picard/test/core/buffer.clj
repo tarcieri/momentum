@@ -465,11 +465,13 @@
 
   (.clear buf)
 
-  (let [cb (.toChannelBuffer buf)]
+  (let [cb  (.toChannelBuffer buf)
+        exp (ChannelBuffers/wrappedBuffer increasing)]
     (is (= 0 (.readerIndex cb)))
     (is (= 100 (.writerIndex cb)))
     (is (= 100 (.capacity cb)))
-    (is (= cb (ChannelBuffers/wrappedBuffer increasing))))
+
+    (is (= cb exp)))
 
   (.position buf 10)
   (.limit buf 90)
@@ -703,6 +705,30 @@
     (Buffer/allocate 20)
     (Buffer/allocate 20)
     (Buffer/allocate 20))))
+
+(deftest composite-buffer-with-windowed-buffers
+  (let [buf1 (Buffer/wrap (Arrays/copyOf increasing 100))
+        buf2 (Buffer/wrap (Arrays/copyOf decreasing 100))]
+    (test-buffer
+     (Buffer/wrap
+      (.position buf1 50)
+      (.limit buf2 50)))))
+
+(deftest composite-channel-buffer-backed
+  (let [buf1 (Buffer/wrap (mk-channel-buffer 100))
+        buf2 (Buffer/wrap (mk-channel-buffer 100))]
+    (test-buffer
+     (Buffer/wrap
+      (-> (Buffer/wrap (mk-channel-buffer 100))
+          (.limit 50))
+      (-> (Buffer/wrap (mk-channel-buffer 100))
+          (.position 50))))))
+
+(deftest channel-buffer-backed-subset
+  (let [buf (Buffer/wrap (mk-channel-buffer 200))]
+    (.position buf 50)
+    (.limit buf 150)
+    (test-buffer (.slice buf))))
 
 (deftest dynamic-buffer-usage
   (let [buf (Buffer/dynamic 1 100)]
