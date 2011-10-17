@@ -11,12 +11,20 @@ public final class ChannelBufferBackedBuffer extends Buffer {
   final ChannelBuffer buf;
 
   protected ChannelBufferBackedBuffer(ChannelBuffer buf) {
-    this(buf, buf.readerIndex(), buf.writerIndex(), buf.capacity());
+    this(buf, buf.readerIndex(), buf.writerIndex(), buf.capacity(), true);
   }
 
   protected ChannelBufferBackedBuffer(ChannelBuffer buf, int pos, int lim, int cap) {
-    super(pos, lim, cap);
+    this(buf, pos, lim, cap, true);
+  }
+
+  protected ChannelBufferBackedBuffer(ChannelBuffer buf, int pos, int lim, int cap, boolean be) {
+    super(pos, lim, cap, be);
     this.buf = buf;
+  }
+
+  protected Buffer _slice(int idx, int len) {
+    return new ChannelBufferBackedBuffer(buf.slice(idx, len), 0, len, len, bigEndian);
   }
 
   protected ByteBuffer _toByteBuffer() {

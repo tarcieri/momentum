@@ -11,10 +11,18 @@ public final class BufferBackedBuffer extends Buffer {
   final Buffer buf;
 
   protected BufferBackedBuffer(Buffer buf, int offset, int pos, int lim, int cap) {
-    super(pos, lim, cap);
+    this(buf, offset, pos, lim, cap, true);
+  }
+
+  protected BufferBackedBuffer(Buffer buf, int offset, int pos, int lim, int cap, boolean be) {
+    super(pos, lim, cap, be);
 
     this.offset = offset;
     this.buf    = buf;
+  }
+
+  protected Buffer _slice(int idx, int len) {
+    return new BufferBackedBuffer(buf, offset + idx, 0, len, len, bigEndian);
   }
 
   protected HashMap<String,String> toStringAttrs() {

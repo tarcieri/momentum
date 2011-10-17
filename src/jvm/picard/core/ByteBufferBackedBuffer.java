@@ -2,6 +2,7 @@ package picard.core;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.HashMap;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
@@ -15,8 +16,31 @@ public final class ByteBufferBackedBuffer extends Buffer {
   }
 
   protected ByteBufferBackedBuffer(ByteBuffer buf, int pos, int lim, int cap) {
-    super(pos, lim, cap);
+    this(buf, pos, lim, cap, true);
+  }
+
+  protected ByteBufferBackedBuffer(ByteBuffer buf, int pos, int lim, int cap, boolean be) {
+    super(pos, lim, cap, be);
     this.buf = buf;
+  }
+
+  protected Buffer _slice(int idx, int len) {
+    buf.position(idx);
+    buf.limit(idx + len);
+
+    ByteBuffer newBuf = buf.slice();
+
+    buf.limit(capacity);
+
+    return new ByteBufferBackedBuffer(newBuf, 0, len, len, bigEndian);
+  }
+
+  protected HashMap<String,String> toStringAttrs() {
+    HashMap<String,String> ret = super.toStringAttrs();
+
+    ret.put("buffer", buf.toString());
+
+    return ret;
   }
 
   protected ByteBuffer _toByteBuffer() {

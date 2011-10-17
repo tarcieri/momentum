@@ -30,7 +30,7 @@ public abstract class Buffer {
   int capacity;
 
   // The byte order that any multibyte reads will use.
-  boolean bigEndian = true;
+  boolean bigEndian;
 
   public final static Buffer allocate(int cap) {
     return wrapArray(new byte[cap], 0, cap);
@@ -221,12 +221,13 @@ public abstract class Buffer {
     return wrap(Arrays.asList(o1, o2, o3, o4, o5, o6));
   }
 
-  protected Buffer(int pos, int lim, int cap) {
+  protected Buffer(int pos, int lim, int cap, boolean be) {
     if (cap < 0) {
       throw new IllegalArgumentException("Negative capacity: " + cap);
     }
 
-    capacity = cap;
+    capacity  = cap;
+    bigEndian = be;
 
     limit(lim);
     position(pos);
@@ -340,7 +341,7 @@ public abstract class Buffer {
   }
 
   protected Buffer _slice(int idx, int len) {
-    return new BufferBackedBuffer(this, idx, 0, len, len);
+    return new BufferBackedBuffer(this, idx, 0, len, len, bigEndian);
   }
 
   public final Buffer slice() {

@@ -438,6 +438,13 @@
   (.clear buf)
   (.put buf 0 increasing)
 
+  ;; Slice maintains byte order
+  (.order buf ByteOrder/BIG_ENDIAN)
+  (is (= ByteOrder/BIG_ENDIAN (.order (.slice buf))))
+
+  (.order buf ByteOrder/LITTLE_ENDIAN)
+  (is (= ByteOrder/LITTLE_ENDIAN (.order (.slice buf))))
+
   ;; toByteArray conversions
 
   (let [actual (.toByteArray buf)]

@@ -11,11 +11,19 @@ public final class HeapBuffer extends Buffer {
   final int offset;
   final byte [] arr;
 
-  protected HeapBuffer(byte [] arr, int offset, int pos, int lim, int cap) {
-    super(pos, lim, cap);
+  protected HeapBuffer(byte [] arr, int off, int pos, int lim, int cap) {
+    this(arr, off, pos, lim, cap, true);
+  }
 
-    this.offset = offset;
+  protected HeapBuffer(byte [] arr, int off, int pos, int lim, int cap, boolean be) {
+    super(pos, lim, cap, be);
+
+    this.offset = off;
     this.arr    = arr;
+  }
+
+  protected Buffer _slice(int idx, int len) {
+    return new HeapBuffer(arr, offset + idx, 0, len, len, bigEndian);
   }
 
   protected ByteBuffer _toByteBuffer() {

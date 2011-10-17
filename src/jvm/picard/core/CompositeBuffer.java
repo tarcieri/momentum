@@ -25,7 +25,7 @@ public final class CompositeBuffer extends Buffer {
 
   protected CompositeBuffer(Buffer[] bufArr, int capacity) {
     // Call the super class initializer w/ BS values
-    super(0, 0, 0);
+    super(0, 0, 0, true);
 
     // Create the buffer array and the index lookup array. These are created bigger
     // than needed to accomodate for any buffer growth.
