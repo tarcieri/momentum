@@ -1,6 +1,7 @@
 (ns picard.test.utils.base64
   (:use
    clojure.test
+   picard.core.buffer
    picard.utils.base64)
   (:import
    java.nio.ByteBuffer
@@ -23,11 +24,9 @@
   (is (nil? (decode nil))))
 
 (deftest encoding-strings
-  (is (= "" (encode "")))
-  (is (= "Wk9NRw==" (encode "ZOMG"))))
+  (is (= (buffer "") (encode "")))
+  (is (= (buffer "Wk9NRw==") (encode "ZOMG"))))
 
 (deftest decoding-strings
-  (is (byte= (str->arr "")
-             (decode "")))
-  (is (byte= (str->arr "ZOMG")
-             (decode "Wk9NRw=="))))
+  (is (= (buffer "") (decode "")))
+  (is (= (buffer "ZOMG") (decode "Wk9NRw=="))))

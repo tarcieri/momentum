@@ -24,6 +24,8 @@
    :ping         WsFrameType/PING
    :pong         WsFrameType/PONG})
 
+(def salt "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
+
 (defn- mk-socket
   []
   (atom (Socket. :CONNECTING nil nil)))
@@ -32,7 +34,7 @@
   [key]
   (base64/encode
    (digest/sha1
-    (str key "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))))
+    (str key salt))))
 
 (defn- frame
   [type data]
@@ -46,7 +48,6 @@
   [state dn key]
   (let [hdrs {"connection"           "upgrade"
               "upgrade"              "websocket"
-              "content-type"         "utf-8"
               "sec-websocket-accept" (accept-key key)}]
 
     (swap! state #(assoc % :state :OPEN))

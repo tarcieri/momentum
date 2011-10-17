@@ -68,15 +68,17 @@
     body))
 
 (defn assert-responded?
-  [msg conn expected f]
-  (let [actual (response conn)
-        match? (= (normalize-response expected)
-                  (normalize-response actual))]
+  ([msg expected f]
+     (assert-responded? msg (net/last-connection) expected f))
+  ([msg conn expected f]
+     (let [actual (response conn)
+           match? (= (normalize-response expected)
+                     (normalize-response actual))]
 
-    (f {:type     (if match? :pass :fail)
-        :message  msg
-        :expected (stringify-response expected)
-        :actual   (stringify-response actual)})))
+       (f {:type     (if match? :pass :fail)
+           :message  msg
+           :expected (stringify-response expected)
+           :actual   (stringify-response actual)}))))
 
-(defmethod assert-expr 'responded? [msg [_ conn expected]]
-  `(assert-responded? ~msg ~conn ~expected #(do-report %)))
+(defmethod assert-expr 'responded? [msg [_ & args]]
+  `(assert-responded? ~msg ~@args #(do-report %)))

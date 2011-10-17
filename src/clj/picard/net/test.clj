@@ -55,8 +55,12 @@
        (swap! *connections* #(conj % conn))
        conn)))
 
+(defn last-connection
+  []
+  (first @*connections*))
+
 (defn received
-  ([] (received (first @*connections*)))
+  ([] (received (last-connection)))
   ([conn]
      (lazy-seq
       (when-let [e (.poll (.queue conn) 1000 TimeUnit/MILLISECONDS)]

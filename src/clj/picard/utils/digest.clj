@@ -1,9 +1,10 @@
 (ns picard.utils.digest
+  (:use
+   picard.core.buffer)
   (:import
-   [java.nio
-    ByteBuffer]
-   [java.security
-    MessageDigest]))
+   picard.core.Buffer
+   java.nio.ByteBuffer
+   java.security.MessageDigest))
 
 (defprotocol Digest
   (^{:private true} update-digest [val digest]))
@@ -15,7 +16,11 @@
 
   String
   (update-digest [str digest]
-    (update-digest (.getBytes str) digest)))
+    (update-digest (.getBytes str) digest))
+
+  Buffer
+  (update-digest [buf digest]
+    (update-digest (to-byte-array buf) digest)))
 
 (defn update
   [digest o]
@@ -23,7 +28,7 @@
 
 (defn finish
   [digest]
-  (.digest digest))
+  (buffer (.digest digest)))
 
 (defn sha1
   ([] (MessageDigest/getInstance "SHA1"))

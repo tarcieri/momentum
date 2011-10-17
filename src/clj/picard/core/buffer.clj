@@ -176,6 +176,10 @@
   [^Buffer buf]
   (.rewind buf))
 
+(defn to-byte-array
+  [^Buffer buf]
+  (.toByteArray buf))
+
 (defn to-channel-buffer
   [^Buffer buf]
   (.toChannelBuffer buf))
