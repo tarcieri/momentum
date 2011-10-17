@@ -248,8 +248,8 @@ public abstract class Buffer {
     return this;
   }
 
-  public Buffer duplicate() {
-    return new BufferBackedBuffer(this, 0, position, limit, capacity);
+  public final Buffer duplicate() {
+    return _slice(0, capacity);
   }
 
   public final Buffer flip() {

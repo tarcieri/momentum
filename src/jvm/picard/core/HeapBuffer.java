@@ -59,8 +59,4 @@ public final class HeapBuffer extends Buffer {
       src._get(off, arr, offset + idx, len);
     }
   }
-
-  public Buffer duplicate() {
-    return new HeapBuffer(arr, offset, position, limit, capacity);
-  }
 }

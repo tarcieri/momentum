@@ -65,8 +65,4 @@ public final class ByteBufferBackedBuffer extends Buffer {
     buf.position(idx);
     buf.put(src, off, len);
   }
-
-  public Buffer duplicate() {
-    return new ByteBufferBackedBuffer(buf, position, limit, capacity);
-  }
 }

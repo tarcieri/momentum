@@ -67,8 +67,4 @@ public final class ChannelBufferBackedBuffer extends Buffer {
   protected void _put(int idx, byte[] src, int offset, int len) {
     buf.setBytes(idx, src, offset, len);
   }
-
-  public Buffer duplicate() {
-    return new ChannelBufferBackedBuffer(buf, position, limit, capacity);
-  }
 }

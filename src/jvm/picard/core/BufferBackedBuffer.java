@@ -75,8 +75,4 @@ public final class BufferBackedBuffer extends Buffer {
   protected void _put(int idx, byte[] src, int off, int len) {
     buf._put(offset + idx, src, off, len);
   }
-
-  public Buffer duplicate() {
-    return new BufferBackedBuffer(buf, offset, position, limit, capacity);
-  }
 }
