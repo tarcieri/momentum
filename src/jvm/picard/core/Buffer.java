@@ -136,7 +136,7 @@ public abstract class Buffer {
       return wrap((byte[]) obj);
     }
     else {
-      String msg = "Object " + obj + " not bufferable";
+      String msg = "Object " + obj + "(" + obj.getClass() + ") not bufferable";
       throw new IllegalArgumentException(msg);
     }
   }
