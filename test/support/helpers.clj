@@ -27,9 +27,10 @@
  ^:dynamic out
  ^:dynamic server)
 
-(def channel q/channel)
-(def enqueue q/enqueue)
-(def receive q/receive)
+(def channel     q/channel)
+(def enqueue     q/enqueue)
+(def receive     q/receive)
+(def receive-all q/receive-all)
 
 (defn- stop-servers
   [servers]
@@ -37,6 +38,11 @@
     (doseq [server servers]
       (server/stop server))
     (server/stop servers)))
+
+(defn- close-channels
+  []
+  (doseq [ch [ch1 ch2 ch3 ch4]]
+    (q/close ch)))
 
 (defn with-core-test-context
   [name start-server f]
@@ -47,6 +53,7 @@
         (binding [server server]
           (f))
         (finally
+         (close-channels)
          (stop-servers server)))
       (f))))
 

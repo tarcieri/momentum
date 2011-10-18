@@ -145,7 +145,7 @@
 (defn expecting-100?
   [[{version :http-version expect "expect"}]]
   (cond
-   (not= http-1-1 version)
+   (and version (not= http-1-1 version))
    false
 
    (not expect)

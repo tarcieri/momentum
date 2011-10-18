@@ -428,9 +428,64 @@
 
   (is (no-msgs ch)))
 
-;; (defcoretest handling-100-continue-requests-and-responses
+(defn- request-done?
+  [evt val]
+  (or (= [:body nil] [evt val])
+      (and (= :request evt)
+           (let [[_ body] val]
+             (not (keyword? body))))))
+
+(defcoretest handling-100-continue-requests-and-responses
+  [ch1 ch2 ch3]
+  (server/start
+   (fn [dn]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :request evt)
+         (dn :response [100]))
+
+       (if (request-done? evt val)
+         (dn :response [200 {"content-length" "5"} (buffer "Hello")])))))
+
+  (connect
+   (fn [dn]
+     (receive-all
+      ch3 #(apply dn %))
+
+     (fn [evt val]
+       (enqueue ch2 [evt val])
+
+       (when (= :open evt)
+         (dn :request [{:path-info       "/"
+                        :request-method  "POST"
+                        "content-length" "5"
+                        "expect"         "100-continue"} :chunked]))))
+   {:host "localhost" :port 4040})
+
+  (is (next-msgs ch1 :request [#(includes-hdrs {"expect" "100-continue"} %) :chunked]))
+  (is (next-msgs
+       ch2
+       :open     :dont-care
+       :response [100 {:http-version [1 1]} nil]))
+
+  (is (no-msgs ch1 ch2))
+
+  (enqueue ch3
+           [:body (buffer "Hello")]
+           [:body nil])
+
+  (is (next-msgs
+       ch1
+       :body "Hello"
+       :body nil
+       :done nil))
+
+  (is (next-msgs
+       ch2
+       :response [200 {:http-version    [1 1]
+                       "content-length" "5"} "Hello"]
+       :done nil)))
+
 ;; (defcoretest issuing-immediate-abort)
 ;; (defcoretest defaults-to-port-80
 ;; (defcoretest connecting-to-an-invalid-server)
-
-
