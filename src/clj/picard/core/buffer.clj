@@ -11,75 +11,53 @@
     ChannelBuffers]))
 
 (declare
+ dynamic-buffer
  flip
  remaining
  remaining?
+ slice
  transfer!
  write)
 
 (defprotocol Conversion
-  (^Buffer ^{:private true} mk-buffer [_])
-  (^Buffer to-buffer [_]))
+  (^{:private true} estimate [_])
+  (to-buffer [_]))
 
 (extend-protocol Conversion
   (class (byte-array 0))
+  (estimate  [bytes] (count bytes))
   (to-buffer [bytes] (Buffer/wrap bytes))
-  (mk-buffer [bytes] (Buffer/wrap bytes))
 
   Buffer
+  (estimate  [buf] (.remaining buf))
   (to-buffer [buf] buf)
-  (mk-buffer [buf] buf)
 
   ByteBuffer
+  (estimate  [buf] (.remaining buf))
   (to-buffer [buf] (Buffer/wrap buf))
-  (mk-buffer [buf] (Buffer/wrap buf))
 
   ChannelBuffer
+  (estimate  [buf] (.readableBytes buf))
   (to-buffer [buf] (Buffer/wrap buf))
-  (mk-buffer [buf] (Buffer/wrap buf))
 
   Collection
+  (estimate  [coll]
+    (/ (* (count coll)
+          (+ (estimate (first coll))
+             (estimate (last coll)))) 2))
   (to-buffer [coll] (Buffer/wrap coll))
-  (mk-buffer [coll] (Buffer/wrap coll))
 
   String
+  (estimate  [str] (* 2 (.length str)))
   (to-buffer [str] (Buffer/wrap str))
-  (mk-buffer [str] (Buffer/wrap str))
 
-  Byte
-  (to-buffer [n] (Buffer/wrap n))
-  (mk-buffer [n] (Buffer/allocate n))
-
-  Double
-  (to-buffer [n] (Buffer/wrap n))
-  (mk-buffer [n] (Buffer/wrap n))
-
-  Float
-  (to-buffer [n] (Buffer/wrap n))
-  (mk-buffer [n] (Buffer/wrap n))
-
-  Integer
-  (to-buffer [n] (Buffer/wrap n))
-  (mk-buffer [n] (Buffer/allocate n))
-
-  Long
-  (to-buffer [n]
-    (if (<= Long/MIN_VALUE n Long/MAX_VALUE)
-      (Buffer/wrap (int n))
-      (Buffer/wrap n)))
-  (mk-buffer [n] (Buffer/allocate (int n)))
-
-  Short
-  (to-buffer [n] (Buffer/wrap n))
-  (mk-buffer [n] (Buffer/allocate n))
-
-  Character
-  (to-buffer [c] (Buffer/wrap c))
-  (mk-buffer [c] (Buffer/wrap c))
+  Number
+  (estimate  [_] 8)
+  (to-buffer [n] (Buffer/allocate n))
 
   nil
-  (to-buffer [_] nil)
-  (mk-buffer [_] nil))
+  (estimate  [_] 0)
+  (to-buffer [_] nil))
 
 (defprotocol Manipulation
   (^{:private true} put [_ buf]))
@@ -115,17 +93,18 @@
 
 (defn ^Buffer buffer
   ([] (Buffer/allocate 1024))
-  ([val] (mk-buffer val))
+  ([val] (to-buffer val))
   ([int-or-buf & bufs]
      (if (number? int-or-buf)
-       (doto (Buffer/allocate int-or-buf)
+       (doto (buffer int-or-buf)
          (write bufs)
          (flip))
 
-       (let [bufs (map to-buffer (concat [int-or-buf] bufs))]
-         (doto (Buffer/allocate (reduce #(+ %1 (remaining %2)) 0 bufs))
-           (write bufs)
-           (flip))))))
+       (let [buf (dynamic-buffer (max (* 2 (estimate int-or-buf)) 64))]
+         (write buf int-or-buf)
+         (write buf bufs)
+         (flip buf)
+         (slice buf)))))
 
 (defn buffer?
   [maybe-buffer]
@@ -204,6 +183,10 @@
   [^Buffer buf]
   (.rewind buf))
 
+(defn slice
+  ([buf]         (.slice buf))
+  ([buf idx len] (.slice buf idx len)))
+
 (defn to-byte-array
   [^Buffer buf]
   (.toByteArray buf))
@@ -233,11 +216,8 @@
          false))))
 
 (defn wrap
-  ([buf] (to-buffer buf))
-  ([buf & bufs]
-     (Buffer/wrap
-      (to-buffer buf)
-      (map to-buffer bufs))))
+  [& bufs]
+  (Buffer/wrap bufs))
 
 (defn write
   [^Buffer dst & srcs]

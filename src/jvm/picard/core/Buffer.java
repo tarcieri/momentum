@@ -195,7 +195,12 @@ public abstract class Buffer {
   }
 
   public final static Buffer wrap(long n) {
-    return Buffer.allocate(8).putLongBigEndian(0, n);
+    if (n > Long.MIN_VALUE && n < Long.MAX_VALUE) {
+      return Buffer.allocate(4).putIntBigEndian(0, (int) n);
+    }
+    else {
+      return Buffer.allocate(8).putLongBigEndian(0, n);
+    }
   }
 
   /**
