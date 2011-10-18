@@ -53,7 +53,8 @@ public abstract class Buffer {
     return new CompositeBuffer(bufs, max);
   }
 
-  public final static Buffer wrapDynamic(Collection<Object> objs, int max) {
+  public final static Buffer wrapDynamic(Collection<Object> objs, int max)
+      throws UnsupportedEncodingException {
     Buffer[] bufs     = new Buffer[objs.size()];
     Iterator iterator = objs.iterator();
 
@@ -111,15 +112,38 @@ public abstract class Buffer {
     return buf.slice();
   }
 
+  public final static Buffer wrap(String str) throws UnsupportedEncodingException {
+    return wrap(str.getBytes("UTF-8"));
+  }
+
   public final static Buffer wrap(Buffer[] bufs) {
-    return wrapDynamic(bufs, 0);
+    if (bufs.length == 0) {
+      return allocate(0);
+    }
+    else if (bufs.length == 1) {
+      return wrap(bufs[0]);
+    }
+    else {
+      return wrapDynamic(bufs, 0);
+    }
   }
 
-  public final static Buffer wrap(Collection<Object> objs) {
-    return wrapDynamic(objs, 0);
+  public final static Buffer wrap(Collection<Object> objs) throws UnsupportedEncodingException {
+    if (objs.size() == 0) {
+      return allocate(0);
+    }
+    else if (objs.size() == 1) {
+      Iterator i = objs.iterator();
+      return wrap(i.next());
+    }
+    else {
+      return wrapDynamic(objs, 0);
+    }
   }
 
-  public final static Buffer wrap(Object obj) {
+  // To prevent the compiler from complaining about the cast
+  @SuppressWarnings("unsafe")
+  public final static Buffer wrap(Object obj) throws UnsupportedEncodingException {
     if (obj instanceof Buffer) {
       return wrap((Buffer) obj);
     }
@@ -129,16 +153,35 @@ public abstract class Buffer {
     else if (obj instanceof ChannelBuffer) {
       return wrap((ChannelBuffer) obj);
     }
-    else if (obj instanceof Collection<?>) {
-      return wrap((Collection<?>) obj);
+    else if (obj instanceof Collection) {
+      return wrap((Collection<Object>) obj);
     }
     else if (obj instanceof byte[]) {
       return wrap((byte[]) obj);
+    }
+    else if (obj instanceof String) {
+      return wrap((String) obj);
+    }
+    else if (obj instanceof Integer) {
+      Integer n = (Integer) obj;
+      return wrap(n.intValue());
+    }
+    else if (obj instanceof Long) {
+      Long n = (Long) obj;
+      return wrap(n.longValue());
     }
     else {
       String msg = "Object " + obj + "(" + obj.getClass() + ") not bufferable";
       throw new IllegalArgumentException(msg);
     }
+  }
+
+  public final static Buffer wrap(int n) {
+    return Buffer.allocate(4).putIntBigEndian(0, n);
+  }
+
+  public final static Buffer wrap(long n) {
+    return Buffer.allocate(8).putLongBigEndian(0, n);
   }
 
   /**
@@ -153,7 +196,8 @@ public abstract class Buffer {
    * @throws IllegalArgumentException
    *         If any of the arguments cannot be wrapped by a Buffer.
    */
-  public final static Buffer wrap(Object o1, Object o2) {
+  public final static Buffer wrap(Object o1, Object o2)
+      throws UnsupportedEncodingException {
     return wrap(Arrays.asList(o1, o2));
   }
 
@@ -169,7 +213,8 @@ public abstract class Buffer {
    * @throws IllegalArgumentException
    *         If any of the arguments cannot be wrapped by a Buffer.
    */
-  public final static Buffer wrap(Object o1, Object o2, Object o3) {
+  public final static Buffer wrap(Object o1, Object o2, Object o3)
+      throws UnsupportedEncodingException {
     return wrap(Arrays.asList(o1, o2, o3));
   }
 
@@ -185,7 +230,8 @@ public abstract class Buffer {
    * @throws IllegalArgumentException
    *         If any of the arguments cannot be wrapped by a Buffer.
    */
-  public final static Buffer wrap(Object o1, Object o2, Object o3, Object o4) {
+  public final static Buffer wrap(Object o1, Object o2, Object o3, Object o4)
+      throws UnsupportedEncodingException {
     return wrap(Arrays.asList(o1, o2, o3, o4));
   }
 
@@ -201,7 +247,8 @@ public abstract class Buffer {
    * @throws IllegalArgumentException
    *         If any of the arguments cannot be wrapped by a Buffer.
    */
-  public final static Buffer wrap(Object o1, Object o2, Object o3, Object o4, Object o5) {
+  public final static Buffer wrap(Object o1, Object o2, Object o3, Object o4, Object o5)
+      throws UnsupportedEncodingException {
     return wrap(Arrays.asList(o1, o2, o3, o4, o5));
   }
 
@@ -217,7 +264,8 @@ public abstract class Buffer {
    * @throws IllegalArgumentException
    *         If any of the arguments cannot be wrapped by a Buffer.
    */
-  public final static Buffer wrap(Object o1, Object o2, Object o3, Object o4, Object o5, Object o6) {
+  public final static Buffer wrap(Object o1, Object o2, Object o3, Object o4, Object o5, Object o6)
+      throws UnsupportedEncodingException {
     return wrap(Arrays.asList(o1, o2, o3, o4, o5, o6));
   }
 

@@ -753,8 +753,8 @@
     (is (= 100 (.limit buf)))
     (test-buffer buf)))
 
-(deftest wrapping-non-buffer-object
-  (is (thrown? IllegalArgumentException (Buffer/wrap 1))))
+(deftest wrapping
+  (is (thrown? IllegalArgumentException (Buffer/wrap (Object.)))))
 
 ;;
 ;; === Transfers ===
@@ -855,3 +855,15 @@
 ;;   (is (thrown?
 ;;        ReadOnlyBufferException
 ;;        (.put (freeze (buffer 10)) (byte 1)))))
+
+;;
+;; === Clojure interface ===
+;;
+
+(deftest wrapping-primitives
+  (is (= (wrap 1)
+         (doto (Buffer/allocate 4) (.putInt 0 1))))
+  (is (= (wrap 1 2)
+         (doto (Buffer/allocate 8)
+           (.putInt 0 1)
+           (.putInt 4 2)))))

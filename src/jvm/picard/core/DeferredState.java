@@ -171,7 +171,7 @@ public class DeferredState extends AFn {
         invokeCatchAllCallback();
     }
 
-    public void realize(Object v) throws Exception {
+    public void realize(Object v) {
         synchronized(this) {
             if (state != State.INITIALIZED) {
                 throw new RuntimeException("The value has already been realized or aborted");
@@ -188,7 +188,7 @@ public class DeferredState extends AFn {
         invokeReceiveCallback();
     }
 
-    public void abort(Exception e, boolean internal) throws Exception {
+    public void abort(Exception e, boolean internal) {
         if (e == null) {
             throw new NullPointerException("Exception cannot be null");
         }
@@ -246,7 +246,7 @@ public class DeferredState extends AFn {
         }
     }
 
-    private void invokeReceiveCallback() throws Exception {
+    private void invokeReceiveCallback() {
         try {
             receiveCallback.invoke(value);
         }
@@ -359,7 +359,7 @@ public class DeferredState extends AFn {
         return "A " + name + " callback has already been registered";
     }
 
-    public Object invoke(Object value) throws Exception {
+    public Object invoke(Object value) {
         realize(value);
         return null;
     }
@@ -377,7 +377,7 @@ public class DeferredState extends AFn {
             return klass.isInstance(err);
         }
 
-        public void invoke(Exception err) throws Exception {
+        public void invoke(Exception err) {
             callback.invoke(err);
         }
     }

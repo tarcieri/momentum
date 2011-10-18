@@ -39,9 +39,10 @@
 
       (is (receiving
            "HTTP/1.1 200 OK\r\n"
-           "content-type: text/plain\r\n"
-           "content-length: 5\r\n"
-           "connection: close\r\n\r\n"
+           #{"content-type: text/plain\r\n"
+             "content-length: 5\r\n"
+             "connection: close\r\n"}
+           "\r\n"
            "Hello"))
 
       (is (closed-socket?)))))
@@ -115,8 +116,9 @@
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
-         "content-length: 5\r\n"
-         "connection: close\r\n\r\n"
+         #{"content-length: 5\r\n"
+           "connection: close\r\n"}
+         "\r\n"
          "Hello"))
 
     (is (closed-socket?))))
@@ -308,14 +310,15 @@
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
-         "content-length: 0\r\n"
-         "connection: close\r\n"
-         "foo: lol\r\n"
-         "bar: omg\r\n"
-         "bar: hi2u\r\n"
-         "baz: 1\r\n"
-         "baz: 2\r\n"
-         "baz: 3\r\n\r\n"))))
+         #{"content-length: 0\r\n"
+           "connection: close\r\n"
+           "foo: lol\r\n"
+           "bar: omg\r\n"
+           "bar: hi2u\r\n"
+           "baz: 1\r\n"
+           "baz: 2\r\n"
+           "baz: 3\r\n"}
+         "\r\n"))))
 
 (defcoretest keepalive-requests
   [ch1 ch2]
@@ -1329,8 +1332,8 @@
 
     (is (receiving
          "HTTP/1.1 101 Switching Protocols\r\n"
-         "connection: upgrade\r\n"
-         "upgrade: echo\r\n"
+         #{"connection: upgrade\r\n"
+           "upgrade: echo\r\n"}
          "\r\n"))
 
     (write-socket "HELLO")

@@ -101,7 +101,7 @@
    HttpParser/HDR_X_REQUESTED_WITH
    HttpParser/HDR_X_XSS_PROTECTION])
 
-(declare *default-parser*)
+(declare ^:dynamic *default-parser*)
 
 (defn with-parser
   [p f]

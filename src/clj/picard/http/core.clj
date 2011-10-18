@@ -188,7 +188,7 @@
 (defn- write-message-header
   [buf name val]
   (when-not (or (nil? val) (= "" val))
-    (write buf name ": " val CRLF)))
+    (write buf (str name) ": " (str val) CRLF)))
 
 (defn- write-message-headers
   [buf hdrs]
@@ -206,8 +206,8 @@
   [dn status {version :http-version :as hdrs} body]
   (let [buf (dynamic-buffer)
         ver (http-version-to-bytes version)
-        rea (status-to-reason status)]
-    (write buf ver SP status SP rea CRLF)
+        rsn (status-to-reason status)]
+    (write buf ver SP (str status) SP rsn CRLF)
     (write-message-headers buf hdrs)
     (dn :message (flip buf)))
 

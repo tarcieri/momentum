@@ -1,6 +1,7 @@
 (ns support.helpers
   (:use
    clojure.test
+   support.string
    picard.core.buffer)
   (:require
    [lamina.core :as l]
@@ -16,7 +17,15 @@
     TimeoutException
     TimeUnit]))
 
-(declare ch1 ch2 ch3 ch4 sock in out server)
+(declare
+ ^:dynamic ch1
+ ^:dynamic ch2
+ ^:dynamic ch3
+ ^:dynamic ch4
+ ^:dynamic sock
+ ^:dynamic in
+ ^:dynamic out
+ ^:dynamic server)
 
 (def channel l/channel)
 (def enqueue l/enqueue)
@@ -211,16 +220,54 @@
   (let [[_ & args] form]
     (no-msgs-for msg args)))
 
+(defn- read-n-as-str
+  [n]
+  (->> (read-socket in)
+       (take n)
+       (map char)
+       (apply str)))
+
+(defn- segment-len
+  [segment]
+  (if (coll? segment)
+    (reduce + (map count segment))
+    (count segment)))
+
+(defn- segments-len
+  [segments]
+  (reduce + (map segment-len segments)))
+
+(defn segment-match?
+  [segment str]
+  (if (coll? segment)
+    (substrings? segment str)
+    (= segment str)))
+
+(defn- segments-match?
+  [segments str]
+  (loop [[segment & rest] segments str str]
+    (if (and segment (seq str))
+      (let [len (segment-len segment)]
+        (when (segment-match? segment (subs str 0 len))
+          (recur rest (subs str len))))
+      ;; Otherwise, make sure the segment is nil and the string is
+      ;; empty, aka both the expected value and the actual value have
+      ;; been walked to their conclusions.
+      (if segment
+        (and (empty? rest) (= segment str))
+        (empty? str)))))
+
+(defn assert-receiving
+  [msg & segments]
+  (let [len (segments-len segments)
+        act (read-n-as-str len)
+        eq? (segments-match? segments act)]
+    (do-report
+     {:type     (if eq? :pass :fail)
+      :message  msg
+      :expected segments
+      :actual   act})))
+
 (defmethod assert-expr 'receiving [msg form]
   (let [expected (rest form)]
-    `(let [in#       in
-           expected# (str ~@expected)
-           actual#   (->> (read-socket in#)
-                          (take (count expected#))
-                          (map char)
-                          (apply str))]
-       (if (= expected# actual#)
-         (do-report {:type :pass :message ~msg
-                     :expected expected# :actual actual#})
-         (do-report {:type :fail :message ~msg
-                     :expected expected# :actual actual#})))))
+    `(assert-receiving ~msg ~@expected)))

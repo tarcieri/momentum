@@ -7,8 +7,8 @@
     TimeUnit]))
 
 (declare
- *app*
- *connections*
+ ^:dynamic *app*
+ ^:dynamic *connections*
  received)
 
 (def default-addrs

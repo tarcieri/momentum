@@ -18,40 +18,68 @@
  write)
 
 (defprotocol Conversion
+  (^Buffer ^{:private true} mk-buffer [_])
   (^Buffer to-buffer [_]))
 
 (extend-protocol Conversion
   (class (byte-array 0))
-  (to-buffer [bytes]
-    (Buffer/wrap bytes))
+  (to-buffer [bytes] (Buffer/wrap bytes))
+  (mk-buffer [bytes] (Buffer/wrap bytes))
 
   Buffer
-  (to-buffer [buf]
-    buf)
+  (to-buffer [buf] buf)
+  (mk-buffer [buf] buf)
 
   ByteBuffer
-  (to-buffer [buf]
-    (Buffer/wrap buf))
+  (to-buffer [buf] (Buffer/wrap buf))
+  (mk-buffer [buf] (Buffer/wrap buf))
 
   ChannelBuffer
-  (to-buffer [buf]
-    (Buffer/wrap buf))
+  (to-buffer [buf] (Buffer/wrap buf))
+  (mk-buffer [buf] (Buffer/wrap buf))
 
   Collection
-  (to-buffer [coll]
-    (Buffer/wrap coll))
+  (to-buffer [coll] (Buffer/wrap coll))
+  (mk-buffer [coll] (Buffer/wrap coll))
 
   String
-  (to-buffer [str]
-    (Buffer/wrap (.getBytes str "UTF-8")))
+  (to-buffer [str] (Buffer/wrap str))
+  (mk-buffer [str] (Buffer/wrap str))
 
-  Number
-  (to-buffer [num]
-    (Buffer/allocate num))
+  Byte
+  (to-buffer [n] (Buffer/wrap n))
+  (mk-buffer [n] (Buffer/allocate n))
+
+  Double
+  (to-buffer [n] (Buffer/wrap n))
+  (mk-buffer [n] (Buffer/wrap n))
+
+  Float
+  (to-buffer [n] (Buffer/wrap n))
+  (mk-buffer [n] (Buffer/wrap n))
+
+  Integer
+  (to-buffer [n] (Buffer/wrap n))
+  (mk-buffer [n] (Buffer/allocate n))
+
+  Long
+  (to-buffer [n]
+    (if (<= Long/MIN_VALUE n Long/MAX_VALUE)
+      (Buffer/wrap (int n))
+      (Buffer/wrap n)))
+  (mk-buffer [n] (Buffer/allocate (int n)))
+
+  Short
+  (to-buffer [n] (Buffer/wrap n))
+  (mk-buffer [n] (Buffer/allocate n))
+
+  Character
+  (to-buffer [c] (Buffer/wrap c))
+  (mk-buffer [c] (Buffer/wrap c))
 
   nil
-  (to-buffer [_]
-    nil))
+  (to-buffer [_] nil)
+  (mk-buffer [_] nil))
 
 (defprotocol Manipulation
   (^{:private true} put [_ buf]))
@@ -87,7 +115,7 @@
 
 (defn ^Buffer buffer
   ([] (Buffer/allocate 1024))
-  ([val] (to-buffer val))
+  ([val] (mk-buffer val))
   ([int-or-buf & bufs]
      (if (number? int-or-buf)
        (doto (Buffer/allocate int-or-buf)
@@ -205,8 +233,11 @@
          false))))
 
 (defn wrap
-  [& bufs]
-  (to-buffer bufs))
+  ([buf] (to-buffer buf))
+  ([buf & bufs]
+     (Buffer/wrap
+      (to-buffer buf)
+      (map to-buffer bufs))))
 
 (defn write
   [^Buffer dst & srcs]

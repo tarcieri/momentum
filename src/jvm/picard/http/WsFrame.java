@@ -86,7 +86,7 @@ public final class WsFrame {
     return payload.toString("UTF-8");
   }
 
-  public Buffer encode() {
+  public Buffer encode() throws UnsupportedEncodingException {
     int length = payload.remaining();
     Buffer buf = Buffer.allocate(16);
 
