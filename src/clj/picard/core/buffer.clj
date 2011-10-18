@@ -21,7 +21,7 @@
 
 (defprotocol Conversion
   (^{:private true} estimate [_])
-  (to-buffer [_]))
+  (^{:private true} to-buffer [_]))
 
 (extend-protocol Conversion
   (class (byte-array 0))
