@@ -8,32 +8,26 @@ import java.util.List;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 
-/**
- * TODO:
- *   The "rope" functionality should be extracted out into a separate class and
- *   then duplicate() should be imlemented to create a new CompositeBuffer sharing
- *   the same rope.
- */
 public final class CompositeBuffer extends Buffer {
 
-  private Buffer[] bufs;
-  private int   [] indices;
+  private static int MIN_IDX_ARR_LEN = 10;
 
-  private int currentCapacity;
-  private int lastBufferIdx;
-  private int bufCount;
+  Buffer[] bufs;
+  int   [] indices;
 
-  protected CompositeBuffer(Buffer[] bufArr, int capacity) {
-    // Call the super class initializer w/ BS values
-    super(0, 0, 0, true);
+  int currentCapacity;
+  int lastBufferIdx;
+  int bufCount;
 
+  // TODO: This function should probably extract the components of any
+  // CompositeBuffer that it is wrapping
+  protected static Buffer build(Buffer[] bufArr, int capacity) {
     // Create the buffer array and the index lookup array. These are created bigger
     // than needed to accomodate for any buffer growth.
-    int size = Math.max(10, bufArr.length * 2);
+    int size = Math.max(MIN_IDX_ARR_LEN, bufArr.length * 2);
 
-    bufs     = new Buffer[size];
-    indices  = new int[size];
-    bufCount = bufArr.length;
+    Buffer[] bufs = new Buffer[size];
+    int[] indices = new int[size];
 
     // Calculate the capacity of the buffer and make an array with the indexes.
     for (int i = 0; i < bufArr.length; ++i) {
@@ -42,11 +36,22 @@ public final class CompositeBuffer extends Buffer {
       bufs[i]    = buf;
 
       // Update the index array
-      currentCapacity = indices[i + 1] = indices[i] + buf.remaining();
+      indices[i + 1] = indices[i] + buf.capacity;
     }
 
-    this.capacity = Math.max(capacity, currentCapacity);
-    this.limit    = this.capacity;
+    capacity = Math.max(capacity, indices[bufArr.length]);
+
+    return new CompositeBuffer(bufs, indices, bufArr.length, 0, capacity, capacity, true);
+  }
+
+  protected CompositeBuffer(Buffer[] bs, int[] idxs, int cnt, int pos, int lim, int cap, boolean be) {
+    super(pos, lim, cap, be);
+
+    bufs     = bs;
+    indices  = idxs;
+    bufCount = cnt;
+
+    currentCapacity = idxs[cnt];
   }
 
   protected HashMap<String,String> toStringAttrs() {
@@ -98,6 +103,62 @@ public final class CompositeBuffer extends Buffer {
       _get(0, arr, 0, size);
 
       return arr;
+    }
+  }
+
+  protected Buffer _slice(int idx, int len) {
+    // Quick check, is the range equal to the current buffer size?
+    if (idx == 0 && len == capacity) {
+      new CompositeBuffer(dupBufs(), dupIndices(), bufCount, 0, len, len, bigEndian);
+    }
+    else if (idx >= currentCapacity) {
+      // If the slice range is out of the currently allocated range,
+      // then just return a new empty dynamic buffer
+      return Buffer.dynamic(0, len).order(order());
+    }
+
+    int start  = bufferIndex(idx);
+    int offset = idx - indices[start];
+
+    // Is the range contained in a single buffer?
+    if (len <= indices[start + 1] - indices[start] - offset) {
+      return bufs[start]._slice(offset, len).order(order());
+    }
+    // Is the range small enough?
+    else if (len <= 256) {
+      byte[] arr = new byte[len];
+      _get(idx, arr, 0, len);
+      return Buffer.wrap(arr).order(order());
+    }
+    // Otherwise, just gonna slice it
+    else {
+      // Allocate the new lookup arrs
+      Buffer[] newBufs = new Buffer[bufs.length];
+      int[] newIndices = new int[indices.length];
+
+      Buffer curr = bufs[start];
+      curr = curr._slice(offset, curr.capacity - offset);
+
+      newBufs[0]    = curr;
+      newIndices[1] = curr.capacity;
+
+      int cap;
+      int cnt = 1;
+
+      while (cnt != bufCount && newIndices[cnt] < len) {
+        curr = bufs[start + cnt];
+        cap  = newIndices[cnt] + curr.capacity;
+
+        if (cap > len) {
+          curr = curr._slice(0, len - newIndices[cnt]);
+          cap  = len;
+        }
+
+        newBufs[cnt]      = curr;
+        newIndices[++cnt] = cap;
+      }
+
+      return new CompositeBuffer(newBufs, newIndices, cnt, 0, len, len, bigEndian);
     }
   }
 
@@ -187,6 +248,12 @@ public final class CompositeBuffer extends Buffer {
   }
 
   private int bufferIndex(int idx) {
+    int bufIdx = peekBufferIndex(idx);
+    lastBufferIdx = bufIdx;
+    return bufIdx;
+  }
+
+  private int peekBufferIndex(int idx) {
     // First, make sure that the index is within the bounds fo the buffer.
     if (idx < 0 || idx >= capacity) {
       throw new IndexOutOfBoundsException();
@@ -212,7 +279,6 @@ public final class CompositeBuffer extends Buffer {
       } while (indices[bufferIdx] > idx);
     }
 
-    lastBufferIdx = bufferIdx;
     return bufferIdx;
   }
 
@@ -238,5 +304,13 @@ public final class CompositeBuffer extends Buffer {
     lastBufferIdx   = bufCount;
 
     return bufCount++;
+  }
+
+  private Buffer[] dupBufs() {
+    return Arrays.copyOf(bufs, bufs.length);
+  }
+
+  private int[] dupIndices() {
+    return Arrays.copyOf(indices, indices.length);
   }
 }

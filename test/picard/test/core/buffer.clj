@@ -753,6 +753,36 @@
     (is (= 100 (.limit buf)))
     (test-buffer buf)))
 
+(deftest dynamic-buffer-edge-cases
+  (let [buf (Buffer/dynamic 0 1024)]
+    (is (= 0 (.get buf 0) (.get buf 1023)))
+    (.put buf 1000 1)
+    (is (= 1 (.get buf 1000)))))
+
+(deftest slicing-dynamic-buffers
+  (let [buf (wrap "foo" "bar" "baz")]
+    (is (= (buffer "foo") (.slice buf 0 3)))
+    (is (= (buffer "bar") (.slice buf 3 3)))
+    (is (= (buffer "baz") (.slice buf 6 3)))
+
+    (is (= (buffer "foob" (.slice buf 0 4))))
+    (is (= (buffer "foobarb") (.slice buf 0 7)))
+    (is (= (buffer "oob") (.slice buf 1 3)))
+
+    (let [buf (wrap increasing decreasing increasing decreasing increasing)
+          exp (buffer 500 increasing decreasing increasing decreasing increasing)]
+      (doseq [[idx len] {0   200
+                         100 300
+                         50  350
+                         123 300}]
+        (is (= (.slice exp idx len)
+               (.slice buf idx len))))))
+
+  (let [buf (Buffer/dynamic 0 500)
+        exp (buffer 500 blank blank blank blank blank)]
+    (is (= (.slice exp 50 400)
+           (.slice buf 50 400)))))
+
 (deftest wrapping
   (is (thrown? IllegalArgumentException (Buffer/wrap (Object.)))))
 

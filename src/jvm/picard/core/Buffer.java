@@ -19,6 +19,8 @@ import org.jboss.netty.buffer.ChannelBuffers;
  */
 public abstract class Buffer {
 
+  static final int MIN_DYNAMIC_BUFFER_SIZE = 64;
+
   // The buffer's current position
   int position;
 
@@ -41,7 +43,7 @@ public abstract class Buffer {
   }
 
   public final static Buffer wrapDynamic(Buffer buf, int max) {
-    return new CompositeBuffer(new Buffer[] { buf.slice() }, max);
+    return CompositeBuffer.build(new Buffer[] { buf.slice() }, max);
   }
 
   public final static Buffer wrapDynamic(Buffer[] bufs, int max) {
@@ -50,7 +52,7 @@ public abstract class Buffer {
       bufs[i] = bufs[i].slice();
     }
 
-    return new CompositeBuffer(bufs, max);
+    return CompositeBuffer.build(bufs, max);
   }
 
   public final static Buffer wrapDynamic(Collection<Object> objs, int max)
@@ -64,7 +66,7 @@ public abstract class Buffer {
       ++i;
     }
 
-    return new CompositeBuffer(bufs, max);
+    return CompositeBuffer.build(bufs, max);
   }
 
   public final static Buffer dynamic() {
@@ -76,7 +78,19 @@ public abstract class Buffer {
   }
 
   public final static Buffer dynamic(int est, int max) {
-    return new CompositeBuffer(new Buffer[] { allocate(est) }, max);
+    Buffer[] arr;
+
+    if (est == 0) {
+      arr = new Buffer[0];
+    }
+    else if (est < MIN_DYNAMIC_BUFFER_SIZE && max >= MIN_DYNAMIC_BUFFER_SIZE) {
+      arr = new Buffer[] { allocate(MIN_DYNAMIC_BUFFER_SIZE) };
+    }
+    else {
+      arr = new Buffer[] { allocate(est) };
+    }
+
+    return CompositeBuffer.build(arr, max);
   }
 
   public final static Buffer wrap(byte[] arr) {
