@@ -756,6 +756,147 @@
 (deftest wrapping
   (is (thrown? IllegalArgumentException (Buffer/wrap (Object.)))))
 
+(deftest unsigned-accessors
+  (let [buf (buffer 4)]
+
+    ;; ==== BYTES
+    (.put buf 0 (byte -1))
+    (is (= 255 (.getUnsigned buf 0)))
+    (is (= 0 (.position buf)))
+    (is (= 255 (.getUnsigned buf)))
+    (is (= 1 (.position buf)))
+
+    (.put buf 1 0)
+    (.putUnsigned buf 0 234)
+
+    (is (= 0 (.get buf 1)))
+    (is (= 234 (.getUnsigned buf 0)))
+
+    (.clear buf)
+    (.putUnsigned buf 200)
+
+    (is (= 1 (.position buf)))
+    (is (= 0 (.get buf 1)))
+    (is (= 200 (.getUnsigned buf 0)))
+
+    ;; ==== INTS
+    (.clear buf)
+    (.putInt buf 0 -253714183)
+
+    (is (= 4041253113 (.getIntUnsigned buf 0)))
+    (is (= 0 (.position buf)))
+    (is (= 4041253113 (.getIntUnsigned buf)))
+    (is (= 4 (.position buf)))
+
+    (.clear buf)
+
+    (is (= 4041253113 (.getIntUnsignedBigEndian buf 0)))
+    (is (= 0 (.position buf)))
+    (is (= 4041253113 (.getIntUnsignedBigEndian buf)))
+    (is (= 4 (.position buf)))
+
+    (.clear buf)
+    (.putIntLittleEndian buf 0 -253714183)
+
+    (is (= 4041253113 (.getIntUnsignedLittleEndian buf 0)))
+    (is (= 0 (.position buf)))
+    (is (= 4041253113 (.getIntUnsignedLittleEndian buf)))
+    (is (= 4 (.position buf)))
+
+    (.clear buf)
+
+    (.putInt buf 0 0)
+    (.putIntUnsigned buf 0 404125311)
+    (is (= 404125311 (.getIntUnsigned buf 0)))
+
+    (.putInt buf 0 0)
+    (.putIntUnsigned buf 404125311)
+    (is (= 404125311 (.getIntUnsigned buf 0)))
+    (is (= 4 (.position buf)))
+
+    (.clear buf)
+
+    (.putInt buf 0 0)
+    (.putIntUnsignedBigEndian buf 0 404125311)
+    (is (= 404125311 (.getIntUnsigned buf 0)))
+
+    (.putInt buf 0 0)
+    (.putIntUnsignedBigEndian buf 404125311)
+    (is (= 404125311 (.getIntUnsigned buf 0)))
+    (is (= 4 (.position buf)))
+
+    (.clear buf)
+
+    (.putInt buf 0 0)
+    (.putIntUnsignedLittleEndian buf 0 404125311)
+    (is (= 404125311 (.getIntUnsignedLittleEndian buf 0)))
+
+    (.putInt buf 0 0)
+    (.putIntUnsignedLittleEndian buf 404125311)
+    (is (= 404125311 (.getIntUnsignedLittleEndian buf 0)))
+    (is (= 4 (.position buf)))
+
+
+    ;; ==== SHORTS
+    (.clear buf)
+    (.putInt buf 0 0)
+    (.putShort buf 0 -3872)
+
+    (is (= 61664 (.getShortUnsigned buf 0)))
+    (is (= 0 (.position buf)))
+    (is (= 61664 (.getShortUnsigned buf)))
+    (is (= 2 (.position buf)))
+
+    (.clear buf)
+
+    (is (= 61664 (.getShortUnsignedBigEndian buf 0)))
+    (is (= 0 (.position buf)))
+    (is (= 61664 (.getShortUnsignedBigEndian buf)))
+    (is (= 2 (.position buf)))
+
+    (.clear buf)
+    (.putShortLittleEndian buf 0 -3872)
+
+    (is (= 61664 (.getShortUnsignedLittleEndian buf 0)))
+    (is (= 0 (.position buf)))
+    (is (= 61664 (.getShortUnsignedLittleEndian buf)))
+    (is (= 2 (.position buf)))
+
+    (.clear buf)
+
+    (.putInt buf 0 0)
+    (.putShortUnsigned buf 61664)
+    (is (= 61664 (.getShortUnsigned buf 0)))
+
+    (.clear buf)
+
+    (.putInt buf 0 0)
+    (.putShortUnsigned buf 61664)
+    (is (= 61664 (.getShortUnsigned buf 0)))
+    (is (= 2 (.position buf)))
+
+    (.clear buf)
+
+    (.putInt buf 0 0)
+    (.putShortUnsignedBigEndian buf 0 61664)
+    (is (= 61664 (.getShortUnsigned buf 0)))
+
+    (.putInt buf 0 0)
+    (.putShortUnsignedBigEndian buf 61664)
+    (is (= 61664 (.getShortUnsigned buf 0)))
+    (is (= 2 (.position buf)))
+
+    (.clear buf)
+
+    (.putInt buf 0 0)
+    (.putShortUnsignedLittleEndian buf 0 61664)
+    (is (= 61664 (.getShortUnsignedLittleEndian buf 0)))
+
+    (.putInt buf 0 0)
+    (.putShortUnsignedLittleEndian buf 61664)
+    (is (= 61664 (.getShortUnsignedLittleEndian buf 0)))
+    (is (= 2 (.position buf)))))
+
 ;;
 ;; === Transfers ===
 ;;

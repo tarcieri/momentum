@@ -672,12 +672,20 @@ public abstract class Buffer {
     return retval;
   }
 
+  public final int getUnsigned() {
+    return get() & 0xFF;
+  }
+
   public final byte get(int idx) {
     if (idx < 0 || idx >= capacity) {
       throw new IndexOutOfBoundsException();
     }
 
     return _get(idx);
+  }
+
+  public final int getUnsigned(int idx) {
+    return get(idx) & 0xFF;
   }
 
   public final Buffer get(byte[] dst) {
@@ -718,6 +726,10 @@ public abstract class Buffer {
     return this;
   }
 
+  public final Buffer putUnsigned(int b) {
+    return put((byte) (b & 0xff));
+  }
+
   public final Buffer put(int idx, byte b) {
     if (idx < 0 || idx >= capacity) {
       throw new IndexOutOfBoundsException();
@@ -728,7 +740,12 @@ public abstract class Buffer {
     return this;
   }
 
+  // Random helper to avoid a couple casts
   public final Buffer put(int idx, int b) {
+    return putUnsigned(idx, b);
+  }
+
+  public final Buffer putUnsigned(int idx, int b) {
     return put(idx, (byte) (b & 0xff));
   }
 
@@ -958,36 +975,72 @@ public abstract class Buffer {
     return bigEndian ? getIntBigEndian() : getIntLittleEndian();
   }
 
+  public final long getIntUnsigned() {
+    return ((long) getInt()) & 0xFFFFFFFFL;
+  }
+
   public final int getInt(int idx) {
     return bigEndian ? getIntBigEndian(idx) : getIntLittleEndian(idx);
+  }
+
+  public final long getIntUnsigned(int idx) {
+    return ((long) getInt(idx)) & 0xFFFFFFFFL;
   }
 
   public final int getIntBigEndian() {
     return getIntBigEndian(walking(4));
   }
 
+  public final long getIntUnsignedBigEndian() {
+    return ((long) getIntBigEndian()) & 0xFFFFFFFFL;
+  }
+
   public final int getIntBigEndian(int idx) {
     return makeInt(get(idx), get(idx + 1), get(idx + 2), get(idx + 3));
+  }
+
+  public final long getIntUnsignedBigEndian(int idx) {
+    return ((long) getIntBigEndian(idx)) & 0xFFFFFFFFL;
   }
 
   public final int getIntLittleEndian() {
     return getIntLittleEndian(walking(4));
   }
 
+  public final long getIntUnsignedLittleEndian() {
+    return ((long) getIntLittleEndian()) & 0xFFFFFFFFL;
+  }
+
   public final int getIntLittleEndian(int idx) {
     return makeInt(get(idx + 3), get(idx + 2), get(idx + 1), get(idx));
+  }
+
+  public final long getIntUnsignedLittleEndian(int idx) {
+    return ((long) getIntLittleEndian(idx)) & 0xFFFFFFFFL;
   }
 
   public final Buffer putInt(int val) {
     return bigEndian ? putIntBigEndian(val) : putIntLittleEndian(val);
   }
 
+  public final Buffer putIntUnsigned(long val) {
+    return putInt((int) val);
+  }
+
   public final Buffer putInt(int idx, int val) {
     return bigEndian ? putIntBigEndian(idx, val) : putIntLittleEndian(idx, val);
   }
 
+  public final Buffer putIntUnsigned(int idx, long val) {
+    return putInt(idx, (int) val);
+  }
+
   public final Buffer putIntBigEndian(int val) {
     return putIntBigEndian(walking(4), val);
+  }
+
+  public final Buffer putIntUnsignedBigEndian(long val) {
+    return putIntBigEndian((int) val);
   }
 
   public final Buffer putIntBigEndian(int idx, int val) {
@@ -999,8 +1052,16 @@ public abstract class Buffer {
     return this;
   }
 
+  public final Buffer putIntUnsignedBigEndian(int idx, long val) {
+    return putIntBigEndian(idx, (int) val);
+  }
+
   public final Buffer putIntLittleEndian(int val) {
     return putIntLittleEndian(walking(4), val);
+  }
+
+  public final Buffer putIntUnsignedLittleEndian(long val) {
+    return putIntLittleEndian((int) val);
   }
 
   public final Buffer putIntLittleEndian(int idx, int val) {
@@ -1010,6 +1071,10 @@ public abstract class Buffer {
     put(idx + 3, int3(val));
 
     return this;
+  }
+
+  public final Buffer putIntUnsignedLittleEndian(int idx, long val) {
+    return putIntLittleEndian(idx, (int) val);
   }
 
   /*
@@ -1136,36 +1201,72 @@ public abstract class Buffer {
     return bigEndian ? getShortBigEndian() : getShortLittleEndian();
   }
 
+  public final int getShortUnsigned() {
+    return getShort() & 0xFFFF;
+  }
+
   public final short getShort(int idx) {
     return bigEndian ? getShortBigEndian(idx) : getShortLittleEndian(idx);
+  }
+
+  public final int getShortUnsigned(int idx) {
+    return getShort(idx) & 0xFFFF;
   }
 
   public final short getShortBigEndian() {
     return getShortBigEndian(walking(2));
   }
 
+  public final int getShortUnsignedBigEndian() {
+    return getShortBigEndian() & 0xFFFF;
+  }
+
   public final short getShortBigEndian(int idx) {
     return makeShort(get(idx), get(idx + 1));
+  }
+
+  public final int getShortUnsignedBigEndian(int idx) {
+    return getShortBigEndian(idx) & 0xFFFF;
   }
 
   public final short getShortLittleEndian() {
     return getShortLittleEndian(walking(2));
   }
 
+  public final int getShortUnsignedLittleEndian() {
+    return getShortLittleEndian() & 0xFFFF;
+  }
+
   public final short getShortLittleEndian(int idx) {
     return makeShort(get(idx + 1), get(idx));
+  }
+
+  public final int getShortUnsignedLittleEndian(int idx) {
+    return getShortLittleEndian(idx) & 0xFFFF;
   }
 
   public final Buffer putShort(short val) {
     return bigEndian ? putShortBigEndian(val) : putShortLittleEndian(val);
   }
 
+  public final Buffer putShortUnsigned(int val) {
+    return putShort((short) val);
+  }
+
   public final Buffer putShort(int idx, short val) {
     return bigEndian ? putShortBigEndian(idx, val) : putShortLittleEndian(idx, val);
   }
 
+  public final Buffer putShortUnsigned(int idx, int val) {
+    return putShort(idx, (short) val);
+  }
+
   public final Buffer putShortBigEndian(short val) {
     return putShortBigEndian(walking(2), val);
+  }
+
+  public final Buffer putShortUnsignedBigEndian(int val) {
+    return putShortBigEndian((short) val);
   }
 
   public final Buffer putShortBigEndian(int idx, short val) {
@@ -1175,8 +1276,16 @@ public abstract class Buffer {
     return this;
   }
 
+  public final Buffer putShortUnsignedBigEndian(int idx, int val) {
+    return putShortBigEndian(idx, (short) val);
+  }
+
   public final Buffer putShortLittleEndian(short val) {
     return putShortLittleEndian(walking(2), val);
+  }
+
+  public final Buffer putShortUnsignedLittleEndian(int val) {
+    return putShortLittleEndian((short) val);
   }
 
   public final Buffer putShortLittleEndian(int idx, short val) {
@@ -1184,6 +1293,10 @@ public abstract class Buffer {
     put(idx + 1, short1(val));
 
     return this;
+  }
+
+  public final Buffer putShortUnsignedLittleEndian(int idx, int val) {
+    return putShortLittleEndian(idx, (short) val);
   }
 
   private final void assertHolds(Buffer buf, int count) {
