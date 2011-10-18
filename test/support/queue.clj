@@ -26,8 +26,9 @@
   [queue]
   (.peek queue))
 
+;; Ghetto channel receive
 (defn receive
   [queue f]
   (future
-    (when-let [v (.poll queue 2000 TimeUnit/MILLISECONDS)]
+    (when-let [v (.poll queue 4000 TimeUnit/MILLISECONDS)]
       (f v))))
