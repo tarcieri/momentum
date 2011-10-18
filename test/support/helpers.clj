@@ -4,7 +4,7 @@
    support.string
    picard.core.buffer)
   (:require
-   [lamina.core :as l]
+   [support.queue     :as q]
    [picard.net.server :as server])
   (:import
    [org.jboss.netty.buffer
@@ -27,9 +27,9 @@
  ^:dynamic out
  ^:dynamic server)
 
-(def channel l/channel)
-(def enqueue l/enqueue)
-(def receive l/receive)
+(def channel q/channel)
+(def enqueue q/enqueue)
+(def receive q/receive)
 
 (defn- stop-servers
   [servers]
@@ -134,7 +134,7 @@
 
 (defn next-msg
   ([] (next-msg ch1))
-  ([ch] (l/wait-for-message ch 2000)))
+  ([ch] (q/poll ch 2000)))
 
 (defn normalize
   [val]
@@ -201,16 +201,20 @@
          (do-report {:type :fail :message ~msg
                      :expected expected# :actual "<TIMEOUT>"})))))
 
+(defn assert-no-msgs-for
+  [msg chs]
+  (Thread/sleep 50)
+  (let [received (into {} (filter (fn [[_ q]] (q/peek q)) chs))]
+    (do-report
+     {:type     (if (empty? received) :pass :fail)
+      :message  msg
+      :expected []
+      :actual   received})))
+
 (defn- no-msgs-for
   [msg chs]
   (let [chs (zipmap (map #(str %) chs) chs)]
-    `(let [ch# (l/poll ~chs 50)]
-       (if-let [received# (l/wait-for-message ch#)]
-         (do
-           (do-report {:type :fail :message ~msg
-                       :expected [] :actual received#}))
-         (do-report {:type :pass :message ~msg
-                     :expected nil :actual nil})))))
+    `(assert-no-msgs-for ~msg ~chs)))
 
 (defmethod assert-expr 'next-msgs [msg form]
   (let [[_ ch & stmts] form]

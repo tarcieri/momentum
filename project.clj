@@ -4,8 +4,7 @@
   :dependencies [[org.clojure/clojure   "1.3.0"]
                  [org.jboss.netty/netty "3.2.4.Final"]]
 
-  :dev-dependencies [[swank-clojure "1.3.4-SNAPSHOT"]
-                     [lamina        "0.4.0-beta2"]
+  :dev-dependencies [[swank-clojure "1.3.4-SNAPSHOT" :exclusions [org.clojure/clojure]]
                      [robert/hooke  "1.1.2"]]
 
   :source-path      "src/clj"
