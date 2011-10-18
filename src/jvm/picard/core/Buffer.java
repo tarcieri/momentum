@@ -142,7 +142,7 @@ public abstract class Buffer {
   }
 
   // To prevent the compiler from complaining about the cast
-  @SuppressWarnings("unsafe")
+  @SuppressWarnings("unchecked")
   public final static Buffer wrap(Object obj) throws UnsupportedEncodingException {
     if (obj instanceof Buffer) {
       return wrap((Buffer) obj);
