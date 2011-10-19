@@ -255,9 +255,13 @@
     (when (and (= 101 status) (not= :upgrading (.upgrade current-state)))
       (throw (Exception. "Not expecting a 101 Switching Protocols response.")))
 
+    (when (and (= :upgraded body) (not= 101 status))
+      (throw (Exception. (str "Upgrading a connection without setting the "
+                              "response status to 101 doesn't make much sense."))))
+
     ;; 100, 101, 204, and 304 responses MUST NOT have a response body,
     ;; so if we get one, throw an exception.
-    (when (not (or (status-expects-body? status) (nil? body)))
+    (when (not (or (status-expects-body? status) (nil? body) (= :upgraded body)))
       (throw (Exception. (str status " responses must not include a body."))))
 
     (swap-then!

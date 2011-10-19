@@ -14,6 +14,10 @@
      (~then-fn res#)
      res#))
 
+(defmacro swap-assoc!
+  [atom & args]
+  `(swap! ~atom (fn [val#] (assoc val# ~@args))))
+
 (defmacro defstream
   [& handlers]
   (let [evt (gensym) val (gensym)]

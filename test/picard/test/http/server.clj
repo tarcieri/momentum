@@ -1313,7 +1313,7 @@
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
-         (dn :response [101 {"connection" "upgrade" "upgrade" "echo"}]))
+         (dn :response [101 {"connection" "upgrade" "upgrade" "echo"} :upgraded]))
        (when (= :message evt)
          (dn :message val)))))
 
