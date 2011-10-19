@@ -745,6 +745,10 @@ public abstract class Buffer {
     return this;
   }
 
+  public final Buffer put(int b) {
+    return put((byte) b);
+  }
+
   public final Buffer putUnsigned(int b) {
     return put((byte) (b & 0xff));
   }
@@ -761,7 +765,7 @@ public abstract class Buffer {
 
   // Random helper to avoid a couple casts
   public final Buffer put(int idx, int b) {
-    return putUnsigned(idx, b);
+    return put(idx, (byte) b);
   }
 
   public final Buffer putUnsigned(int idx, int b) {

@@ -1042,12 +1042,35 @@
            (.put (buffer "Hello"))
            flip)))
 
-  (is (= (buffer :ubyte 100 200 250 (buffer "Hello"))
-         (doto (buffer 8)
+  (is (= (buffer :ubyte 100 200 250 (buffer "H"))
+         (doto (buffer 4)
            (.putUnsigned 100)
            (.putUnsigned 200)
            (.putUnsigned 250)
-           (.put (buffer "Hello"))
+           (.put (buffer "H"))
+           flip)))
+
+  (is (= (buffer :short 100 200 250 (buffer "H"))
+         (doto (buffer 7)
+           (.putShort 100)
+           (.putShort 200)
+           (.putShort 250)
+           (.put (buffer "H"))
+           (flip))))
+
+  (is (= (buffer :ushort 1234 2345 40000 (buffer "H"))
+         (doto (buffer 7)
+           (.putShortUnsigned 1234)
+           (.putShortUnsigned 2345)
+           (.putShortUnsigned 40000)
+           (.put (buffer "H"))
+           (flip))))
+
+  (is (= (buffer :byte 1 :int 2 (buffer "H"))
+         (doto (buffer 6)
+           (.put (byte 1))
+           (.putInt 2)
+           (.put (buffer "H"))
            (flip)))))
 
 (deftest wrapping-primitives
