@@ -52,7 +52,7 @@
   (to-buffer [str] (Buffer/wrap str))
 
   Number
-  (estimate  [_] 8)
+  (estimate  [n] n)
   (to-buffer [n] (Buffer/allocate n))
 
   nil
@@ -60,51 +60,93 @@
   (to-buffer [_] nil))
 
 (defprotocol Manipulation
-  (^{:private true} put [_ buf]))
+  (into-buffer* [_ buf type-f]))
 
 (extend-protocol Manipulation
   (class (byte-array 0))
-  (put [arr dst]
+  (into-buffer* [arr dst _]
     (.put dst arr))
 
   Buffer
-  (put [src dst]
-    (.put dst src (.position src) (.remaining src))
-    dst)
+  (into-buffer* [src dst _]
+    (.put dst src (.position src) (.remaining src)))
 
   Collection
-  (put [coll dst]
+  (into-buffer* [coll dst type-f]
     (doseq [src coll]
-      (put src dst))
-    dst)
+      (into-buffer* src dst type-f)))
+
+  Number
+  (into-buffer* [n dst type-f]
+    (if type-f
+      (type-f dst n)
+      (into-buffer* (Buffer/wrap n) dst nil)))
 
   String
-  (put [str dst]
-    (.put dst (.getBytes str "UTF-8"))
-    dst)
+  (into-buffer* [str dst _]
+    (.put dst (.getBytes str "UTF-8")))
 
   nil
-  (put [_ dst] dst)
+  (into-buffer* [_ dst _] dst)
 
   Object
-  (put [o dst]
-    (.put dst (.getBytes (.toString o) "UTF-8"))
-    dst))
+  (into-buffer* [o dst _]
+    (.put dst (Buffer/wrap o))))
 
-(defn ^Buffer buffer
-  ([] (Buffer/allocate 1024))
-  ([val] (to-buffer val))
-  ([int-or-buf & bufs]
-     (if (number? int-or-buf)
-       (doto (buffer int-or-buf)
-         (write bufs)
-         (flip))
+(defn buffer*
+  ([]    (dynamic-buffer))
+  ([val] (to-buffer val)))
 
-       (let [buf (dynamic-buffer (max (* 2 (estimate int-or-buf)) 64))]
-         (write buf int-or-buf)
-         (write buf bufs)
-         (flip buf)
-         (slice buf)))))
+(def buffer-typed-writers
+  {:byte    `write-byte
+   :ubyte   `write-ubyte
+   :short   `write-short
+   :ushort  `write-ushort
+   :int     `write-int
+   :uint    `write-uint
+   :long    `write-long
+   :default `write})
+
+(defmacro write-typed
+  ([buf arg]
+     (if (keyword? arg)
+       buf
+       (throw (Exception. "Invalid use of macro write-typed"))))
+
+  ([buf type arg & rest]
+     (if (keyword? arg)
+       `(write-typed ~buf ~arg ~@rest)
+       (if-let [type-sym (buffer-typed-writers type)]
+         `(do (into-buffer* ~arg ~buf ~type-sym)
+              (write-typed ~buf ~type ~@rest))
+         (throw (Exception. (str "Unknown buffer type: " type)))))))
+
+(defmacro buffer
+  ([] `(dynamic-buffer))
+  ([int-or-buf] `(buffer* ~int-or-buf))
+  ([int-or-buf & args]
+     (cond
+      (keyword? int-or-buf)
+      `(doto (dynamic-buffer 64)
+         (write-typed ~int-or-buf ~@args)
+         flip
+         slice)
+
+      (number? int-or-buf)
+      `(doto (buffer* ~int-or-buf)
+         (write-typed :default ~@args)
+         flip)
+
+      :else
+      `(let [one# ~int-or-buf]
+         (if (number? one#)
+           (doto (buffer* one#)
+             (write-typed :default ~@args)
+             flip)
+           (doto (dynamic-buffer 64)
+             (write-typed :default one# ~@args)
+             flip
+             slice))))))
 
 (defn buffer?
   [maybe-buffer]
@@ -122,7 +164,7 @@
   [size]
   (Buffer/allocateDirect size))
 
-(defn ^Buffer dynamic-buffer
+(defn dynamic-buffer
   ([]        (Buffer/dynamic))
   ([est]     (Buffer/dynamic est))
   ([est max] (Buffer/dynamic est max)))
@@ -220,5 +262,33 @@
   (Buffer/wrap bufs))
 
 (defn write
-  [^Buffer dst & srcs]
-  (put srcs dst))
+  [dst & srcs]
+  (into-buffer* srcs dst nil))
+
+(defn write-byte
+  [buf b]
+  (.put buf b))
+
+(defn write-ubyte
+  [buf b]
+  (.putUnsigned buf b))
+
+(defn write-short
+  [buf s]
+  (.putShort buf s))
+
+(defn write-ushort
+  [buf s]
+  (.putShortUnsigned buf s))
+
+(defn write-int
+  [buf i]
+  (.putInt buf i))
+
+(defn write-uint
+  [buf i]
+  (.putIntUnsigned buf i))
+
+(defn write-long
+  [buf l]
+  (.putLong buf l))

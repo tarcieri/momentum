@@ -765,7 +765,7 @@
     (is (= (buffer "bar") (.slice buf 3 3)))
     (is (= (buffer "baz") (.slice buf 6 3)))
 
-    (is (= (buffer "foob" (.slice buf 0 4))))
+    (is (= (buffer "foob") (.slice buf 0 4)))
     (is (= (buffer "foobarb") (.slice buf 0 7)))
     (is (= (buffer "oob") (.slice buf 1 3)))
 
@@ -1030,6 +1030,9 @@
 ;;
 ;; === Clojure interface ===
 ;;
+
+(deftest wrapping-single-buffers
+  (is (= (Buffer/wrap "Hello") (buffer "Hello"))))
 
 (deftest wrapping-primitives
   (is (= (wrap 1)
