@@ -14,7 +14,8 @@
 (defrecord Socket
     [state
      version
-     extensions])
+     extensions
+     key])
 
 (def opcodes
   {:continuation WsFrameType/CONTINUATION
@@ -24,17 +25,30 @@
    :ping         WsFrameType/PING
    :pong         WsFrameType/PONG})
 
+(def status-codes
+  {:normal           1000
+   :going-away       1001
+   :proto-error      1002
+   :unacceptable     1003
+   :frame-too-large  1004
+   :invalid-encoding 1007})
+
 (def salt "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
 
 (defn- mk-socket
   []
-  (atom (Socket. :CONNECTING nil nil)))
+  (atom
+   (Socket.
+    :pending
+    nil
+    nil
+    nil)))
 
-(defn- accept-key
-  [key]
+(defn- response-key
+  [current-state]
   (base64/encode
    (digest/sha1
-    (str key salt))))
+    (str (.key current-state) salt))))
 
 (defn- frame
   [type data]
@@ -42,62 +56,114 @@
 
 (defn- abort-socket
   [state dn]
-  (dn :close nil))
+  (swap-assoc! state :state :closed)
+  (dn :close (status-codes :proto-error)))
 
 (defn- accept-socket
-  [state dn key]
-  (let [hdrs {"connection"           "upgrade"
-              "upgrade"              "websocket"
-              "sec-websocket-accept" (accept-key key)}]
+  [state dn hdrs]
+  (swap-then!
+   state
+   ;; Atomically ensure that the transition is from connecting to open
+   (fn [current-state]
+     (if (= :connecting (.state current-state))
+       (assoc current-state :state :open)
+       current-state))
+   ;; Then, send the event downstream
+   (fn [current-state]
+     (if (not= :open (.state current-state))
+       ;; The state changed from underneath us
+       (abort-socket state dn)
+       ;; Send the handshake
+       (dn :response [101 (merge {"connection" "upgrade"
+                                  "upgrade"    "websocket"
+                                  "sec-websocket-accept"
+                                  (response-key current-state)} hdrs) :upgraded])))))
 
-    (swap! state #(assoc % :state :OPEN))
+(defn- request-upgrade
+  [state up key request]
+  ;; Save off the exchange key and send the request upstream
+  (swap-assoc! state :state :connecting :key key)
+  (up :request request))
 
-    (dn :response [101 hdrs])
-    (dn :message (frame :text (buffer "HELLO")))))
+(defn- receive-response
+  [state dn response current-state]
+  (if (= :passthrough (.state current-state))
+    ;; If the connection is currently a passthrough connection, just
+    ;; send the response downstream as is.
+    (dn :response response)
 
-(defn- handshake
-  [state dn [{upgrade    "upgrade"
-              connection "connection"
-              version    "sec-websocket-version"
-              key        "sec-websocket-key"
-              origin     "sec-websocket-origin"
-              protos     "sec-websocket-protocol"
-              exts       "sec-websocket-extensions"} body]]
+    ;; Otherwise, process it as a websocket handshake response
+    (let [[status hdrs body] response]
+      (if (= 101 status)
+        (accept-socket state dn hdrs)))
+    ))
 
-  ;; If the request is a websocket request, initiate the handshake.
-  (when (and (= :upgraded body) (= upgrade "websocket"))
+(defn- receive-request
+  [state up dn [{upgrade    "upgrade"
+                 connection "connection"
+                 version    "sec-websocket-version"
+                 key        "sec-websocket-key"
+                 origin     "sec-websocket-origin"
+                 protos     "sec-websocket-protocol"
+                 exts       "sec-websocket-extensions"} body :as request]]
+
+  (if (and (= :upgraded body) (= upgrade "websocket"))
+    ;; If the request is a websocket request, initiate the handshake.
     (if (and key origin)
-      (accept-socket state dn key)
+      (request-upgrade state up key request)
       (abort-socket state dn))
-    true))
+    ;; Otherwise, mark the socket as pass through and send the request
+    ;; upstream
+    (do
+      (swap-assoc! state :state :passthrough)
+      (up :request request))))
 
 (defn- handle-frame
-  [frame]
+  [state up dn frame]
   (println frame ": " (.text frame)))
 
 (defn- mk-decoder
-  [up]
-  (let [decoder (WsFrameDecoder. true handle-frame)]
+  [state up dn]
+  (let [decoder (WsFrameDecoder. true #(handle-frame state up dn %))]
     (fn [buf]
       (.decode decoder buf))))
+
+(defn- mk-downstream
+  [state dn]
+  (fn [evt val]
+    (let [current-state @state]
+      (cond
+       (= :response evt)
+       (receive-response state dn val current-state)
+
+       :else
+       (dn evt val)))))
 
 (defn proto
   [app]
   (fn [dn]
-    (let [up     (app dn)
-          state  (mk-socket)
-          decode (mk-decoder up)]
+    (let [state  (mk-socket)
+          up     (app (mk-downstream state dn))
+          decode (mk-decoder state up dn)]
 
-      (defstream
-        (request [request]
-          (when-not (handshake state dn request)
-            (up :request request)))
+      (fn [evt val]
+        (let [current-state @state]
+          (cond
+           (= :message evt)
+           (decode val)
 
-        (message [buf]
-          (decode buf))
+           (= :request evt)
+           (receive-request state up dn val)
 
-        (abort [err]
-          (.printStackTrace err))
+           (= :body evt)
+           (if (= :passthrough (.state current-state))
+             (up :body val)
+             (throw (Exception. "Not currently expecting a body event")))
 
-        (else [evt val]
-          (up evt val))))))
+           (= :abort evt)
+           (do
+             (swap! state #(assoc % :state :closed))
+             (.printStackTrace val))
+
+           :else
+           (up evt val)))))))

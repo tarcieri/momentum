@@ -50,7 +50,7 @@
 
 (defn- normalize-response
   [[status hdrs body]]
-  [status hdrs (buffer body)])
+  [status hdrs (if (keyword? body) body (buffer body))])
 
 (defn- stringify-response
   [[status hdrs body]]

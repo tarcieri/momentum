@@ -123,11 +123,11 @@ public class WsFrameDecoder {
                     break;
 
                 case PAYLOAD:
-                    Buffer payload = buf.duplicate();
-                    int chunkSize  = Math.min(remaining, payload.remaining());
+                    int chunkSize  = Math.min(remaining, buf.remaining());
+                    Buffer payload = buf.slice(buf.position(), chunkSize);
 
                     buf.skip(chunkSize);
-                    payload.focus(chunkSize);
+
                     remaining -= chunkSize;
 
                     chunks.add(payload);

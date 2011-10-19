@@ -28,7 +28,11 @@
      (fn [dn]
        (defstream
          (request [hdrs body]
-           (dn :response [101 {} :upgraded])))))
+           (dn :response [101 {} :upgraded]))
+         (abort [err]
+           (.printStackTrace err))
+         (else [evt val]
+           (println "GOT: " [evt val])))))
 
     (let [ws-key (base64/encode (random/secure-random 16))
           expect (base64/encode (digest/sha1 (str ws-key ws/salt)))]
@@ -41,4 +45,13 @@
       (is (responded?
            [101 {"connection" "upgrade"
                  "upgrade"    "websocket"
-                 "sec-websocket-accept" expect}])))))
+                 "sec-websocket-accept" expect} :upgraded]))
+
+      (last-request
+       :message
+       (buffer
+        :ubyte (bit-or 0x80 1) (bit-or 0x80 5)
+        :uint  0x6043cee3
+        :ubyte 0x28 0x26 0xa2 0x8f 0x0f)))))
+
+;; Aborts the socket when key not set
