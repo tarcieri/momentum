@@ -117,8 +117,9 @@
      (if (keyword? arg)
        `(write-typed ~buf ~arg ~@rest)
        (if-let [type-sym (buffer-typed-writers type)]
-         `(do (into-buffer* ~arg ~buf ~type-sym)
-              (write-typed ~buf ~type ~@rest))
+         `(let [buf# ~buf]
+            (into-buffer* ~arg buf# ~type-sym)
+            (write-typed buf# ~type ~@rest))
          (throw (Exception. (str "Unknown buffer type: " type)))))))
 
 (defmacro buffer
@@ -127,26 +128,26 @@
   ([int-or-buf & args]
      (cond
       (keyword? int-or-buf)
-      `(doto (dynamic-buffer 64)
-         (write-typed ~int-or-buf ~@args)
-         flip
-         slice)
+      `(-> (dynamic-buffer 64)
+           (write-typed ~int-or-buf ~@args)
+           (flip)
+           (slice))
 
       (number? int-or-buf)
-      `(doto (buffer* ~int-or-buf)
-         (write-typed :default ~@args)
-         flip)
+      `(-> (buffer* ~int-or-buf)
+           (write-typed :default ~@args)
+           (flip))
 
       :else
       `(let [one# ~int-or-buf]
          (if (number? one#)
-           (doto (buffer* one#)
-             (write-typed :default ~@args)
-             flip)
-           (doto (dynamic-buffer 64)
-             (write-typed :default one# ~@args)
-             flip
-             slice))))))
+           (-> (buffer* one#)
+               (write-typed :default ~@args)
+               (flip))
+           (-> (dynamic-buffer 64)
+               (write-typed :default one# ~@args)
+               (flip)
+               (slice)))))))
 
 (defn buffer?
   [maybe-buffer]
@@ -267,7 +268,7 @@
 
 (defn write-byte
   [buf b]
-  (.put buf b))
+  (.put buf (byte b)))
 
 (defn write-ubyte
   [buf b]

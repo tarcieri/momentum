@@ -1032,7 +1032,23 @@
 ;;
 
 (deftest wrapping-single-buffers
-  (is (= (Buffer/wrap "Hello") (buffer "Hello"))))
+  (is (= (Buffer/wrap "Hello") (buffer "Hello")))
+
+  (is (= (buffer :byte 1 2 3 (buffer "Hello"))
+         (doto (buffer 8)
+           (.put (byte 1))
+           (.put (byte 2))
+           (.put (byte 3))
+           (.put (buffer "Hello"))
+           flip)))
+
+  (is (= (buffer :ubyte 100 200 250 (buffer "Hello"))
+         (doto (buffer 8)
+           (.putUnsigned 100)
+           (.putUnsigned 200)
+           (.putUnsigned 250)
+           (.put (buffer "Hello"))
+           (flip)))))
 
 (deftest wrapping-primitives
   (is (= (wrap 1)
