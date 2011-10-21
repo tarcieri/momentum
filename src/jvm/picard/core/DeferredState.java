@@ -7,15 +7,14 @@ import clojure.lang.IFn;
 import java.util.Iterator;
 import java.util.LinkedList;
 
-// Even though it might make sense otherwise, there can only be a
-// single receive callback per deferred value. This is because
-// multiple receive callbacks don't make sense for channels and the
-// abstraction between deferred values and channels needs to be as
-// similar as possible. Also, it is easy to have a receive function
-// send out the value to multiple other functions.
-//
-// TODO: Currently, callbacks can be fired in parallel on different
-// threads. It probably makes sense to serialize them.
+/* An abstraction to help make asynchronous programming a bit more sane.
+ *
+ * TODO:
+ *
+ *   - Refactor and describe all the states and transitions to be cleaner
+ *   - Exceptions thrown in receive / catch / finally callbacks should be
+ *     passed to the catch-all callback.
+ */
 public class DeferredState extends AFn implements IDeref, IBlockingDeref {
   public enum State {
     INITIALIZED,
@@ -300,50 +299,56 @@ public class DeferredState extends AFn implements IDeref, IBlockingDeref {
    * clojure.lang.IDeref implementation
    */
   public Object deref() {
-
-    synchronized (this) {
-      hasBlocked = true;
-
-      switch (state) {
-        case SUCCEEDED:
-          return value;
-
-        case RECEIVING:
-          state = State.SUCCEEDED;
-          return value;
-
-        case ABORTING:
-          state = State.FAILED;
-          throw new RuntimeException(err);
-
-        case FAILED:
-          throw new RuntimeException(err);
-
-        case INITIALIZED:
-          try {
-            wait();
-          }
-          catch (InterruptedException err) {
-            throw new RuntimeException(err);
-          }
-
-          if (state == State.SUCCEEDED) {
-            return value;
-          }
-          else {
-            throw new RuntimeException(err);
-          }
-      }
-    }
-
-    return null;
+    return deref(-1, null);
   }
 
   /*
    * clojure.lang.IBlockingDeref implementation
    */
-  public Object deref(long ms, Object timeoutValue) {
-    return timeoutValue;
+  public synchronized Object deref(long ms, Object timeoutValue) {
+    hasBlocked = true;
+
+    switch (state) {
+      case SUCCEEDED:
+        return value;
+
+      case RECEIVING:
+        state = State.SUCCEEDED;
+        return value;
+
+      case ABORTING:
+        state = State.FAILED;
+        throw new RuntimeException(err);
+
+      case FAILED:
+        throw new RuntimeException(err);
+
+      case INITIALIZED:
+        try {
+          if (ms < 0) {
+            wait();
+          }
+          else {
+            wait(ms);
+          }
+        }
+        catch (InterruptedException err) {
+          throw new RuntimeException(err);
+        }
+
+        if (state == State.SUCCEEDED) {
+          return value;
+        }
+        else if (state == State.FAILED) {
+          throw new RuntimeException(err);
+        }
+        else if (ms >= 0) {
+          return timeoutValue;
+        }
+    }
+
+    String msg = "Should never get here, it's a bug - " + state;
+    throw new RuntimeException(msg);
   }
 
   private void invokeReceiveCallback() {
@@ -423,12 +428,13 @@ public class DeferredState extends AFn implements IDeref, IBlockingDeref {
       if (state == State.SUCCEEDED) {
         return;
       }
-      else if (catchAllCallback == null) {
-        state = State.FAILING;
-        return;
-      }
+      else {
+        state = State.FAILED;
 
-      state = State.FAILED;
+        if (catchAllCallback == null) {
+          return;
+        }
+      }
     }
 
     invokeCatchAllCallback();
