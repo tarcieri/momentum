@@ -61,7 +61,7 @@
     (.realize dval val)
     dval)
   (abort [dval err]
-    (.abort dval err false)
+    (.abort dval err)
     dval))
 
 (defn deferred

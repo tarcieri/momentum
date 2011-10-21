@@ -118,19 +118,25 @@
     (catch* dval Exception (fn [_] (reset! res :win)))
     (abort dval (Exception.))))
 
-(deftest thrown-exceptions-in-receive-abort-deferred-value
+(deftest thrown-exceptions-in-receive-dont-abort-deferred-value
   (let [res (atom nil)
         err (Exception. "TROLLOLOL")]
     (-> (deferred)
         (receive (fn [_] (throw err)))
         (catch* Exception #(reset! res %))
+        (finally* #(reset! res :done))
         (put :hello))
-    (is (= err @res))))
+    (is (= :done @res))))
 
 (deftest throws-when-catch-registered-after-catch-all
   (let [dval (deferred)]
     (catch-all dval identity)
     (is (thrown? Exception (catch* dval Exception identity)))))
+
+(deftest cannot-register-receive-callbacks-after-catch-callback
+  (let [dval (deferred)]
+    (catch* dval Exception identity)
+    (is (thrown? Exception (receive dval identity)))))
 
 ;; ==== Finally statements
 
@@ -156,7 +162,7 @@
         (abort (Exception. "ZOMG")))
     (is (= :done @res))))
 
-(deftest finally-fn-gets-called-before-catch
+(deftest finally-fn-gets-called-after-catch
   (let [res (atom nil)]
     (-> (deferred)
         (catch* Exception #(reset! res %))
@@ -236,32 +242,13 @@
         (abort err))
     (is (= err @res))))
 
-(deftest catch-all-called-with-uncaught-exception
-  (let [res (atom nil)
-        err (Exception. "TROLLOLOL")]
+(deftest catch-all-not-called-with-exception-thrown-from-catch
+  (let [res (atom nil)]
     (-> (deferred)
-        (catch* Exception (fn [_] (throw err)))
+        (catch* Exception (fn [_] (throw (Exception.))))
         (catch-all #(reset! res %))
         (abort (Exception. "LULZ")))
-    (is (= err @res))
-
-    (reset! res nil)
-
-    (-> (deferred)
-        (receive (fn [_] (throw (Exception. "LULZ"))))
-        (catch* Exception (fn [_] (throw err)))
-        (catch-all #(reset! res %))
-        (put 1))
-    (is (= err @res))
-
-    (reset! res nil)
-
-    (-> (deferred)
-        (abort (Exception. "GAGA"))
-        (catch* Exception (fn [_] (throw err)))
-        (finally* (fn []))
-        (catch-all #(reset! res %)))
-    (is (= err @res))))
+    (is (nil? @res))))
 
 (deftest catch-all-called-with-finally-exception
   (let [res (atom nil)
@@ -272,3 +259,28 @@
         (abort (Exception. "LULZ"))
         (catch-all #(reset! res %)))
     (is (= err @res))))
+
+;; ==== Test blocking
+
+;; (deftest dereferencing-realized-deferred-value
+;;   (let [dval (deferred)]
+;;     (put dval :hello)
+;;     (is (= :hello @dval))))
+
+;; (deftest dereferencing-pending-deferred-values
+;;   (let [dval (deferred)]
+;;     (future
+;;       (Thread/sleep 50)
+;;       (put dval :hello))
+;;     (is (= :hello @dval))))
+
+;; (deftest receiving-and-dereferencing-deferred-value
+;;   (let [res  (atom nil)
+;;         dval (deferred)]
+;;     (future
+;;       (Thread/sleep 50)
+;;       (put dval :hello))
+
+;;     (receive dval #(reset! res %))
+;;     (is (= :hello @dval))
+;;     (is (= :hello @res))))
