@@ -148,12 +148,17 @@
         (put 1))
     (is (= 2 @res))))
 
-(deftest finally-fn-doesnt-get-called-when-no-realize-fn-registered
+(deftest finally-fn-gets-called-when-no-realize-fn-registered
   (let [res (atom nil)]
     (-> (deferred)
         (finally* #(reset! res :done))
         (put :hello))
-    (is (nil? @res))))
+    (is (= :done @res))))
+
+(deftest registering-receive-after-finally-throws
+  (let [dval (deferred)]
+    (finally* dval identity)
+    (is (thrown? Exception (receive dval identity)))))
 
 (deftest finally-fn-gets-called-when-aborted
   (let [res (atom nil)]
@@ -262,25 +267,102 @@
 
 ;; ==== Test blocking
 
-;; (deftest dereferencing-realized-deferred-value
-;;   (let [dval (deferred)]
-;;     (put dval :hello)
-;;     (is (= :hello @dval))))
+(deftest dereferencing-realized-deferred-value
+  (let [dval (deferred)]
+    (put dval :hello)
+    (receive dval identity)
+    (is (= :hello @dval)))
 
-;; (deftest dereferencing-pending-deferred-values
-;;   (let [dval (deferred)]
-;;     (future
-;;       (Thread/sleep 50)
-;;       (put dval :hello))
-;;     (is (= :hello @dval))))
+  (let [dval (deferred)]
+    (put dval :hello)
+    (is (= :hello @dval))))
 
-;; (deftest receiving-and-dereferencing-deferred-value
-;;   (let [res  (atom nil)
-;;         dval (deferred)]
-;;     (future
-;;       (Thread/sleep 50)
-;;       (put dval :hello))
+(deftest dereferencing-pending-deferred-values
+  (let [dval (deferred)]
+    (future
+      (Thread/sleep 50)
+      (put dval :hello))
+    (is (= :hello @dval))
+    (is (= :hello @dval))))
 
-;;     (receive dval #(reset! res %))
-;;     (is (= :hello @dval))
-;;     (is (= :hello @res))))
+(deftest receive-and-finally-callbacks-happen-first
+  (let [dval (deferred)
+        res  (atom [])]
+    (-> dval
+        (receive (fn [v] (swap! res #(conj % v))))
+        (finally* (fn [] (swap! res #(conj % :finally)))))
+    (future
+      (Thread/sleep 50)
+      (put dval :value))
+    (is (= :value @dval))
+    (is (= [:value :finally] @res))))
+
+(deftest dereferencing-value-throws-when-value-is-aborted
+  (let [dval (deferred)]
+    (abort dval (Exception. "BAM"))
+    (is (thrown-with-msg? Exception #"BAM" @dval)))
+
+  (let [dval (deferred)]
+    (catch* dval IndexOutOfBoundsException identity)
+    (abort dval (Exception. "BAM"))
+    (is (thrown-with-msg? Exception #"BAM" @dval))
+    (is (thrown-with-msg? Exception #"BAM" @dval))))
+
+(deftest dereferencing-deferred-value-that-will-be-aborted
+  (let [dval (deferred)]
+    (future
+      (Thread/sleep 50)
+      (abort dval (Exception. "BAM")))
+
+    (is (thrown-with-msg? Exception #"BAM" @dval))))
+
+(deftest finally-callback-called-first-when-blocked
+  (let [res  (atom nil)
+        dval (deferred)]
+    (finally* dval #(reset! res :finally))
+    (future
+      (Thread/sleep 50)
+      (abort dval (Exception. "BAM")))
+    (is (thrown-with-msg? Exception #"BAM" @dval))
+    (is (= :finally @res))))
+
+(deftest catch-all-callback-called-when-blocked
+  (let [res  (atom nil)
+        err  (Exception. "BAM")
+        dval (deferred)]
+    (catch-all dval #(reset! res %))
+    (future
+      (Thread/sleep 50)
+      (abort dval err))
+    (is (thrown-with-msg? Exception #"BAM" @dval))
+    (is (= err @res))))
+
+(deftest catch-all-callback-still-called-after-blocked
+  (let [res  (atom nil)
+        err  (Exception. "BAM")
+        dval (deferred)]
+    (future
+      (Thread/sleep 50)
+      (abort dval err))
+
+    (is (thrown-with-msg? Exception #"BAM" @dval))
+    (catch-all dval #(reset! res %))
+    (is (= err @res))))
+
+(deftest registering-receive-callback-after-deref-throws
+  (let [dval (deferred)]
+    (put dval :hello)
+    @dval
+    (is (thrown? Exception (receive dval identity)))))
+
+(deftest registering-catch-callback-after-deref-throws
+  (let [dval (deferred)]
+    (put dval :hello)
+    @dval
+    (is (thrown? Exception (catch* dval Exception identity)))))
+
+(deftest registering-finally-callback-after-deref-throws
+  (let [dval (deferred)]
+    (put dval :hello)
+    @dval
+    (is (thrown? Exception (finally* dval identity)))))

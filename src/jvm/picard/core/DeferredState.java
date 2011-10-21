@@ -43,6 +43,9 @@ public class DeferredState extends AFn implements IDeref, IBlockingDeref {
   // The exception that the deferred value was aborted with
   Exception err;
 
+  // Has a thread blocked on this deferred value at some point?
+  boolean hasBlocked;
+
   // The callbacks
   IFn receiveCallback;
   IFn catchAllCallback;
@@ -68,6 +71,14 @@ public class DeferredState extends AFn implements IDeref, IBlockingDeref {
         throw new CallbackRegistrationError(alreadyRegistered("catch"));
       }
 
+      if (finallyCallback != null) {
+        throw new CallbackRegistrationError(alreadyRegistered("finally"));
+      }
+
+      if (hasBlocked) {
+        throw new CallbackRegistrationError(alreadyRegistered("blocking deref"));
+      }
+
       receiveCallback = callback;
 
       if (state != State.RECEIVING) {
@@ -88,6 +99,10 @@ public class DeferredState extends AFn implements IDeref, IBlockingDeref {
     final Catch catchCallback = new Catch(klass, callback);
 
     synchronized(this) {
+      if (hasBlocked) {
+        throw new CallbackRegistrationError(alreadyRegistered("blocking deref"));
+      }
+
       if (catchAllCallback != null) {
         throw new CallbackRegistrationError(alreadyRegistered("catch-all"));
       }
@@ -130,6 +145,10 @@ public class DeferredState extends AFn implements IDeref, IBlockingDeref {
     }
 
     synchronized(this) {
+      if (hasBlocked) {
+        throw new CallbackRegistrationError(alreadyRegistered("blocking deref"));
+      }
+
       if (finallyCallback != null) {
         throw new CallbackRegistrationError(alreadyRegistered("finally"));
       }
@@ -167,18 +186,25 @@ public class DeferredState extends AFn implements IDeref, IBlockingDeref {
 
       catchAllCallback = callback;
 
-      if (state != State.ABORTING && state != State.FAILING) {
-        return;
-      }
+      switch (state) {
+        case ABORTING:
+        case FAILING:
+          state = State.FAILED;
+          break;
 
-      state = State.FAILED;
+        case FAILED:
+          break;
+
+        default:
+          return;
+      }
     }
 
     invokeCatchAllCallback();
   }
 
   public void realize(Object v) {
-    synchronized(this) {
+    synchronized (this) {
       if (state != State.INITIALIZED) {
         throw new RuntimeException("The value has already been realized or aborted");
       }
@@ -186,12 +212,23 @@ public class DeferredState extends AFn implements IDeref, IBlockingDeref {
       value = v;
       state = State.RECEIVING;
 
-      if (receiveCallback == null) {
+      if (receiveCallback == null && finallyCallback == null && !hasBlocked) {
         return;
       }
     }
 
-    invokeReceiveCallback();
+    if (receiveCallback != null) {
+      invokeReceiveCallback();
+    }
+    else if (finallyCallback != null) {
+      invokeFinallyCallback();
+    }
+    else {
+      synchronized (this) {
+        state = State.SUCCEEDED;
+        notifyAll();
+      }
+    }
   }
 
   public void abort(Exception e) {
@@ -226,9 +263,20 @@ public class DeferredState extends AFn implements IDeref, IBlockingDeref {
       }
       else if (finallyCallback != null) {
         state = State.FINALIZING;
-      } else if (catchAllCallback != null) {
+      }
+      else if (catchAllCallback != null) {
         state = State.FAILED;
-      } else {
+
+        if (hasBlocked) {
+          notifyAll();
+        }
+      }
+      else if (hasBlocked) {
+        state = State.FAILED;
+        notifyAll();
+        return;
+      }
+      else {
         return;
       }
 
@@ -252,6 +300,42 @@ public class DeferredState extends AFn implements IDeref, IBlockingDeref {
    * clojure.lang.IDeref implementation
    */
   public Object deref() {
+
+    synchronized (this) {
+      hasBlocked = true;
+
+      switch (state) {
+        case SUCCEEDED:
+          return value;
+
+        case RECEIVING:
+          state = State.SUCCEEDED;
+          return value;
+
+        case ABORTING:
+          state = State.FAILED;
+          throw new RuntimeException(err);
+
+        case FAILED:
+          throw new RuntimeException(err);
+
+        case INITIALIZED:
+          try {
+            wait();
+          }
+          catch (InterruptedException err) {
+            throw new RuntimeException(err);
+          }
+
+          if (state == State.SUCCEEDED) {
+            return value;
+          }
+          else {
+            throw new RuntimeException(err);
+          }
+      }
+    }
+
     return null;
   }
 
@@ -274,6 +358,10 @@ public class DeferredState extends AFn implements IDeref, IBlockingDeref {
       state = State.SUCCEEDED;
 
       if (finallyCallback == null) {
+        if (hasBlocked) {
+          notifyAll();
+        }
+
         return;
       }
     }
@@ -310,6 +398,10 @@ public class DeferredState extends AFn implements IDeref, IBlockingDeref {
     }
 
     synchronized(this) {
+      if (hasBlocked) {
+        notifyAll();
+      }
+
       if (state == State.SUCCEEDED) {
         return;
       }
