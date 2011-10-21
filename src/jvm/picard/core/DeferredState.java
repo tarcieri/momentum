@@ -371,7 +371,21 @@ public class DeferredState extends AFn implements IDeref, IBlockingDeref {
 
   private void invokeCatchCallback(Catch callback) {
     try {
-      callback.invoke(err);
+      Object ret = callback.invoke(err);
+
+      // Set the value
+      synchronized (this) {
+        value = ret;
+
+        if (receiveCallback == null) {
+          state = State.SUCCEEDED;
+        }
+      }
+
+      if (receiveCallback != null) {
+        invokeReceiveCallback();
+        return;
+      }
     }
     catch (Exception e) {
       // Swallow up the exception for now
@@ -379,6 +393,10 @@ public class DeferredState extends AFn implements IDeref, IBlockingDeref {
 
     synchronized (this) {
       if (finallyCallback == null) {
+        if (hasBlocked) {
+          notifyAll();
+        }
+
         return;
       }
     }
@@ -459,8 +477,8 @@ public class DeferredState extends AFn implements IDeref, IBlockingDeref {
       return klass.isInstance(err);
     }
 
-    public void invoke(Exception err) {
-      callback.invoke(err);
+    public Object invoke(Exception err) {
+      return callback.invoke(err);
     }
   }
 }

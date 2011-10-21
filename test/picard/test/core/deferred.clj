@@ -88,6 +88,22 @@
     (catch* dval Exception #(reset! res %))
     (is (= err @res))))
 
+(deftest catch-return-value-becomes-materialized-value
+  (let [dval (deferred)
+        res  (atom nil)]
+    (receive dval #(reset! res %))
+    (catch* dval Exception (constantly :hello))
+    (abort dval (Exception.))
+    (is (= :hello @res)))
+
+  (let [dval (deferred)
+        res  (atom nil)]
+    (abort dval (Exception.))
+    (receive dval #(reset! res %))
+    (is (nil? @res))
+    (catch* dval Exception (constantly :hello))
+    (is (= :hello @res))))
+
 (deftest realized-deferred-values-cannot-be-aborted
   (let [dval (deferred)]
     (put dval :hello)
@@ -315,6 +331,28 @@
       (abort dval (Exception. "BAM")))
 
     (is (thrown-with-msg? Exception #"BAM" @dval))))
+
+(deftest dereferencing-caught-deferred-value-returns-caught-return-value
+  (let [dval (deferred)]
+    (catch* dval Exception (constantly :hello))
+    (abort dval (Exception.))
+    (is (= :hello @dval)))
+
+  (let [dval (deferred)]
+    (catch* dval Exception (constantly :hello))
+    (future
+      (Thread/sleep 50)
+      (abort dval (Exception.)))
+    (is (= :hello @dval)))
+
+  (let [res  (atom nil)
+        dval (deferred)]
+    (receive dval #(reset! res %))
+    (catch* dval Exception (constantly :hello))
+    (future
+      (Thread/sleep 50)
+      (abort dval (Exception.)))
+    (is (= :hello @dval @res))))
 
 (deftest finally-callback-called-first-when-blocked
   (let [res  (atom nil)
