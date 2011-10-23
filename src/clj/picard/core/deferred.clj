@@ -1,54 +1,30 @@
 (ns picard.core.deferred
   (:import
-   picard.core.DeferredState))
+   [picard.core
+    Deferred
+    DeferredReceiver]))
 
 (defprotocol DeferredValue
-  (receive
-    [_ callback])
-  (catch*
-    [_ klass callback])
-  (finally*
-    [_ callback])
-  (catch-all
-    [_ callback]))
+  (receive [_ success error]))
 
 (extend-protocol DeferredValue
-  DeferredState
-  (receive [dval callback]
-    (.registerReceiveCallback dval callback)
-    dval)
-  (catch* [dval klass callback]
-    (.registerCatchCallback dval klass callback)
-    dval)
-  (finally* [dval callback]
-    (.registerFinallyCallback dval callback)
-    dval)
-  (catch-all [dval callback]
-    (.registerCatchAllCallback dval callback)
+  Deferred
+  (receive [dval success error]
+    (.receive
+     dval
+     (reify DeferredReceiver
+       (success [_ val] (success val))
+       (error   [_ err] (error err))))
     dval)
 
   Object
-  (receive [o callback]
-    (callback o)
-    o)
-  (catch* [o _ _]
-    o)
-  (finally* [o callback]
-    (callback)
-    o)
-  (catch-all [o _]
+  (receive [o success _]
+    (success o)
     o)
 
   nil
-  (receive [_ callback]
-    (callback nil)
-    nil)
-  (catch* [_ _ _]
-    nil)
-  (finally* [_ callback]
-    (callback)
-    nil)
-  (catch-all [_ _]
+  (receive [_ success _]
+    (success nil)
     nil))
 
 (defprotocol DeferredRealizer
@@ -56,9 +32,9 @@
   (abort [_ err]))
 
 (extend-protocol DeferredRealizer
-  DeferredState
+  Deferred
   (put [dval val]
-    (.realize dval val)
+    (.put dval val)
     dval)
   (abort [dval err]
     (.abort dval err)
@@ -66,4 +42,4 @@
 
 (defn deferred
   []
-  (DeferredState.))
+  (Deferred.))
