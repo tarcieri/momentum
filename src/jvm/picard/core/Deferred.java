@@ -2,13 +2,14 @@ package picard.core;
 
 import clojure.lang.IDeref;
 import clojure.lang.IBlockingDeref;
+import clojure.lang.IPending;
 
-public final class Deferred implements IDeref, IBlockingDeref {
+public final class Deferred implements IDeref, IBlockingDeref, IPending {
 
   /*
    * Whether or not the current deferred value is realized.
    */
-  boolean isRealized;
+  volatile boolean isRealized;
 
   /*
    * Is a thread blocked waiting for the deferred value to be realized?
@@ -30,15 +31,15 @@ public final class Deferred implements IDeref, IBlockingDeref {
    */
   DeferredReceiver receiver;
 
-  public synchronized boolean isRealized() {
+  public boolean isRealized() {
     return isRealized;
   }
 
-  public synchronized boolean isSuccessful() {
+  public boolean isSuccessful() {
     return isRealized && err == null;
   }
 
-  public synchronized boolean isAborted() {
+  public boolean isAborted() {
     return isRealized && err != null;
   }
 
@@ -47,22 +48,21 @@ public final class Deferred implements IDeref, IBlockingDeref {
 
     synchronized (this) {
       if (isRealized) {
-        throw new RuntimeException("The deferred value has already been realized");
+        throw new RuntimeException("Not able ot accept value");
       }
 
+      invoke = receiver != null;
+      value  = v;
+      // isRealized must be set last in order to preserve the happens-before semantics
       isRealized = true;
-      invoke     = receiver != null;
-      value      = v;
+
+      if (isBlocked) {
+        notifyAll();
+      }
     }
 
     if (invoke) {
       invoke();
-    }
-
-    if (isBlocked) {
-      synchronized (this) {
-        notifyAll();
-      }
     }
   }
 
@@ -74,19 +74,19 @@ public final class Deferred implements IDeref, IBlockingDeref {
         throw new RuntimeException("The deferred value has already been realized");
       }
 
+      err = e;
+      // isRealized must be set last in order to preserve the happens-before semantics
       isRealized = true;
-      invoke     = receiver != null;
-      err        = e;
+
+      invoke = receiver != null;
+
+      if (isBlocked) {
+        notifyAll();
+      }
     }
 
     if (invoke) {
       invoke();
-    }
-
-    if (isBlocked) {
-      synchronized (this) {
-        notifyAll();
-      }
     }
   }
 
@@ -112,8 +112,8 @@ public final class Deferred implements IDeref, IBlockingDeref {
   }
 
   public Object deref(long ms, Object timeoutValue) {
-    synchronized (this) {
-      if (!isRealized) {
+    if (!isRealized) {
+      synchronized (this) {
         isBlocked = true;
 
         try {
@@ -132,13 +132,13 @@ public final class Deferred implements IDeref, IBlockingDeref {
           return timeoutValue;
         }
       }
+    }
 
-      if (err != null) {
-        throw new RuntimeException(err);
-      }
-      else {
-        return value;
-      }
+    if (err != null) {
+      throw new RuntimeException(err);
+    }
+    else {
+      return value;
     }
   }
 

@@ -1,7 +1,9 @@
 (ns picard.core.deferred
   (:import
    [picard.core
+    Channel
     Deferred
+    DeferredSeq
     DeferredReceiver]))
 
 (defprotocol DeferredValue
@@ -10,12 +12,19 @@
 (extend-protocol DeferredValue
   Deferred
   (receive [dval success error]
-    (.receive
-     dval
-     (reify DeferredReceiver
-       (success [_ val] (success val))
-       (error   [_ err] (error err))))
-    dval)
+    (doto dval
+      (.receive
+       (reify DeferredReceiver
+         (success [_ val] (success val))
+         (error   [_ err] (error err))))))
+
+  DeferredSeq
+  (receive [seq success error]
+    (doto seq
+      (.receive
+       (reify DeferredReceiver
+         (success [_ val] (success val))
+         (error   [_ err] (error val))))))
 
   Object
   (receive [o success _]
@@ -32,14 +41,18 @@
   (abort [_ err]))
 
 (extend-protocol DeferredRealizer
+  Channel
+  (put   [ch val] (doto ch (.put val)))
+  (abort [ch err] (doto ch (.abort err)))
+
   Deferred
-  (put [dval val]
-    (.put dval val)
-    dval)
-  (abort [dval err]
-    (.abort dval err)
-    dval))
+  (put [dval val]   (doto dval (.put val)))
+  (abort [dval err] (doto dval (.abort err))))
 
 (defn deferred
   []
   (Deferred.))
+
+(defn channel
+  ([]           (Channel. false))
+  ([can-block?] (Channel. can-block?)))

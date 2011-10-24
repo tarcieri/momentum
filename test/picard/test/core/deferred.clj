@@ -108,3 +108,22 @@
     (receive dval identity identity)
     (is (thrown-with-msg? Exception #"BOOM" @dval))
     (is (thrown-with-msg? Exception #"BOOM" @dval))))
+
+;; ==== Channels
+
+(deftest calling-seq-before-put-and-reading-first-el
+  (let [ch (channel)
+        sq (seq ch)]
+    (put ch :hello)
+    (let [[head & tail] sq]
+      (is (= :hello head))
+      (is (not (realized? tail))))))
+
+(deftest calling-seq-after-put-and-reading-first-el
+  (let [ch (channel)]
+    (put ch :hello)
+    (let [[head & tail] (seq sq)]
+      (is (= :hello head))
+      (is (not (realized? tail))))))
+
+;; Test calling next / rest w/o ever calling first
