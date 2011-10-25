@@ -10,59 +10,96 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public final class Channel implements Seqable {
 
-  final AtomicReference<DeferredSeq> head;
-  final AtomicReference<DeferredSeq> tail;
+  /*
+   * The total number of values that are permitted to queue up
+   */
+  final int slack;
 
-  public Channel(boolean canBlock) {
-    seq  = new DeferredSeq(this, canBlock);
-    head = new AtomicReference<DeferredSeq>(seq);
-    tail = new AtomicReference<DeferredSeq>(seq);
+  /*
+   * Whether or not the sequences are aloud to block waiting be realized
+   */
+  final boolean canBlock;
+
+  /*
+   * The first element waiting to be observed
+   */
+  volatile DeferredSeq head;
+
+  /*
+   * The tail of the queue
+   */
+  DeferredSeq tail;
+
+  public Channel(int slk, boolean blk) {
+    slack    = slk;
+    canBlock = blk;
+    tail     = new DeferredSeq(this);
+    head     = tail;
   }
 
   public Deferred put(Object v) {
-    DeferredSeq seq = tail.get();
+    DeferredSeq curr;
 
-    if (seq == null) {
-      throw new IllegalStateException("Channel closed");
+    synchronized (this) {
+      curr = tail;
+
+      if (curr == null) {
+        throw new IllegalStateException("Channel closed");
+      }
+
+      tail = curr.grow();
     }
 
-    return seq.put(v);
+    return curr.put(v);
   }
 
   public Deferred putLast(Object v) {
-    DeferredSeq seq = tail.getAndSet(null);
+    DeferredSeq curr;
 
-    if (seq == null) {
-      throw new IllegalStateException("Channel closed");
+    synchronized (this) {
+      curr = tail;
+
+      if (curr == null) {
+        throw new IllegalStateException("Channel closed");
+      }
+
+      tail = null;
     }
 
-    return seq.put(v);
+    return curr.put(v);
   }
 
   public void abort(Exception err) {
-    DeferredSeq seq = tail.getAndSet(null);
+    DeferredSeq curr;
 
-    if (seq == null) {
-      throw new IllegalStateException("Channel closed");
+    synchronized (this) {
+      curr = tail;
+
+      if (curr == null) {
+        throw new IllegalStateException("Channel closed");
+      }
+
+      tail = null;
     }
 
-    seq.abort(err);
+    curr.abort(err);
   }
 
   public void close() {
-    DeferredSeq seq = tail.getAndSet(null);
+    DeferredSeq curr;
 
-    if (seq != null && !seq.isRealized()) {
-      seq.put(null);
+    synchronized (this) {
+      curr = tail;
+      tail = null;
+    }
+
+    if (curr != null && !curr.isRealized()) {
+      curr.put(null);
     }
   }
 
   public ISeq seq() {
-    return active.get();
-  }
-
-  boolean step(DeferredSeq seq, DeferredSeq next) {
-    return tail.compareAndSet(seq, next);
+    return head;
   }
 
 }

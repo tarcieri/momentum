@@ -61,12 +61,21 @@
              #(compare-and-set! res nil %))
     (is (= err @res))))
 
-(deftest registering-receive-callbacks-twice-throws
-  (let [dval (deferred)]
+(deftest registering-multiple-receive-callbacks
+  (let [dval (deferred)
+        res  (atom [])]
+    (dotimes [_ 2]
+      (receive dval (fn [v] (swap! res #(conj % v))) identity))
+    (put dval :hello)
+    (is (= @res [:hello :hello]))))
+
+(deftest registering-multiple-receive-callbacks-after-completion
+  (let [dval (deferred)
+        res  (atom nil)]
     (receive dval identity identity)
-    (is (thrown?
-         Exception
-         (receive dval identity identity)))))
+    (put dval :hello)
+    (receive dval #(reset! res %) identity)
+    (is (= @res :hello))))
 
 (deftest dereferencing-realized-deferred-value
   (let [dval (deferred)]
@@ -122,7 +131,7 @@
 (deftest calling-seq-after-put-and-reading-first-el
   (let [ch (channel)]
     (put ch :hello)
-    (let [[head & tail] (seq sq)]
+    (let [[head & tail] (seq ch)]
       (is (= :hello head))
       (is (not (realized? tail))))))
 

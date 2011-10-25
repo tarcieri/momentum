@@ -3,6 +3,7 @@ package picard.core;
 import clojure.lang.IDeref;
 import clojure.lang.IBlockingDeref;
 import clojure.lang.IPending;
+import java.util.LinkedList;
 
 public final class Deferred implements IDeref, IBlockingDeref, IPending {
 
@@ -27,9 +28,13 @@ public final class Deferred implements IDeref, IBlockingDeref, IPending {
   Exception err;
 
   /*
-   * The callback to invoke when the deferred value is realized.
+   * The callbacks to invoke when the deferred value is realized.
    */
-  DeferredReceiver receiver;
+  final LinkedList<DeferredReceiver> receivers;
+
+  public Deferred() {
+    receivers = new LinkedList<DeferredReceiver>();
+  }
 
   public boolean isRealized() {
     return isRealized;
@@ -44,14 +49,11 @@ public final class Deferred implements IDeref, IBlockingDeref, IPending {
   }
 
   public void put(Object v) {
-    final boolean invoke;
-
     synchronized (this) {
       if (isRealized) {
         throw new RuntimeException("Not able ot accept value");
       }
 
-      invoke = receiver != null;
       value  = v;
       // isRealized must be set last in order to preserve the happens-before semantics
       isRealized = true;
@@ -61,14 +63,15 @@ public final class Deferred implements IDeref, IBlockingDeref, IPending {
       }
     }
 
-    if (invoke) {
-      invoke();
+    // Invoke any pending receivers
+
+    DeferredReceiver r;
+    while ((r = receivers.poll()) != null) {
+      invoke(r);
     }
   }
 
   public void abort(Exception e) {
-    final boolean invoke;
-
     synchronized (this) {
       if (isRealized) {
         throw new RuntimeException("The deferred value has already been realized");
@@ -78,33 +81,40 @@ public final class Deferred implements IDeref, IBlockingDeref, IPending {
       // isRealized must be set last in order to preserve the happens-before semantics
       isRealized = true;
 
-      invoke = receiver != null;
-
       if (isBlocked) {
         notifyAll();
       }
     }
 
-    if (invoke) {
-      invoke();
+    DeferredReceiver r;
+    while ((r = receivers.poll()) != null) {
+      invoke(r);
     }
   }
 
   public void receive(DeferredReceiver r) {
     final boolean invoke;
 
+    if (r == null) {
+      throw new NullPointerException("Receiver is null");
+    }
+
+    // If the deferred value is already realized, just invoke the receiver
+    if (isRealized) {
+      invoke(r);
+      return;
+    }
+
     synchronized (this) {
-      if (receiver != null) {
-        throw new RuntimeException("A receiver has already been set");
+      if (!isRealized) {
+        receivers.add(r);
+        return;
       }
-
-      receiver = r;
-      invoke   = isRealized;
     }
 
-    if (invoke) {
-      invoke();
-    }
+    // If we get here, then the deferred value was realized between the first
+    // check and the second, so just invoke the callback now.
+    invoke(r);
   }
 
   public Object deref() {
@@ -142,7 +152,7 @@ public final class Deferred implements IDeref, IBlockingDeref, IPending {
     }
   }
 
-  private void invoke() {
+  private void invoke(DeferredReceiver receiver) {
     try {
       if (err != null) {
         receiver.error(err);

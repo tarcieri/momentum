@@ -14,11 +14,6 @@ public final class DeferredSeq extends ASeq implements IPending {
   private final Channel chan;
 
   /*
-   * Whether the seq is permitted to block
-   */
-  private final boolean canBlock;
-
-  /*
    * Whether or not the seq's head is realized
    */
   volatile boolean isRealized;
@@ -54,11 +49,9 @@ public final class DeferredSeq extends ASeq implements IPending {
   private DeferredSeq next;
 
 
-  DeferredSeq(Channel ch, boolean blk) {
+  DeferredSeq(Channel ch) {
     chan = ch;
     read = new Deferred();
-
-    canBlock = blk;
   }
 
   public boolean isRealized() {
@@ -73,6 +66,13 @@ public final class DeferredSeq extends ASeq implements IPending {
     return isRealized && err != null;
   }
 
+  DeferredSeq grow() {
+    // Does not need to be synchronized since put() will be immediately called
+    // on the same thread;
+    next = new DeferredSeq(chan);
+    return next;
+  }
+
   public Deferred put(Object v) {
     final boolean deliver;
 
@@ -83,13 +83,6 @@ public final class DeferredSeq extends ASeq implements IPending {
 
       // Set the head to the value being put
       head = v;
-
-      // Step the seq forward
-      DeferredSeq seq = new DeferredSeq(chan, canBlock);
-
-      if (chan.step(this, seq)) {
-        next = seq;
-      }
 
       // Mark the sequence as realized. Since isRealized is volatile, parallel
       // threads will be able to see head & next.
@@ -110,14 +103,20 @@ public final class DeferredSeq extends ASeq implements IPending {
     return read;
   }
 
-  public synchronized Object first() {
+  public Object first() {
+    // First, a hot path check
     if (read.isRealized()) {
       return head;
     }
 
-    if (isRealized) {
-      read.put(this);
-      return head;
+    synchronized (this) {
+      if (isRealized) {
+        if (!read.isRealized()) {
+          read.put(this);
+        }
+
+        return head;
+      }
     }
 
     throw new IllegalStateException("Deferred seq head not realized");
@@ -129,7 +128,7 @@ public final class DeferredSeq extends ASeq implements IPending {
     }
 
     if (isRealized) {
-      read.put(this);
+      observe();
       return next;
     }
 
@@ -142,6 +141,13 @@ public final class DeferredSeq extends ASeq implements IPending {
 
   void abort(Exception err) {
     // Not implemented yet
+  }
+
+  private synchronized void observe() {
+    if (!read.isRealized()) {
+      read.put(this);
+      chan.head = next;
+    }
   }
 
   private void deliver() {

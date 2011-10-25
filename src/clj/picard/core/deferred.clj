@@ -54,5 +54,5 @@
   (Deferred.))
 
 (defn channel
-  ([]           (Channel. false))
-  ([can-block?] (Channel. can-block?)))
+  ([]           (Channel. 1 false))
+  ([can-block?] (Channel. 1 can-block?)))
