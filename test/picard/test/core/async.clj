@@ -1,8 +1,7 @@
 (ns picard.test.core.async
   (:use
    clojure.test
-   picard.core.async
-   picard.core.deferred))
+   picard.core))
 
 (defn- deferred-inc
   [i]

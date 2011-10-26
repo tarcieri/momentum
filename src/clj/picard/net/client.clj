@@ -1,7 +1,6 @@
 (ns picard.net.client
   (:use
-   picard.core.async
-   picard.core.deferred
+   picard.core
    picard.core.timer
    picard.net.core
    picard.utils.core)

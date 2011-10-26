@@ -1,10 +1,10 @@
 (ns picard.net.core
   (:use
-   picard.core.buffer
-   picard.core.async
-   picard.core.deferred
+   picard.core
    picard.net.message
    picard.utils.core)
+  (:require
+   [picard.core.deferred :as deferred])
   (:import
    [org.jboss.netty.buffer
     ChannelBuffer
@@ -56,22 +56,22 @@
 ;; ==== Futures
 
 (extend-type ChannelFuture
-  DeferredValue
-  (receive [future callback]
-    (.addListener
-     future
-     (reify ChannelFutureListener
-       (operationComplete [_ _]
-         (callback (.isSuccess future)))))))
+  deferred/DeferredValue
+  (receive [f success error]
+    (doto f
+      (.addListener
+       (reify ChannelFutureListener
+         (operationComplete [_ _]
+           (success (.isSuccess f))))))))
 
 (extend-type ChannelGroupFuture
-  DeferredValue
-  (receive [future callback]
-    (.addListener
-     future
-     (reify ChannelGroupFutureListener
-       (operationComplete [_ _]
-         (callback (.isCompleteSuccess future)))))))
+  deferred/DeferredValue
+  (receive [f success error]
+    (doto f
+      (.addListener
+       (reify ChannelGroupFutureListener
+         (operationComplete [_ _]
+           (success (.isCompleteSuccess f))))))))
 
 
 ;; ==== Helper functions for tracking events
