@@ -1,5 +1,6 @@
 (ns picard.net.client
   (:use
+   picard.core.async
    picard.core.deferred
    picard.core.timer
    picard.net.core
@@ -66,9 +67,8 @@
       (.connect (.bootstrap client) addr pipeline)))
 
   (do-release [client]
-    (receive
-     (.. client channel-group close)
-     (fn [_]
+    (doasync (.. client channel-group close)
+      (fn [_]
        (.releaseExternalResources (.bootstrap client)))))
 
   clojure.lang.IFn

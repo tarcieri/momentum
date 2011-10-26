@@ -1,6 +1,7 @@
 (ns picard.net.core
   (:use
    picard.core.buffer
+   picard.core.async
    picard.core.deferred
    picard.net.message
    picard.utils.core)
@@ -149,11 +150,10 @@
 (defn- close-channel
   [current-state]
   (let [ch (.ch current-state)]
-    (receive
-     (.last-write current-state)
-     (fn [_]
-       (when (.isOpen ch)
-         (.close ch))))))
+    (doasync (.last-write current-state)
+      (fn [_]
+        (when (.isOpen ch)
+          (.close ch))))))
 
 (defn- try-acquire
   [current-state evt val]
