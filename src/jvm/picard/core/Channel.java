@@ -11,11 +11,6 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class Channel implements Seqable {
 
   /*
-   * The total number of values that are permitted to queue up
-   */
-  final int slack;
-
-  /*
    * Whether or not the sequences are aloud to block waiting be realized
    */
   final boolean canBlock;
@@ -30,8 +25,7 @@ public final class Channel implements Seqable {
    */
   DeferredSeq tail;
 
-  public Channel(int slk, boolean blk) {
-    slack    = slk;
+  public Channel(boolean blk) {
     canBlock = blk;
     tail     = new DeferredSeq(this);
     head     = tail;

@@ -5,13 +5,14 @@ import clojure.lang.ASeq;
 import clojure.lang.ISeq;
 import clojure.lang.IPending;
 import clojure.lang.IPersistentMap;
+import java.util.LinkedList;
 
 public final class DeferredSeq extends ASeq implements IPending {
 
   /*
    * Channel that populates the seq
    */
-  private final Channel chan;
+  final Channel chan;
 
   /*
    * Whether or not the seq's head is realized
@@ -34,24 +35,26 @@ public final class DeferredSeq extends ASeq implements IPending {
   Exception err;
 
   /*
-   * The callback to invoke when the head of the seq is realized.
+   * The callbacks to invoke when the head of the seq is realized.
    */
-  DeferredReceiver receiver;
+  final LinkedList<DeferredReceiver> receivers;
 
   /*
    * Deferred value representing the moment that the head of this seq is read.
    */
-  private final Deferred read;
+  final Deferred read;
 
   /*
    * The next link in the chain
    */
-  private DeferredSeq next;
+  DeferredSeq next;
 
 
   DeferredSeq(Channel ch) {
     chan = ch;
     read = new Deferred();
+
+    receivers = new LinkedList<DeferredReceiver>();
   }
 
   public boolean isRealized() {
@@ -74,8 +77,6 @@ public final class DeferredSeq extends ASeq implements IPending {
   }
 
   public Deferred put(Object v) {
-    final boolean deliver;
-
     synchronized (this) {
       if (isRealized) {
         throw new IllegalStateException("Deferred seq head previously realized");
@@ -88,19 +89,58 @@ public final class DeferredSeq extends ASeq implements IPending {
       // threads will be able to see head & next.
       isRealized = true;
 
-      // If the receiver is set, then it should be called.
-      deliver = receiver != null;
+      if (isBlocked) {
+        notifyAll();
+      }
+    }
+
+    DeferredReceiver r;
+    while ((r = receivers.poll()) != null) {
+      deliver(r);
+    }
+
+    return read;
+  }
+
+  void abort(Exception e) {
+    synchronized (this) {
+      if (isRealized) {
+        throw new IllegalStateException("Deferred seq head previously realized");
+      }
+
+      err = e;
+
+      isRealized = true;
 
       if (isBlocked) {
         notifyAll();
       }
     }
 
-    if (deliver) {
-      deliver();
+    DeferredReceiver r;
+    while ((r = receivers.poll()) != null) {
+      deliver(r);
+    }
+  }
+
+  public void receive(DeferredReceiver r) {
+    if (r == null) {
+      throw new NullPointerException("Receiver is null");
     }
 
-    return read;
+    if (isRealized) {
+      deliver(r);
+      return;
+    }
+
+    synchronized (this) {
+      if (!isRealized) {
+        receivers.add(r);
+        return;
+      }
+    }
+
+    deliver(r);
   }
 
   public Object first() {
@@ -109,14 +149,13 @@ public final class DeferredSeq extends ASeq implements IPending {
       return head;
     }
 
-    synchronized (this) {
-      if (isRealized) {
-        if (!read.isRealized()) {
-          read.put(this);
-        }
-
-        return head;
+    if (isRealized) {
+      if (err != null) {
+        throw new RuntimeException(err);
       }
+
+      observe();
+      return head;
     }
 
     throw new IllegalStateException("Deferred seq head not realized");
@@ -128,6 +167,10 @@ public final class DeferredSeq extends ASeq implements IPending {
     }
 
     if (isRealized) {
+      if (err != null) {
+        throw new RuntimeException(err);
+      }
+
       observe();
       return next;
     }
@@ -136,11 +179,7 @@ public final class DeferredSeq extends ASeq implements IPending {
   }
 
   public Obj withMeta(IPersistentMap meta) {
-    return this;
-  }
-
-  void abort(Exception err) {
-    // Not implemented yet
+    throw new RuntimeException("Not supported yet");
   }
 
   private synchronized void observe() {
@@ -150,9 +189,14 @@ public final class DeferredSeq extends ASeq implements IPending {
     }
   }
 
-  private void deliver() {
+  private void deliver(DeferredReceiver r) {
     try {
-      receiver.success(this);
+      if (err != null) {
+        r.error(err);
+      }
+      else {
+        r.success(this);
+      }
     }
     catch (Exception e) {
       // Nothing for now

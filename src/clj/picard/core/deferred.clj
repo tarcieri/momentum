@@ -24,7 +24,7 @@
       (.receive
        (reify DeferredReceiver
          (success [_ val] (success val))
-         (error   [_ err] (error val))))))
+         (error   [_ err] (error err))))))
 
   Object
   (receive [o success _]
@@ -54,5 +54,22 @@
   (Deferred.))
 
 (defn channel
-  ([]           (Channel. 1 false))
-  ([can-block?] (Channel. 1 can-block?)))
+  ([]           (Channel. false))
+  ([can-block?] (Channel. can-block?)))
+
+(defn enqueue
+  ([_])
+  ([ch & vs]
+     (loop [[v & vs] vs]
+       (let [ret (.put ch v)]
+         (if vs
+           (recur vs)
+           ret)))))
+
+(defn close
+  [ch]
+  (.close ch))
+
+(defn put-last
+  [ch v]
+  (doto ch (.putLast v)))

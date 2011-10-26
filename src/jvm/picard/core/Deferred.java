@@ -93,8 +93,6 @@ public final class Deferred implements IDeref, IBlockingDeref, IPending {
   }
 
   public void receive(DeferredReceiver r) {
-    final boolean invoke;
-
     if (r == null) {
       throw new NullPointerException("Receiver is null");
     }
