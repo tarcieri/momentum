@@ -6,6 +6,7 @@ import clojure.lang.ISeq;
 import clojure.lang.IPending;
 import clojure.lang.IPersistentMap;
 import java.util.LinkedList;
+import java.util.concurrent.TimeoutException;
 
 public final class DeferredSeq extends ASeq implements IPending {
 
@@ -158,7 +159,13 @@ public final class DeferredSeq extends ASeq implements IPending {
       return head;
     }
 
-    throw new IllegalStateException("Deferred seq head not realized");
+    if (chan.canBlock) {
+      block();
+      return first();
+    }
+    else {
+      throw new IllegalStateException("Deferred seq head not realized");
+    }
   }
 
   public ISeq next() {
@@ -175,7 +182,13 @@ public final class DeferredSeq extends ASeq implements IPending {
       return next;
     }
 
-    throw new IllegalStateException("Deferred seq head not realized");
+    if (chan.canBlock) {
+      block();
+      return next();
+    }
+    else {
+      throw new IllegalStateException("Deferred seq head not realized");
+    }
   }
 
   public Obj withMeta(IPersistentMap meta) {
@@ -200,6 +213,30 @@ public final class DeferredSeq extends ASeq implements IPending {
     }
     catch (Exception e) {
       // Nothing for now
+    }
+  }
+
+  private void block() {
+    synchronized (this) {
+      if (!isRealized) {
+        isBlocked = true;
+
+        try {
+          if (chan.timeout < 0) {
+            wait();
+          }
+          else {
+            wait(chan.timeout);
+          }
+        }
+        catch (InterruptedException e) {
+          throw new RuntimeException(e);
+        }
+
+        if (!isRealized) {
+          throw new RuntimeException(new TimeoutException());
+        }
+      }
     }
   }
 

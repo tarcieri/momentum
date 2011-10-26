@@ -241,4 +241,28 @@
     (close ch)
     (is (= [nil] @res))))
 
+(deftest observing-an-unrealized-non-blocking-deferred-seq
+  (let [ch (channel)]
+    (is (thrown? Exception (first (seq ch))))
+    (is (thrown? Exception (next (seq ch))))))
+
+(deftest realizing-blocking-channel
+  (let [ch (blocking-channel)]
+    (future
+      (Thread/sleep 10)
+      (put ch :hello)
+      (Thread/sleep 10)
+      (put-last ch :goodbye))
+    (is (= (seq ch) [:hello :goodbye]))))
+
+(deftest aborting-blocking-channel
+  (let [ch (blocking-channel)]
+    (future
+      (Thread/sleep 10)
+      (put ch :hello)
+      (Thread/sleep 10)
+      (abort ch (Exception. "BOOM")))
+    (is (thrown-with-msg? Exception #"BOOM"
+          (vec (seq ch))))))
+
 ;; Test calling next / rest w/o ever calling first

@@ -54,8 +54,12 @@
   (Deferred.))
 
 (defn channel
-  ([]           (Channel. false))
-  ([can-block?] (Channel. can-block?)))
+  []
+  (Channel.))
+
+(defn blocking-channel
+  ([]   (Channel. -1))
+  ([ms] (Channel. ms)))
 
 (defn enqueue
   ([_])
