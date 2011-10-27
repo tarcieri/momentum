@@ -121,6 +121,11 @@ public final class Deferred implements IDeref, IBlockingDeref, IPending {
 
   public Object deref(long ms, Object timeoutValue) {
     if (!isRealized) {
+
+      if (ms == 0) {
+        return timeoutValue;
+      }
+
       synchronized (this) {
         isBlocked = true;
 

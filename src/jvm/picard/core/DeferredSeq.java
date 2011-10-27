@@ -219,6 +219,10 @@ public final class DeferredSeq extends ASeq implements IPending {
   private void block() {
     synchronized (this) {
       if (!isRealized) {
+        if (chan.timeout == 0) {
+          throw new RuntimeException(new TimeoutException());
+        }
+
         isBlocked = true;
 
         try {

@@ -114,3 +114,17 @@
      #(reset! res %)
      #(reset! res %))
     (is (= :hello @res))))
+
+;; ==== arecur
+
+(deftest simple-async-recursion-with-primitives
+  (let [res (atom nil)]
+    (receive
+     (doasync 1
+       (fn [val]
+         (if (< val 4)
+           (arecur (inc val))
+           (inc val))))
+     #(compare-and-set! res nil %)
+     #(reset! res %))
+    (is (= 5 @res))))

@@ -7,18 +7,28 @@
     DeferredReceiver]))
 
 (defprotocol DeferredValue
-  (receive [_ success error]))
+  (received? [_])
+  (received  [_])
+  (receive   [_ success error]))
 
 (extend-protocol DeferredValue
   Deferred
-  (receive [dval success error]
-    (doto dval
+  (received? [val]
+    (.isRealized val))
+  (received [val]
+    (deref val 0 nil))
+  (receive [val success error]
+    (doto val
       (.receive
        (reify DeferredReceiver
          (success [_ val] (success val))
          (error   [_ err] (error err))))))
 
   DeferredSeq
+  (received? [seq]
+    (.isRealized seq))
+  (received [seq]
+    seq)
   (receive [seq success error]
     (doto seq
       (.receive
@@ -27,11 +37,15 @@
          (error   [_ err] (error err))))))
 
   Object
+  (received? [o] true)
+  (received  [o] o)
   (receive [o success _]
     (success o)
     o)
 
   nil
+  (received? [_] true)
+  (received  [_])
   (receive [_ success _]
     (success nil)
     nil))
@@ -80,17 +94,24 @@
 
 ;; ==== Pipeline stuff
 
+(deftype Recur [val])
+
 (defn- stage
   [last curr next f]
   (receive
    curr
-   (fn [val]
+   (fn cycle [val]
      (try
-       (receive
-        (f val)
-        (fn [ret]
-          (put next ret))
-        #(abort last %))
+       (loop [ret (f val)]
+         (cond
+          (instance? Recur ret)
+          (let [ret (.val ret)]
+            (if (received? ret)
+              (recur (f (received ret)))
+              (receive ret cycle #(abort last %))))
+
+          :else
+          (receive ret #(put next %) #(abort last %))))
        (catch Exception err
          (abort last err))))
    #(abort last %)))
@@ -105,6 +126,10 @@
           (recur next more))
         (stage last curr last f)))
     last))
+
+(defn arecur
+  ([]    (arecur nil))
+  ([val] (Recur. val)))
 
 ;; ==== Async macro
 

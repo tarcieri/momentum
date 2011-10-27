@@ -41,6 +41,7 @@
 
 ;; ==== Async goodness
 (def abort               picard.core.deferred/abort)
+(def arecur              picard.core.deferred/arecur)
 (def blocking-channel    picard.core.deferred/blocking-channel)
 (def channel             picard.core.deferred/channel)
 (def close               picard.core.deferred/close)

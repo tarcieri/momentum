@@ -57,6 +57,8 @@
 
 (extend-type ChannelFuture
   deferred/DeferredValue
+  (received? [f] (.isDone f))
+  (received  [f] (.isSuccess f))
   (receive [f success error]
     (doto f
       (.addListener
@@ -66,6 +68,8 @@
 
 (extend-type ChannelGroupFuture
   deferred/DeferredValue
+  (received? [f] (.isDone f))
+  (received  [f] (.isCompleteSuccess f))
   (receive [f success error]
     (doto f
       (.addListener
