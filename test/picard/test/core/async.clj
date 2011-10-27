@@ -128,3 +128,18 @@
      #(compare-and-set! res nil %)
      #(reset! res %))
     (is (= 5 @res))))
+
+(deftest simple-async-recursion-with-deferred-values
+  (let [val (deferred)]
+    (future
+      (Thread/sleep 10)
+      (put val 1))
+    (is (= 5 @(doasync val
+                (fn [val]
+                  (if (< val 4)
+                    (let [nxt (deferred)]
+                      (future
+                        (Thread/sleep 10)
+                        (put nxt (inc val)))
+                      (arecur nxt))
+                    (inc val))))))))

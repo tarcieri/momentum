@@ -34,6 +34,10 @@
 (def write-uint          picard.core.buffer/write-uint)
 (def write-long          picard.core.buffer/write-long)
 
+;; The protocols
+(def DeferredValue    picard.core.deferred/DeferredValue)
+(def DeferredRealizer picard.core.deferred/DeferredRealizer)
+
 ;; Map the macros
 (defmacro buffer
   [& args]

@@ -3,8 +3,6 @@
    picard.core
    picard.net.message
    picard.utils.core)
-  (:require
-   [picard.core.deferred :as deferred])
   (:import
    [org.jboss.netty.buffer
     ChannelBuffer
@@ -56,7 +54,7 @@
 ;; ==== Futures
 
 (extend-type ChannelFuture
-  deferred/DeferredValue
+  DeferredValue
   (received? [f] (.isDone f))
   (received  [f] (.isSuccess f))
   (receive [f success error]
@@ -67,7 +65,7 @@
            (success (.isSuccess f))))))))
 
 (extend-type ChannelGroupFuture
-  deferred/DeferredValue
+  DeferredValue
   (received? [f] (.isDone f))
   (received  [f] (.isCompleteSuccess f))
   (receive [f success error]
