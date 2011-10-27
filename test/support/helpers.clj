@@ -2,9 +2,8 @@
   (:use
    clojure.test
    support.string
-   picard.core.buffer)
+   picard.core)
   (:require
-   [support.queue     :as q]
    [picard.net.server :as server])
   (:import
    [org.jboss.netty.buffer
@@ -27,11 +26,6 @@
  ^:dynamic out
  ^:dynamic server)
 
-(def channel     q/channel)
-(def enqueue     q/enqueue)
-(def receive     q/receive)
-(def receive-all q/receive-all)
-
 (defn- stop-servers
   [servers]
   (if (sequential? servers)
@@ -42,7 +36,7 @@
 (defn- close-channels
   []
   (doseq [ch [ch1 ch2 ch3 ch4]]
-    (q/close ch)))
+    (close ch)))
 
 (defn with-core-test-context
   [name start-server f]
@@ -66,7 +60,8 @@
 
       :else
       `(deftest ~name
-         (binding [ch1 (channel) ch2 (channel) ch3 (channel) ch4 (channel)]
+         (binding [ch1 (blocking-channel 1500) ch2 (blocking-channel 1500)
+                   ch3 (blocking-channel 1500) ch4 (blocking-channel 1500)]
            (let [~bindings [ch1 ch2 ch3 ch4]]
              (with-core-test-context
                ~(str name)
@@ -139,10 +134,6 @@
   (.write out (.getBytes (apply str strs)))
   (.flush out))
 
-(defn next-msg
-  ([] (next-msg ch1))
-  ([ch] (q/poll ch 2000)))
-
 (defn normalize
   [val]
   (try
@@ -194,42 +185,45 @@
 
 ;; === Matchers
 
-(defn- next-msgs-for
-  [ch msg stmts]
-  `(doseq [expected# (partition 2 [~@stmts])]
+(defn- timeoutable
+  [seq]
+  (when seq
+    (lazy-seq
      (try
-       (let [actual# (normalize (next-msg ~ch))]
-         (if (match-values (vec expected#) actual#)
-           (do-report {:type :pass :message ~msg
-                       :expected expected# :actual actual#})
-           (do-report {:type :fail :message ~msg
-                       :expected expected# :actual actual#})))
-       (catch TimeoutException e#
-         (do-report {:type :fail :message ~msg
-                     :expected expected# :actual "<TIMEOUT>"})))))
+       (cons (normalize (first seq))
+             (timeoutable (next seq)))
+       (catch TimeoutException err [::timeout nil])))))
 
 (defn assert-no-msgs-for
   [msg chs]
   (Thread/sleep 50)
-  (let [received (into {} (filter (fn [[_ q]] (q/peek q)) chs))]
+  (let [received (into {} (filter (fn [[_ ch]] (realized? ch)) chs))]
     (do-report
      {:type     (if (empty? received) :pass :fail)
       :message  msg
       :expected []
       :actual   received})))
 
-(defn- no-msgs-for
-  [msg chs]
-  (let [chs (zipmap (map #(str %) chs) chs)]
-    `(assert-no-msgs-for ~msg ~chs)))
+(defn assert-next-msgs
+  [msg ch & expected]
+  (when (odd? (count expected))
+    (throw (IllegalArgumentException. "Requires even number of messages")))
+
+  (let [expected (partition 2 expected)
+        actual   (take (count expected) (timeoutable (seq ch)))
+        pass?    (every? identity (map #(match-values (vec %1) %2) expected actual))]
+    (do-report
+     {:type (if pass? :pass :fail)
+      :message msg :expected expected :actual actual})))
 
 (defmethod assert-expr 'next-msgs [msg form]
   (let [[_ ch & stmts] form]
-    (next-msgs-for ch msg stmts)))
+    `(assert-next-msgs ~msg ~ch ~@stmts)))
 
 (defmethod assert-expr 'no-msgs [msg form]
-  (let [[_ & args] form]
-    (no-msgs-for msg args)))
+  (let [[_ & args] form
+        chs (zipmap (map str args) args)]
+    `(assert-no-msgs-for ~msg ~chs)))
 
 (defn- read-n-as-str
   [n]

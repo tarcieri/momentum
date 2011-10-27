@@ -1,6 +1,7 @@
 package picard.core;
 
 import clojure.lang.Cons;
+import clojure.lang.IPending;
 import clojure.lang.ISeq;
 import clojure.lang.Seqable;
 import java.util.concurrent.atomic.AtomicReference;
@@ -8,7 +9,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /*
  * seq() returns a sequable object 
  */
-public final class Channel implements Seqable {
+public final class Channel implements Seqable, IPending {
 
   /*
    * Whether or not the sequences are aloud to block waiting be realized
@@ -108,6 +109,11 @@ public final class Channel implements Seqable {
 
   public ISeq seq() {
     return head;
+  }
+
+  public boolean isRealized() {
+    DeferredSeq curr = head;
+    return curr == null || curr.isRealized();
   }
 
 }

@@ -2,7 +2,7 @@
   (:use
    clojure.test
    support.helpers
-   picard.core.buffer
+   picard.core
    picard.net.client)
   (:require
    [picard.net.server :as server])
@@ -41,7 +41,7 @@
    (fn [dn]
      (fn [evt val]
        (enqueue ch2 [evt val])
-       (receive ch3 #(apply dn %))))
+       (apply dn (first (seq ch3)))))
    {:host "localhost" :port 4040})
 
   (is (next-msgs
@@ -240,7 +240,8 @@
   [ch]
   (server/start
    (fn [dn]
-     (receive ch (fn [_] (dn :resume nil)))
+     (doasync (seq ch)
+       (fn [_] (dn :resume nil)))
      (fn [evt val]
        (when (= :open evt)
          (dn :pause nil))))))
@@ -349,17 +350,18 @@
   [ch1 ch2 ch3]
   (server/start
    (fn [dn]
-     (receive
-      ch2 (fn [_]
-            (dn :message (buffer "Goodbye world"))
-            (dn :close nil)))
+     (doasync (seq ch2)
+       (fn [_]
+         (dn :message (buffer "Goodbye world"))
+         (dn :close nil)))
      (fn [evt val]
        (when (= :open evt)
          (dn :message (buffer "Hello world"))))))
 
   (connect
    (fn [dn]
-     (receive ch3 (fn [_] (dn :resume nil)))
+     (doasync (seq ch3)
+       (fn [_] (dn :resume nil)))
      (let [latch (atom true)]
        (fn [evt val]
          (when-not (#{:pause :resume} evt)

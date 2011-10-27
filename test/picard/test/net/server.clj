@@ -2,7 +2,7 @@
   (:use
    clojure.test
    support.helpers
-   picard.core.buffer
+   picard.core
    picard.net.server))
 
 (def addr-info
@@ -296,7 +296,8 @@
   [ch1 ch2]
   (start
    (fn [dn]
-     (receive ch2 (fn [_] (dn :resume nil)))
+     (doasync (seq ch2)
+       (fn [_] (dn :resume nil)))
      (let [latch (atom true)]
        (fn [evt val]
          (when-not (#{:pause :resume} evt)
