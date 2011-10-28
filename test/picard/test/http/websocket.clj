@@ -37,7 +37,9 @@
             (.printStackTrace err))
           (message [msg]
             (enqueue ch [:message msg])
-            (dn :message "roger"))))
+            (dn :message "roger"))
+          (close [val]
+            (enqueue ch [:close val]))))
 
       (let [ws-key (base64/encode (random/secure-random 16))
             expect (base64/encode (digest/sha1 (str ws-key ws/salt)))]
@@ -56,21 +58,32 @@
          :message
          (buffer
           :ubyte
-          (bit-or 0x80 1)  ;; FIN + OP TEXT
-          (bit-or 0x80 5)  ;; Masked + LEN 5
+          (bit-or 0x80 1) ;; FIN + OP TEXT
+          (bit-or 0x80 5) ;; Masked + LEN 5
           :uint  0x6043cee3
           :ubyte 0x28 0x26 0xa2 0x8f 0x0f))
 
         (is (= (list [:message "Hello"])
                (take 1 (seq ch))))
 
+        (is (received? :message (buffer :ubyte (bit-or 0x80 1) 5 "roger")))
+
+        (last-request
+         :message
+         (buffer
+          :ubyte (bit-or 0x80 0x08) (bit-or 0x80 0x06)
+          :uint  0x12345
+          :ubyte 0x03 0xe9 0x67 0x2a 0x6e 0x64))
+
+        (is (= (list [:close :normal])
+               (take 1 (seq ch))))
+
         (is (received?
              :message
-             (buffer
-              :ubyte
-              (bit-or 0x80 1) ;; FIN + OP TEXT
-              5               ;; Len 5 (no mask)
-              "roger")))))))
+             (buffer :ubyte (bit-or 0x80 8) 25
+                     :ushort 1000 "Replying to close frame")))
+
+        (is (closed?))))))
 
 (deftest aborts-socket-when-key-not-set
   (let [ch (channel)]
@@ -84,3 +97,9 @@
                 "sec-websocket-origin" "http://localhost"} :upgraded)
 
       (is (closed?)))))
+
+;; TODO:
+;; * Send opcode w/ FIN not set?
+;; * Close frame w/ long body
+;; * Invalid encoding in close frame
+;; * Close frame w/ body len == 1 (invalid)

@@ -12,6 +12,7 @@ public final class WsFrame {
   boolean     isMasked;
   boolean     isFinal;
   int         maskingKey;
+  int         statusCode;
   Buffer      payload;
 
   public WsFrame() {
@@ -43,6 +44,15 @@ public final class WsFrame {
 
   public WsFrameType type(WsFrameType val) {
     type = val;
+    return val;
+  }
+
+  public int statusCode() {
+    return statusCode;
+  }
+
+  public int statusCode(int val) {
+    statusCode = val;
     return val;
   }
 
@@ -86,12 +96,40 @@ public final class WsFrame {
     return payload.toString("UTF-8");
   }
 
+  public boolean isContinuation() {
+    return type == WsFrameType.CONTINUATION;
+  }
+
+  public boolean isText() {
+    return type == WsFrameType.TEXT;
+  }
+
+  public boolean isBinary() {
+    return type == WsFrameType.BINARY;
+  }
+
+  public boolean isClose() {
+    return type == WsFrameType.CLOSE;
+  }
+
+  public boolean isPing() {
+    return type == WsFrameType.PING;
+  }
+
+  public boolean isPong() {
+    return type == WsFrameType.PONG;
+  }
+
   public Buffer encode() throws UnsupportedEncodingException {
     int length = payload.remaining();
     Buffer buf = Buffer.allocate(16);
 
     // Write the OPCODE and a mark the frame as final
     buf.put((byte) (opCode() | WsFrame.FIN_MASK));
+
+    if (isClose()) {
+      length += 2;
+    }
 
     // Write the size
     if (length <= 125) {
@@ -104,6 +142,10 @@ public final class WsFrame {
     else {
       buf.put((byte) 127);
       buf.putLong(length);
+    }
+
+    if (isClose()) {
+      buf.putShortUnsigned(statusCode);
     }
 
     buf.flip();

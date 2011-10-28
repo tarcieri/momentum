@@ -33,6 +33,9 @@
    :frame-too-large  1004
    :invalid-encoding 1007})
 
+(def status-tokens
+  (into {} (map (comp vec reverse) status-codes)))
+
 (def salt "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
 
 (defn- mk-socket
@@ -59,6 +62,12 @@
 
     :else
     (WsFrame. WsFrameType/TEXT (buffer (str data))))))
+
+(defn- close-frame
+  [status msg]
+  (let [frame (WsFrame. WsFrameType/CLOSE (buffer (str msg)))]
+    (.statusCode frame (status-codes status 0))
+    (.encode frame)))
 
 (defn- abort-socket
   [state dn]
@@ -125,13 +134,27 @@
 
 (defn- handle-frame
   [state up dn frame]
-  (let [type (.type frame)]
-    (cond
-     (= WsFrameType/TEXT type)
-     (up :message (.text frame))
+  (cond
+   (.isText frame)
+   (up :message (.text frame))
 
-     :else
-     (throw (Exception. "Not implemented yet")))))
+   (.isClose frame)
+   (let [status (.statusCode frame)]
+     (swap-then!
+      state
+      (fn [conn]
+        (assoc conn :state ({:open :closing} (.state conn) :closed)))
+      (fn [conn]
+        ;; When the state currently is closing, then the client has
+        ;; sent a close frame. We notify the upstream that the socket
+        ;; is now closed, respond with a close frame, then close the socket.
+        (when (= :closing (.state conn))
+          (up :close (status-tokens status))
+          (dn :message (close-frame :normal "Replying to close frame"))
+          (dn :close nil)))))
+
+   :else
+   (throw (Exception. "Not implemented yet"))))
 
 (defn- mk-decoder
   [state up dn]
@@ -150,7 +173,7 @@
        (= :message evt)
        (let [sock-state (.state current-state)]
          (cond
-          (= :open sock-state)
+          (#{:open :closing} sock-state)
           (dn :message (frame val))
 
           (= :passthrough sock-state)
