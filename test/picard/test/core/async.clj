@@ -143,3 +143,20 @@
                         (put nxt (inc val)))
                       (arecur nxt))
                     (inc val))))))))
+
+;; ==== doseq*
+
+(deftest simple-synchronous-doseq
+  (let [res (atom [])]
+    (doseq* [val [:hello :goodbye :later]]
+      (swap! res #(conj % val)))
+    (is (= [:hello :goodbye :later] @res))))
+
+(deftest simple-asynchronous-doseq
+  (let [ch (channel) res (atom [])]
+    (doseq* [val (seq ch)]
+      (swap! res #(conj % val)))
+    (put ch :hello)
+    (put ch :goodbye)
+    (put-last ch :later)
+    (is (= [:hello :goodbye :later] @res))))

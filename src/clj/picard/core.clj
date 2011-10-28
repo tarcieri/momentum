@@ -59,3 +59,14 @@
 (defmacro doasync
   [& args]
   `(picard.core.deferred/doasync ~@args))
+
+(defmacro doseq*
+  [seq-exprs & body]
+  (assert (vector? seq-exprs) "a vector for its binding")
+  (assert (even? (count seq-exprs)) "an even number of forms in binding vector")
+  (let [[binding seq] seq-exprs]
+    `(doasync ~seq
+       (fn [[~binding & more#]]
+         ~@body
+         (when more#
+           (arecur more#))))))

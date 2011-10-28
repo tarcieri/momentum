@@ -6,6 +6,8 @@
   (:require
    [picard.net.server :as server])
   (:import
+   [picard.core
+    TimeoutException]
    [org.jboss.netty.buffer
     ChannelBuffer]
    [java.nio
@@ -13,7 +15,6 @@
    [java.net
     Socket]
    [java.util.concurrent
-    TimeoutException
     TimeUnit]))
 
 (declare
@@ -60,8 +61,8 @@
 
       :else
       `(deftest ~name
-         (binding [ch1 (blocking-channel 1500) ch2 (blocking-channel 1500)
-                   ch3 (blocking-channel 1500) ch4 (blocking-channel 1500)]
+         (binding [ch1 (blocking-channel 2000) ch2 (blocking-channel 2000)
+                   ch3 (blocking-channel 2000) ch4 (blocking-channel 2000)]
            (let [~bindings [ch1 ch2 ch3 ch4]]
              (with-core-test-context
                ~(str name)
@@ -192,7 +193,7 @@
      (try
        (cons (normalize (first seq))
              (timeoutable (next seq)))
-       (catch TimeoutException err [::timeout nil])))))
+       (catch TimeoutException err ["reading the channel timed out" nil])))))
 
 (defn assert-no-msgs-for
   [msg chs]
@@ -205,20 +206,26 @@
       :actual   received})))
 
 (defn assert-next-msgs
-  [msg ch & expected]
+  [f ch & expected]
   (when (odd? (count expected))
     (throw (IllegalArgumentException. "Requires even number of messages")))
 
   (let [expected (partition 2 expected)
         actual   (take (count expected) (timeoutable (seq ch)))
         pass?    (every? identity (map #(match-values (vec %1) %2) expected actual))]
-    (do-report
-     {:type (if pass? :pass :fail)
-      :message msg :expected expected :actual actual})))
+    (f pass? expected actual)))
 
-(defmethod assert-expr 'next-msgs [msg form]
+(defmethod assert-expr 'next-msgs
+  [msg form]
   (let [[_ ch & stmts] form]
-    `(assert-next-msgs ~msg ~ch ~@stmts)))
+    `(assert-next-msgs
+      (fn [pass# expected# actual#]
+        (do-report
+         {:type     (if pass# :pass :fail)
+          :message  ~msg
+          :expected expected#
+          :actual   actual#}))
+      ~ch ~@stmts)))
 
 (defmethod assert-expr 'no-msgs [msg form]
   (let [[_ & args] form

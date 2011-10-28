@@ -2,7 +2,7 @@
   (:use
    clojure.test
    support.helpers
-   picard.core.buffer
+   picard.core
    picard.http.server))
 
 (defn- start-hello-world-app

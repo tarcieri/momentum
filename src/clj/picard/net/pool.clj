@@ -13,6 +13,9 @@
  handle-keepalive-timeout
  reconnect)
 
+(deftype Exchange [state pool addr connect-fn])
+(defrecord ExchangeState [conn upstream])
+
 (defprotocol IConnection
   (open?   [_])
   (close!  [_])
@@ -34,7 +37,6 @@
     [state
      pool
      addr
-     connect-fn
      ^{:unsynchronized-mutable true} timeout
      ^{:unsynchronized-mutable true} open
      ^{:unsynchronized-mutable true} nxt-global
@@ -200,9 +202,8 @@
         (clean this conn)))))
 
 (defn mk-connection
-  ([pool addr]
-     (mk-connection pool addr nil nil))
-  ([pool addr connect-fn exchange]
+  ([pool addr] (mk-connection pool addr nil))
+  ([pool addr exchange]
      (count pool addr)
      (Connection.
       (atom
@@ -213,13 +214,12 @@
         nil))    ;; dn
       pool       ;; pool
       addr       ;; addr
-      connect-fn ;; connect-fn
       nil        ;; timeout
       true       ;; open?
       nil        ;; nxt-global
       nil        ;; prv-global
       nil        ;; nxt-local
-      nil)))   ;; prv-local
+      nil)))     ;; prv-local
 
 (defn mk-pool
   [{:keys [keepalive max-conns max-conns-per-addr]}]
@@ -244,16 +244,20 @@
   (close-connection conn))
 
 (defn- finalize-exchange
-  [conn exchange]
-  (swap! (.state conn) #(assoc % :exchange nil))
-  (when exchange
-    (reset! exchange nil)))
+  [conn xchg]
+  (swap-assoc! (.state conn) :exchange nil)
+  (swap-assoc! (.state xchg) :conn nil))
 
 (defn- mk-downstream
   [exchange]
   (fn [evt val]
-    (let [[conn exchange-up] @exchange]
+    (let [exchange-state @(.state exchange)
+          conn (.conn exchange-state)]
+
       (cond
+       (= :reopen evt)
+       (reconnect conn exchange)
+
        (not conn)
        (throw (Exception. "Not currently able to handle messages."))
 
@@ -261,43 +265,33 @@
        (do
          (finalize-exchange conn exchange)
          (put (.pool conn) conn)
-         (exchange-up :close nil))
-
-       (= :reopen evt)
-       (reconnect conn exchange)
+         ((.upstream exchange-state) :close nil))
 
        :else
        (let [next-dn (.dn @(.state conn))]
          (next-dn evt val))))))
 
-(defn- mk-exchange
-  [app]
-  (let [exchange (atom nil)
-        upstream (app (mk-downstream exchange))]
-    (reset! exchange [nil upstream])
-    exchange))
-
 (defn- maybe-bind-exchange
-  [conn current-state]
-  (let [addrs    (.addrs current-state)
-        exchange (.exchange current-state)]
+  [conn conn-state]
+  (let [addrs    (.addrs    conn-state)
+        exchange (.exchange conn-state)]
+    ;; It is possible that the connection might already have been
+    ;; closed. If that is the case, then the exchange will be set to nil.
     (when exchange
-      (let [[bound? upstream] @exchange]
-        (when (and addrs (not bound?))
-          (reset! exchange [conn upstream])
+      (let [exchange-state @(.state exchange)]
+        (when (and addrs (not (.conn exchange-state)))
+          ;; Set the connection
+          (swap! (.state exchange) #(assoc % :conn conn))
+          ;; Track the binding
           (swap-then!
            (.state conn)
-           (fn [current-state]
-             (let [cnt (inc (.exchange-count current-state))]
-               (assoc current-state :exchange-count cnt)))
-           (fn [current-state]
-             (let [cnt (.exchange-count current-state)]
+           (fn [conn-state]
+             (let [cnt (inc (.exchange-count conn-state))]
+               (assoc conn-state :exchange-count cnt)))
+           (fn [conn-state]
+             (let [upstream (.upstream exchange-state)
+                   cnt (.exchange-count conn-state)]
                (upstream :open (assoc addrs :exchange-count cnt))))))))))
-
-(defn- current-upstream
-  [current-state]
-  (when-let [exchange (.exchange current-state)]
-    (second @exchange)))
 
 (defn mk-handler
   [conn]
@@ -307,14 +301,14 @@
     (swap! (.state conn) #(assoc % :dn dn))
 
     (fn [evt val]
-      (let [current-state @(.state conn)
-            upstream (current-upstream current-state)]
+      (let [conn-state @(.state conn)
+            xchg       (.exchange conn-state)
+            xchg-state (when xchg @(.state xchg))
+            upstream   (when xchg (.upstream xchg-state))]
+
         (cond
          (= :open evt)
-         (swap-then!
-          (.state conn)
-          #(assoc % :addrs val)
-          #(maybe-bind-exchange conn %))
+         (maybe-bind-exchange conn (swap-assoc! (.state conn) :addrs val))
 
          (#{:close :abort} evt)
          (do
@@ -325,19 +319,18 @@
            ;; exchange has been bound, then a dud connection has been
            ;; checked out from the pool. The solution in this case is
            ;; restart the connect process with the current exchange.
-           (when-let [exchange (.exchange current-state)]
-             (let [[bound? upstream] @exchange]
-               (cond
-                ;; Only :close events should be able to trigger a
-                ;; reconnect
-                (or (= :abort evt) bound?)
-                (do
-                  (finalize-exchange conn exchange)
-                  (when upstream
-                    (upstream evt val)))
+           (when xchg
+             (cond
+              ;; Only :close events should be able to trigger a
+              ;; reconnect
+              (or (= :abort evt) (.conn xchg-state))
+              (do
+                (finalize-exchange conn xchg)
+                (when upstream
+                  (upstream evt val)))
 
-                exchange
-                (reconnect conn exchange)))))
+              xchg
+              (reconnect conn xchg))))
 
          :else
          (if upstream
@@ -345,52 +338,56 @@
            (throw (Exception. "Not in an exchange"))))))))
 
 (defn- establish
-  [pool addr connect-fn exchange]
-  (let [conn (mk-connection pool addr connect-fn exchange)]
-    (connect-fn (mk-handler conn))
+  [exchange]
+  (let [f    (.connect-fn exchange)
+        conn (mk-connection (.pool exchange) (.addr exchange) exchange)]
+    (f (mk-handler conn))
     conn))
 
 (defn- checkout
-  [pool addr exchange]
-  (when-let [conn (poll pool addr)]
+  [exchange]
+  (when-let [conn (poll (.pool exchange) (.addr exchange))]
     (swap-then!
      (.state conn)
      #(assoc % :exchange exchange)
      (fn [current-state]
        ((.dn current-state) :schedule
-        (fn []
-          (maybe-bind-exchange conn @(.state conn))))))
+        #(maybe-bind-exchange conn @(.state conn)))))
     conn))
 
 (defn- connect*
-  [pool addr connect-fn exchange]
+  [exchange]
   (try
-    (or (checkout pool addr exchange)
-        (establish pool addr connect-fn exchange))
+    (or (checkout exchange)
+        (establish exchange))
     (catch Exception err
-      (let [[_ upstream] @exchange]
-        (upstream :abort err)
-        nil))))
+      (let [current-state @(.state exchange)]
+        ((.upstream current-state) :abort err)))))
 
 (defn- reconnect
   [conn exchange]
   ;; First, unbind the exchange from the connection
-  (swap! exchange (fn [[_ upstream]] [nil upstream]))
+  (swap-assoc! (.state exchange) :conn nil)
 
-  (swap-then!
-   (.state conn)
-   #(assoc % :exchange nil)
-   ;; Close the physical connection
-   (fn [current-state]
-     ((.dn current-state) :close nil)))
+  (when conn
+    (swap-then!
+     (.state conn)
+     #(assoc % :exchange nil)
+     ;; Close the physical connection
+     (fn [current-state]
+       ((.dn current-state) :close nil))))
 
   ;; Obtain or establish a new connection
-  (connect*
-   (.pool conn) (.addr conn)
-   (.connect-fn conn)
-   exchange)
-  )
+  (connect* exchange))
+
+(defn- mk-exchange
+  [app pool addr connect-fn]
+  (let [state    (atom nil)
+        exchange (Exchange. state pool addr connect-fn)
+        upstream (app (mk-downstream exchange))]
+    (reset! state (ExchangeState. nil upstream))
+    exchange))
 
 (defn connect
   [pool app addr connect-fn]
-  (connect* pool addr connect-fn (mk-exchange app)))
+  (connect* (mk-exchange app pool addr connect-fn)))

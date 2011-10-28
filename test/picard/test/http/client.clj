@@ -2,7 +2,7 @@
   (:use
    clojure.test
    support.helpers
-   picard.core.buffer
+   picard.core
    picard.utils.helpers
    picard.http.client)
   (:require
@@ -449,9 +449,8 @@
 
   (connect
    (fn [dn]
-     (receive-all
-      ch3 #(apply dn %))
-
+     (doseq* [args (seq ch3)]
+       (apply dn args))
      (fn [evt val]
        (enqueue ch2 [evt val])
 

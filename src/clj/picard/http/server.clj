@@ -25,8 +25,8 @@
 (defprotocol Timeout
   (track-timeout? [-])
   (get-timeout-ms [_])
-  (get-timeout [_])
-  (abort [_]))
+  (get-timeout    [_])
+  (abort-timeout  [_]))
 
 (defrecord ConnectionState
     [upstream
@@ -41,7 +41,7 @@
     (* (-> current-state .opts :keepalive)) 1000)
   (get-timeout [current-state]
     (.timeout current-state))
-  (abort [current-state]
+  (abort-timeout [current-state]
     (let [downstream (.downstream current-state)]
       (downstream :abort (Exception. "HTTP exchange taking too long.")))))
 
@@ -68,7 +68,7 @@
     (* (-> current-state .opts :timeout) 1000))
   (get-timeout [current-state]
     (.timeout current-state))
-  (abort [current-state]
+  (abort-timeout [current-state]
     (let [downstream (.downstream current-state)]
       (downstream :abort (Exception. "Connection reached max keep alive time.")))))
 
@@ -118,7 +118,7 @@
     (locking state
       (clear-timeout* current-state)
       (let [ms      (get-timeout-ms current-state)
-            timeout (timer/register ms #(abort current-state))]
+            timeout (timer/register ms #(abort-timeout current-state))]
         (swap! state #(assoc % :timeout timeout))))))
 
 (defn- waiting-for-response

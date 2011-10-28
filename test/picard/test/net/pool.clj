@@ -2,13 +2,14 @@
   (:use
    clojure.test
    support.helpers
-   picard.core.buffer
+   picard.core
    picard.net.client)
   (:require
    [picard.net.pool   :as pool]
    [picard.net.server :as server])
   (:import
-   java.nio.channels.ClosedChannelException))
+   [java.io
+    IOException]))
 
 ;; === Data structure tests
 
@@ -541,31 +542,41 @@
          (dn :close nil)))))
 
   (let [connect (client {:pool true})]
-    (dotimes [_ 20]
+    (dotimes [_ 30]
       (connect
        (fn [dn]
          (enqueue ch1 [:binding nil])
-         (let [reopened? (atom false)]
+         (let [reopened? (atom false)
+               pong?     (atom false)]
            (fn [evt val]
-             (enqueue ch1 [evt val])
+             ;; There won't always be a race condition, so when there
+             ;; isn't, we want to normalize the output.
+             (when (and (= :message evt) (not @reopened?))
+               (enqueue ch1 [:open {}]))
 
              (cond
+              (instance? IOException val)
+              (do
+                (reset! reopened? true)
+                (dn :reopen nil))
+
               (= :open evt)
-              (try
-                (dn :message (buffer "Hello"))
-                ;; If this doesn't throw an exception, put a fake
-                ;; :open event on the channel
-                (when-not @reopened?
-                  (enqueue ch1 [:open val]))
-                (catch ClosedChannelException err
-                  (if (>= (val :exchange-count) 1)
-                    (do
-                      (dn :reopen nil)
-                      (reset! reopened? true))
-                    (throw err))))
+              (do
+                (enqueue ch1 [evt val])
+                (dn :message (buffer "Hello")))
 
               (= :message evt)
-              (dn :close nil)))))
+              (do
+                (reset! pong? true)
+                (enqueue ch1 [evt val])
+                (dn :close nil))
+
+              (= :close evt)
+              (if @pong?
+                (enqueue ch1 [evt val])
+                (do
+                  (reset! reopened? true)
+                  (dn :reopen nil)))))))
        {:host "localhost" :port 4040})
 
       (is (next-msgs

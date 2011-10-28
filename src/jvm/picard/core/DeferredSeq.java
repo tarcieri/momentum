@@ -6,7 +6,6 @@ import clojure.lang.ISeq;
 import clojure.lang.IPending;
 import clojure.lang.IPersistentMap;
 import java.util.LinkedList;
-import java.util.concurrent.TimeoutException;
 
 public final class DeferredSeq extends ASeq implements IPending {
 
@@ -220,7 +219,7 @@ public final class DeferredSeq extends ASeq implements IPending {
     synchronized (this) {
       if (!isRealized) {
         if (chan.timeout == 0) {
-          throw new RuntimeException(new TimeoutException());
+          throw new TimeoutException();
         }
 
         isBlocked = true;
@@ -238,7 +237,7 @@ public final class DeferredSeq extends ASeq implements IPending {
         }
 
         if (!isRealized) {
-          throw new RuntimeException(new TimeoutException());
+          throw new TimeoutException();
         }
       }
     }
