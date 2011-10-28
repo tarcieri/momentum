@@ -46,6 +46,7 @@
 
 (def received        net/received)
 (def last-connection net/last-connection)
+(def closed?         net/closed?)
 (def last-request    last-connection)
 
 (defn- normalize-response
@@ -84,3 +85,17 @@
 
 (defmethod assert-expr 'responded? [msg [_ & args]]
   `(assert-responded? ~msg ~@args #(do-report %)))
+
+(defn assert-received?
+  [f msg & expected]
+  (assert (even? (count expected)) "Must provide event / value pairs")
+  (let [expected (partition 2 expected)
+        actual   (take (count expected) (received))]
+
+    (f {:type     (if (= expected actual) :pass :fail)
+        :message  msg
+        :expected expected
+        :actual   actual})))
+
+(defmethod assert-expr 'received? [msg [_ & args]]
+  `(assert-received? #(do-report %) ~msg ~@args))

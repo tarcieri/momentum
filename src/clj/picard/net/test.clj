@@ -69,3 +69,8 @@
       (when-let [e (.poll (.queue conn) 1000 TimeUnit/MILLISECONDS)]
         (swap! (.cached conn) #(conj % e))
         (cons e (received conn))))))
+
+(defn closed?
+  ([] (closed? (last-connection)))
+  ([conn]
+     (first (filter (fn [[evt _]] (= :close evt)) conn))))

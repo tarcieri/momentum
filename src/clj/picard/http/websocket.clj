@@ -51,8 +51,14 @@
     (str (.key current-state) salt))))
 
 (defn- frame
-  [type data]
-  (.encode (WsFrame. (opcodes type) data)))
+  [data]
+  (.encode
+   (cond
+    (buffer? data)
+    (WsFrame. WsFrameType/BINARY data)
+
+    :else
+    (WsFrame. WsFrameType/TEXT (buffer (str data))))))
 
 (defn- abort-socket
   [state dn]
@@ -95,8 +101,7 @@
     ;; Otherwise, process it as a websocket handshake response
     (let [[status hdrs body] response]
       (if (= 101 status)
-        (accept-socket state dn hdrs)))
-    ))
+        (accept-socket state dn hdrs)))))
 
 (defn- receive-request
   [state up dn [{upgrade    "upgrade"
@@ -120,7 +125,13 @@
 
 (defn- handle-frame
   [state up dn frame]
-  (println frame ": " (.text frame)))
+  (let [type (.type frame)]
+    (cond
+     (= WsFrameType/TEXT type)
+     (up :message (.text frame))
+
+     :else
+     (throw (Exception. "Not implemented yet")))))
 
 (defn- mk-decoder
   [state up dn]
@@ -135,6 +146,18 @@
       (cond
        (= :response evt)
        (receive-response state dn val current-state)
+
+       (= :message evt)
+       (let [sock-state (.state current-state)]
+         (cond
+          (= :open sock-state)
+          (dn :message (frame val))
+
+          (= :passthrough sock-state)
+          (dn :message val)
+
+          :else
+          (throw (Exception. "Not currently expecting message"))))
 
        :else
        (dn evt val)))))
