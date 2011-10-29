@@ -11,6 +11,9 @@
     WsFrameDecoder
     WsFrameType]))
 
+;; TODO:
+;; * Timeouts (around closing frames and such things)
+
 (defrecord Socket
     [state
      version
@@ -110,7 +113,8 @@
     ;; Otherwise, process it as a websocket handshake response
     (let [[status hdrs body] response]
       (if (= 101 status)
-        (accept-socket state dn hdrs)))))
+        (accept-socket state dn hdrs)
+        (throw "Not implemented")))))
 
 (defn- receive-request
   [state up dn [{upgrade    "upgrade"
@@ -123,7 +127,7 @@
 
   (if (and (= :upgraded body) (= upgrade "websocket"))
     ;; If the request is a websocket request, initiate the handshake.
-    (if (and key origin)
+    (if key
       (request-upgrade state up key request)
       (abort-socket state dn))
     ;; Otherwise, mark the socket as pass through and send the request
@@ -150,8 +154,8 @@
         ;; is now closed, respond with a close frame, then close the socket.
         (when (= :closing (.state conn))
           (up :close (status-tokens status))
-          (dn :message (close-frame :normal "Replying to close frame"))
-          (dn :close nil)))))
+          (dn :message (close-frame :normal "Replying to close frame")))
+        (dn :close nil))))
 
    :else
    (throw (Exception. "Not implemented yet"))))
@@ -173,7 +177,7 @@
        (= :message evt)
        (let [sock-state (.state current-state)]
          (cond
-          (#{:open :closing} sock-state)
+          (= :open sock-state)
           (dn :message (frame val))
 
           (= :passthrough sock-state)
@@ -181,6 +185,25 @@
 
           :else
           (throw (Exception. "Not currently expecting message"))))
+
+       (= :close evt)
+       (let [sock-state (.state current-state)]
+         (cond
+          (= :passthrough sock-state)
+          (dn :close val)
+
+          :else
+          (swap-then!
+           state
+           (fn [conn]
+             (let [currently (.state conn)]
+               (assoc conn :state ({:open :closing} currently :closed))))
+           (fn [conn]
+             ;; If the socket state is closing, then the upstream has
+             ;; initiated the closing handshake, so we must send a
+             ;; close frame to the client.
+             (when (= :closing (.state conn))
+               (dn :message (close-frame :normal "")))))))
 
        :else
        (dn evt val)))))

@@ -15,6 +15,10 @@
   [app & stmts]
   `(with-app (ws/proto ~app) ~@stmts))
 
+(defn random-key
+  []
+  (base64/encode (random/secure-random 16)))
+
 (deftest exchanges-without-upgrade-header-are-ignored
   (with-app
     (ws/proto
@@ -85,6 +89,33 @@
 
         (is (closed?))))))
 
+(deftest closing-sockets-from-server
+  (with-ws-app
+    (fn [dn]
+      (defstream
+        (request [_]
+          (dn :response [101 {} :upgraded])
+          (dn :message "Hello")
+          (dn :close 1000))))
+
+    (GET "/" {"upgrade"           "websocket"
+              "connection"        "upgrade"
+              "sec-websocket-key" (random-key)} :upgraded)
+
+    (is (= 101 (first (response))))
+
+    (is (received? :message (buffer :ubyte (bit-or 0x80 1) 5 "Hello")))
+    (is (received? :message (buffer :ubyte (bit-or 0x80 8) 2
+                                    :ushort 1000 "")))
+    (is (not (closed?)))
+
+    (last-request
+     :message
+     (buffer :ubyte (bit-or 0x80 0x08) (bit-or 0x80 0)
+             :uint  0x12345))
+
+    (is (closed?))))
+
 (deftest aborts-socket-when-key-not-set
   (let [ch (channel)]
     (with-ws-app
@@ -103,3 +134,5 @@
 ;; * Close frame w/ long body
 ;; * Invalid encoding in close frame
 ;; * Close frame w/ body len == 1 (invalid)
+;; * Sending response after handshake
+;; * Sending body events at various times

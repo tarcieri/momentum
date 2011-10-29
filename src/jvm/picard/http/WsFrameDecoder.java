@@ -17,21 +17,53 @@ public class WsFrameDecoder {
     ERROR
   }
 
-  private State        cs;
-  private WsFrame      cf;
-  private IFn          cb;
-  private int          length;
-  private int          remaining;
-  private List<Buffer> chunks;
-  private boolean      requireMask;
-  private int          maskOffset;
+  /*
+   * The current parser state
+   */
+  State cs;
 
-  public WsFrameDecoder(boolean requireMask, IFn callback) {
-    cs     = State.OP_CODE;
-    cb     = callback;
-    chunks = new LinkedList<Buffer>();
+  /*
+   * The current websocket frame that is being populated with parsed data
+   */
+  WsFrame cf;
 
-    this.requireMask = requireMask;
+  /*
+   * The callback to invoke with decoded frames
+   */
+  final IFn cb;
+
+  /*
+   * The frame payload length in bytes
+   */
+  int length;
+
+  /*
+   * The remaining number of bytes to read before the next state transition.
+   */
+  int remaining;
+
+  /*
+   * A list of received payload chunks
+   */
+  final List<Buffer> chunks;
+
+  /*
+   * What byte offset in the masking key should be used as the first byte when
+   * masking the current payload chunk.
+   */
+  int maskOffset;
+
+  /*
+   * Whether the decoded frames require a mask. All frames originating from the
+   * client require a mask
+   */
+  final boolean requireMask;
+
+  public WsFrameDecoder(boolean mask, IFn callback) {
+    cs          = State.OP_CODE;
+    cb          = callback;
+    chunks      = new LinkedList<Buffer>();
+    requireMask = mask;
   }
 
   public void decode(Buffer buf) throws Exception {
@@ -45,7 +77,11 @@ public class WsFrameDecoder {
             // Create a new frame object
             cf = new WsFrame();
 
+            // Reset the masking key byte offset to 0
+            maskOffset = 0;
+
             cf.isFinal(WsFrame.FIN_MASK == (b & WsFrame.FIN_MASK));
+
             // Ignore rsv1-3 for now
             cf.type(getType(b & 0x0F));
 
@@ -82,17 +118,22 @@ public class WsFrameDecoder {
               remaining = 4;
               cs = State.MASK_KEY;
             }
-            else if (length > 0 && cf.isClose()) {
-              if (length == 1) {
-                throw new RuntimeException("Invalid payload size for close frame");
-              }
+            else if (length > 0) {
+              if (cf.isClose()) {
+                if (length == 1) {
+                  throw new RuntimeException("Invalid payload size for close frame");
+                }
 
-              remaining = 2;
-              cs = State.STATUS_CODE;
+                remaining = 2;
+                cs = State.STATUS_CODE;
+              }
+              else {
+                remaining = length;
+                cs = State.PAYLOAD;
+              }
             }
             else {
-              remaining = length;
-              cs = State.PAYLOAD;
+              finalizeFrame();
             }
 
             break;
@@ -135,9 +176,12 @@ public class WsFrameDecoder {
                 remaining = 2;
                 cs = State.STATUS_CODE;
               }
-              else {
+              else if (length > 0) {
                 remaining = length;
                 cs = State.PAYLOAD;
+              }
+              else {
+                finalizeFrame();
               }
             }
 
@@ -153,8 +197,15 @@ public class WsFrameDecoder {
               if (cf.isMasked()) {
                 cf.statusCode = cf.statusCode ^ (cf.maskingKey >>> 16 & 0xffff);
               }
+
               remaining = length - 2;
-              cs = State.PAYLOAD;
+
+              if (remaining > 0) {
+                cs = State.PAYLOAD;
+              }
+              else {
+                finalizeFrame();
+              }
             }
 
             break;
@@ -162,52 +213,20 @@ public class WsFrameDecoder {
           // TODO: Split this state into two states, one for reading the
           // payload and one for finalizing the frame
           case PAYLOAD:
-            int chunkSize  = Math.min(remaining, buf.remaining());
-            Buffer payload = buf.slice(buf.position(), chunkSize);
+            int chunkSize = Math.min(remaining, buf.remaining());
 
+            // Add the current chunk to the list
+            chunks.add(mask(buf.slice(buf.position(), chunkSize)));
+
+            // Skip the number of bytes
             buf.skip(chunkSize);
 
+            // Track read bytes
             remaining -= chunkSize;
 
-            chunks.add(payload);
-
-            // Read the payload, so invoke the callback with the frame
-            // and start everything over again
+            // If there is nothing remaining, then the current frame can be sent upstream
             if (remaining == 0) {
-              payload = Buffer.wrap(chunks);
-
-              // Not the most efficient way to unmask, but this will do
-              // for now.
-              if (cf.isMasked) {
-                int pos  = payload.position();
-                int len  = payload.remaining();
-                int ints = pos + len - len % 4;
-                int lim  = payload.limit();
-                int mask = cf.maskingKey;
-
-                while (pos < ints) {
-                  payload.putInt(pos, mask ^ payload.getInt(pos));
-                  pos += 4;
-                }
-
-                if (pos < lim) {
-                  payload.put(pos, (mask >>> 24 & 0xff) ^ payload.get(pos));
-
-                  if (++pos < lim) {
-                    payload.put(pos, (mask >>> 16 & 0xff) ^ payload.get(pos));
-
-                    if (++pos < lim) {
-                      payload.put(pos, (mask >>> 8 & 0xff) ^ payload.get(pos));
-                    }
-                  }
-                }
-              }
-
-              cf.payload(payload);
-              cb.invoke(cf);
-              chunks.clear();
-
-              cs = State.OP_CODE;
+              finalizeFrame();
             }
 
             break;
@@ -221,6 +240,50 @@ public class WsFrameDecoder {
       this.cs = State.ERROR;
       throw err;
     }
+  }
+
+  private void finalizeFrame() throws Exception {
+    if (!chunks.isEmpty()) {
+      cf.payload(Buffer.wrap(chunks));
+      chunks.clear();
+    }
+
+    cb.invoke(cf);
+    cs = State.OP_CODE;
+  }
+
+  private Buffer mask(Buffer buf) {
+    if (!cf.isMasked) {
+      return buf;
+    }
+
+    int mask = Integer.rotateLeft(cf.maskingKey, 8 * maskOffset);
+    int pos  = buf.position();
+    int len  = buf.remaining();
+
+    while (len >= 4) {
+      buf.putInt(pos, mask ^ buf.getInt(pos));
+      pos += 4;
+      len -= 4;
+    }
+
+    maskOffset = (maskOffset + len) % 4;
+
+    if (len-- > 0) {
+      buf.put(pos, (mask >>> 24 & 0xff) ^ buf.get(pos));
+      ++pos;
+
+      if (len-- > 0) {
+        buf.put(pos, (mask >>> 16 & 0xff) ^ buf.get(pos));
+        ++pos;
+
+        if (len > 0) {
+          buf.put(pos, (mask >>> 8 & 0xff) ^ buf.get(pos));
+        }
+      }
+    }
+
+    return buf;
   }
 
   private WsFrameType getType(int opcode) {
