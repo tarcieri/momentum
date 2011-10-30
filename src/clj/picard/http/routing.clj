@@ -1,4 +1,4 @@
-(ns picard.http.router
+(ns picard.http.routing
   (:use
    picard.core))
 

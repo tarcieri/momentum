@@ -1,9 +1,9 @@
-(ns picard.test.http.router
+(ns picard.test.http.routing
   (:use
    clojure.test
    picard.core
    picard.http.test
-   picard.http.router))
+   picard.http.routing))
 
 (def not-found-response
   [404 {"content-length" "9"} (buffer "Not found")])
