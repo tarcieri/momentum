@@ -15,6 +15,10 @@
   [& params]
   [204 {:params (apply hash-map params)} nil])
 
+(defn- path-info
+  [script-name path-info]
+  [204 {:script-name script-name :path-info path-info} nil])
+
 (defn- hello-world
   [dn]
   (fn [evt val]
@@ -26,6 +30,12 @@
   (fn [evt val]
     (when (= :request evt)
       (dn :response [204 {:params (-> val first :params)} nil]))))
+
+(defn- echo-path
+  [dn]
+  (fn [evt val]
+    (when (= :request evt)
+      (dn :response [204 (select-keys (first val) [:path-info :script-name]) nil]))))
 
 (def fail-response
   [200 {"content-length" "4"} (buffer "fail")])
@@ -127,3 +137,56 @@
 
     (GET "/foo///////b////b////")
     (is (responded? (params :foo "foo///////b////b")))))
+
+(deftest scoping-endpoints
+  (with-app
+    (routing
+     (scope "/zomg" echo-path))
+
+    (GET "/zomg/hello")
+    (is (responded? (path-info "/zomg" "/hello")))
+
+    (GET "/zomg")
+    (is (responded? (path-info "/zomg" "")))))
+
+(deftest scoping-endpoints-with-params
+  (with-app
+    (routing
+     (scope "/zomg" echo-params))
+
+    (GET "/zomg/hello")
+    (is (responded? (params))))
+
+  (with-app
+    (routing
+     (scope "/:blah" echo-params))
+
+    (GET "/zomg")
+    (is (responded? (params :blah "zomg")))
+
+    (GET "/zomg/bar")
+    (is (responded? (params :blah "zomg")))))
+
+(deftest scoping-routes
+  (with-app
+    (routing
+     (scope "/foo"
+            (match "/bar" hello-world)
+            (match "/lulz/one" fail)))
+
+    (GET "/foo")
+    (is (responded? not-found-response))
+
+    (GET "/foo/bar")
+    (is (responded? hello-response))
+
+    (GET "/foo/lulz/one")
+    (is (responded? fail-response))))
+
+(deftest scoping-routes-with-params
+  (with-app
+    (routing
+     (scope "/:foo" (match "/:bar" echo-params)))
+
+    (GET "/one/two")
+    (is (responded? (params :foo "one" :bar "two")))))

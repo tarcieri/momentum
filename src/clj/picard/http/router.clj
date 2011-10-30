@@ -32,32 +32,36 @@
       (list match)
       match)))
 
-(defrecord Route [method pattern segments names target]
+(defn- slice-path
+  [path m]
+  (if (= path m) "" (subs path (dec (count m)))))
+
+(defrecord Route [method pattern segments names target anchor?]
   Dispatchable
   (dispatch [this state dn method path hdrs body]
     (if-let [pattern (.pattern this)]
       (when (or (nil? (.method this)) (= method (.method this)))
-        (when-let [[matched & vals] (re-match pattern path)]
-          (let [path (subs path (count matched))
-                hdrs (assoc hdrs
+        (when-let [[m sn & vals] (re-match pattern path)]
+          (let [hdrs (assoc hdrs
                        :params      (zipmap (.names this) vals)
-                       :path-info   path
-                       :script-name matched)]
+                       :path-info   (slice-path path m)
+                       :script-name sn)]
             (dispatch (.target this) state dn method path hdrs body))))
       (throw (Exception. "Route is not finalized")))))
 
 (defn- compile-pattern
-  [segments]
-  (loop [[segment & more] segments compiled "^"]
+  [segments anchor?]
+  (loop [[segment & more] segments compiled "^("]
     (if segment
       (recur more (str compiled "/+" segment))
-      (re-pattern (str compiled "/*$")))))
+      (re-pattern (str compiled ")/*" (when anchor? "$"))))))
 
 (defn- finalize
   [route]
   (cond
    (instance? Route route)
-   (assoc route :pattern (compile-pattern (.segments route)))
+   (let [pattern (compile-pattern (.segments route) (.anchor? route))]
+     (assoc route :pattern pattern))
 
    (coll? route)
    (map finalize (flatten route))
@@ -75,15 +79,27 @@
         {:segments (conj segments (if (= ":" type) CAPTURE GLOB))
          :names    (conj names (keyword name))}
         {:segments (conj segments segment) :names names})))
-   base (re-seq SEGMENT path)))
+   base (reverse (re-seq SEGMENT path))))
+
+(defn- match*
+  [method path target anchor?]
+  (map->Route
+   (parse
+    {:method method :segments (list) :names (list) :target target :anchor? anchor?}
+    path)))
 
 (defn match
-  ([path target] (match nil path target))
-  ([method path target]
-     (map->Route
-      (parse
-       {:method method :segments [] :names [] :target target}
-       path))))
+  ([path target]        (match* nil path target true))
+  ([method path target] (match* method path target true)))
+
+(defn scope
+  [path & targets]
+  (map
+   (fn [target]
+     (if (instance? Route target)
+       (map->Route (parse target path))
+       (match* nil path target false)))
+   targets))
 
 (defn- handle-request
   [state routes dn [{path :path-info method :request-method :as hdrs} body]]
@@ -92,7 +108,6 @@
       (if more
         (recur more)))))
 
-;; Probably should add a cascade feature
 (defn routing
   [& routes]
   (let [routes (finalize (conj (vec routes) not-found))]
