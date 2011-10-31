@@ -65,10 +65,23 @@
          (apply received args))]
     response))
 
+(defn response-status
+  [& args]
+  (first (apply response args)))
+
+(defn response-headers
+  [& args]
+  (second (apply response args)))
+
 (defn response-body
   [& args]
-  (let [[_ _ body] (apply response args)]
-    body))
+  (nth (apply response args) 2))
+
+(defn response-body-chunks
+  [& args]
+  (->> (apply received args)
+       (filter #(= :body (first %)))
+       (map second)))
 
 (defn assert-responded?
   ([msg expected f]

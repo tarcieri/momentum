@@ -89,6 +89,37 @@
 
         (is (closed?))))))
 
+(deftest responding-with-regular-status-during-handshake
+  (with-ws-app
+    (fn [dn]
+      (fn [evt val]
+        (when (= :request evt)
+          (dn :response [200 {"content-length" "5"} (buffer "Hello")]))))
+
+    (GET "/" {"upgrade"           "websocket"
+              "connection"        "upgrade"
+              "sec-websocket-key" (random-key)} :upgraded)
+
+    (is (= 200 (response-status)))
+
+    (GET "/")
+    (is (= 200 (response-status))))
+
+  (with-ws-app
+    (fn [dn]
+      (fn [evt val]
+        (when (= :request evt)
+          (dn :response [200 {"transer-encoding" "chunked"} :chunked])
+          (dn :body (buffer "Hello"))
+          (dn :body (buffer "World"))
+          (dn :body nil))))
+
+    (GET "/" {"upgrade"           "websocket"
+              "connection"        "upgrade"
+              "sec-websocket-key" (random-key)} :upgraded)
+
+    (is (= [(buffer "Hello") (buffer "World") nil] (response-body-chunks)))))
+
 (deftest closing-sockets-from-server
   (with-ws-app
     (fn [dn]
@@ -102,7 +133,7 @@
               "connection"        "upgrade"
               "sec-websocket-key" (random-key)} :upgraded)
 
-    (is (= 101 (first (response))))
+    (is (= 101 (response-status)))
 
     (is (received? :message (buffer :ubyte (bit-or 0x80 1) 5 "Hello")))
     (is (received? :message (buffer :ubyte (bit-or 0x80 8) 2

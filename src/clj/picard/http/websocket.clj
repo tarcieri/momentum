@@ -114,7 +114,9 @@
     (let [[status hdrs body] response]
       (if (= 101 status)
         (accept-socket state dn hdrs)
-        (throw "Not implemented")))))
+        (do
+          (swap-assoc! state :state :passthrough)
+          (dn :response response))))))
 
 (defn- receive-request
   [state up dn [{upgrade    "upgrade"
@@ -232,7 +234,7 @@
            (= :abort evt)
            (do
              (swap! state #(assoc % :state :closed))
-             (.printStackTrace val))
+             (up :abort val))
 
            :else
            (up evt val)))))))
