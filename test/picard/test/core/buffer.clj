@@ -1080,3 +1080,7 @@
          (doto (Buffer/allocate 8)
            (.putInt 0 1)
            (.putInt 4 2)))))
+
+(deftest seqing-buffer-returns-list-containing-buffer
+  (let [b (buffer "Hello")]
+    (is (= (list b) (seq b)))))

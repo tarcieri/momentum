@@ -14,10 +14,14 @@ import java.util.Iterator;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 
+import clojure.lang.ISeq;
+import clojure.lang.PersistentList;
+import clojure.lang.Seqable;
+
 /*
  * TODO: Add unsigned accessors
  */
-public abstract class Buffer {
+public abstract class Buffer implements Seqable {
 
   static final int MIN_DYNAMIC_BUFFER_SIZE = 64;
 
@@ -429,6 +433,10 @@ public abstract class Buffer {
     position = newPosition;
 
     return this;
+  }
+
+  public final ISeq seq() {
+    return new PersistentList(this);
   }
 
   public final Buffer skip(int len) {
