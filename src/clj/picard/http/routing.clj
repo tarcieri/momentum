@@ -90,7 +90,7 @@
 
 (defn match
   ([path target]        (match* nil path target true))
-  ([method path target] (match* method path target true)))
+  ([method path target] (match* (name method) path target true)))
 
 (defn scope
   [path & targets]
@@ -114,8 +114,6 @@
     (fn [dn]
       (let [state (atom nil)]
         (fn [evt val]
-          (when (= :abort evt)
-            (.printStackTrace val))
           (if (= :request evt)
             (handle-request state routes dn val)
             (if-let [upstream @state]
