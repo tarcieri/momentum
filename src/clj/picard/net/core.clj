@@ -53,28 +53,26 @@
 
 ;; ==== Futures
 
-(extend-type ChannelFuture
-  DeferredValue
-  (received? [f] (.isDone f))
-  (received  [f] (.isSuccess f))
-  (receive [f success error]
-    (doto f
+(defn ch-future-as-deferred
+  [future]
+  (when future
+    (let [d (deferred)]
       (.addListener
+       future
        (reify ChannelFutureListener
          (operationComplete [_ _]
-           (success (.isSuccess f))))))))
+           (put d (.isSuccess future)))))
+      d)))
 
-(extend-type ChannelGroupFuture
-  DeferredValue
-  (received? [f] (.isDone f))
-  (received  [f] (.isCompleteSuccess f))
-  (receive [f success error]
-    (doto f
+(defn ch-group-future-as-deferred
+  [future]
+  (when future
+    (let [d (deferred)]
       (.addListener
+       future
        (reify ChannelGroupFutureListener
          (operationComplete [_ _]
-           (success (.isCompleteSuccess f))))))))
-
+           (put d (.isCompleteSuccess future))))))))
 
 ;; ==== Helper functions for tracking events
 (defn channel-open-event?
@@ -113,6 +111,7 @@
 (defrecord State
     [upstream
      downstream
+     open?
      aborting?
      writable?
      event-lock
@@ -128,6 +127,7 @@
   (State.
    nil             ;; upstream
    dn              ;; downstream
+   true            ;; open?
    false           ;; aborting?
    true            ;; writable?
    (atom true)     ;; event-lock
@@ -152,10 +152,14 @@
 (defn- close-channel
   [current-state]
   (let [ch (.ch current-state)]
-    (doasync (.last-write current-state)
+    (doasync (ch-future-as-deferred (.last-write current-state))
       (fn [_]
         (when (.isOpen ch)
-          (.close ch))))))
+          ;; Because there could be a race condition, we still need to
+          ;; catch ClosedChannelExceptions
+          (try
+            (.close ch)
+            (catch ClosedChannelException _)))))))
 
 (defn- try-acquire
   [current-state evt val]
@@ -179,11 +183,7 @@
 (defn- poll-queue*
   [current-state]
   (or (.. current-state state-queue poll)
-      (.. current-state message-queue poll)
-      ;; (and (or (.. current-state ch isReadable)
-      ;;          (not (.. current-state ch isOpen)))
-      ;;      (.. current-state message-queue poll))
-      ))
+      (.. current-state message-queue poll)))
 
 (defn- poll-queue
   [current-state]
@@ -285,13 +285,24 @@
       (fn [evt val]
         (try
           (let [current-state @state]
-            (if (= :abort evt)
-              (when-not (.aborting? current-state)
-                (swap-then!
-                 state
-                 #(assoc % :aborting? true)
-                 #(send-upstream state evt val %)))
-              (send-upstream state evt val current-state)))
+            (cond
+             (= :abort evt)
+             (when (and (not (.aborting? current-state))
+                        (.open? current-state))
+               (swap-then!
+                state
+                #(assoc % :aborting? true)
+                #(send-upstream state evt val %)))
+
+             (= :close evt)
+             (do
+               (swap-then!
+                state
+                #(assoc % :open? false)
+                #(send-upstream state evt val %)))
+
+             :else
+             (send-upstream state evt val current-state)))
           (catch Exception err
             (handle-err state err @state)))))))
 

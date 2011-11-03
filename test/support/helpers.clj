@@ -191,8 +191,8 @@
   (when seq
     (lazy-seq
      (try
-       (cons (normalize (first seq))
-             (timeoutable (next seq)))
+       (let [[v & more] seq]
+         (cons (normalize v) (timeoutable more)))
        (catch TimeoutException err ["reading the channel timed out" nil])))))
 
 (defn assert-no-msgs-for
@@ -206,26 +206,22 @@
       :actual   received})))
 
 (defn assert-next-msgs
-  [f ch & expected]
+  [f msg ch & expected]
   (when (odd? (count expected))
     (throw (IllegalArgumentException. "Requires even number of messages")))
 
   (let [expected (partition 2 expected)
         actual   (take (count expected) (timeoutable (seq ch)))
         pass?    (every? identity (map #(match-values (vec %1) %2) expected actual))]
-    (f pass? expected actual)))
+    (f {:type     (if pass? :pass :fail)
+        :message  msg
+        :expected expected
+        :actual   actual})))
 
 (defmethod assert-expr 'next-msgs
   [msg form]
   (let [[_ ch & stmts] form]
-    `(assert-next-msgs
-      (fn [pass# expected# actual#]
-        (do-report
-         {:type     (if pass# :pass :fail)
-          :message  ~msg
-          :expected expected#
-          :actual   actual#}))
-      ~ch ~@stmts)))
+    `(assert-next-msgs #(do-report %) ~msg ~ch ~@stmts)))
 
 (defmethod assert-expr 'no-msgs [msg form]
   (let [[_ & args] form
@@ -270,11 +266,11 @@
         (empty? str)))))
 
 (defn assert-receiving
-  [msg & segments]
+  [f msg & segments]
   (let [len (segments-len segments)
         act (read-n-as-str len)
         eq? (segments-match? segments act)]
-    (do-report
+    (f
      {:type     (if eq? :pass :fail)
       :message  msg
       :expected segments
@@ -282,4 +278,4 @@
 
 (defmethod assert-expr 'receiving [msg form]
   (let [expected (rest form)]
-    `(assert-receiving ~msg ~@expected)))
+    `(assert-receiving #(do-report %) ~msg ~@expected)))

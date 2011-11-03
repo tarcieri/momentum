@@ -208,26 +208,25 @@
          (when (= :open evt)
            (future
              (loop [continue? @latch]
-               (if continue?
-                 (do
-                   (dn :message (buffer "HAMMER TIME!"))
-                   (recur @latch))
-                 (do
-                   (Thread/sleep 100)
-                   (dn :close nil))))))
+               (when continue?
+                 (dn :message (buffer "HAMMER TIME!"))
+                 (recur @latch)))))
+
          (when (= :pause evt)
-           (reset! latch false))))))
+           (reset! latch false))
+
+         (when (= :resume evt)
+           (dn :close nil))))))
 
   (with-socket
-    (Thread/sleep 400)
+    (Thread/sleep 200)
     (drain-socket)
 
     (is (next-msgs
          ch1
          :open   addr-info
          :pause  nil
-         :resume nil
-         :close  nil))))
+         :resume nil))))
 
 (defcoretest raising-error-during-pause-event
   [ch1]
