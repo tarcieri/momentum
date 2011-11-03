@@ -1,6 +1,6 @@
 package picard.core;
 
-public interface DeferredReceiver {
+public interface Receiver {
   /*
    * Invoked with the realized value.
    */

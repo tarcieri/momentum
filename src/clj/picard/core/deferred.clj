@@ -4,7 +4,10 @@
     Channel
     Deferred
     DeferredSeq
-    DeferredReceiver]))
+    Pipeline
+    Pipeline$Catcher
+    Pipeline$Recur
+    Receiver]))
 
 (defprotocol DeferredValue
   (received? [_])
@@ -20,7 +23,7 @@
   (receive [val success error]
     (doto val
       (.receive
-       (reify DeferredReceiver
+       (reify Receiver
          (success [_ val] (success val))
          (error   [_ err] (error err))))))
 
@@ -32,7 +35,19 @@
   (receive [seq success error]
     (doto seq
       (.receive
-       (reify DeferredReceiver
+       (reify Receiver
+         (success [_ val] (success val))
+         (error   [_ err] (error err))))))
+
+  Pipeline
+  (received? [pipeline]
+    (.isRealized pipeline))
+  (received [pipeline]
+    (deref pipeline 0 nil))
+  (receive [val success error]
+    (doto val
+      (.receive
+       (reify Receiver
          (success [_ val] (success val))
          (error   [_ err] (error err))))))
 
@@ -61,7 +76,11 @@
 
   Deferred
   (put [dval val]   (doto dval (.put val)))
-  (abort [dval err] (doto dval (.abort err))))
+  (abort [dval err] (doto dval (.abort err)))
+
+  Pipeline
+  (put   [pipeline val] (doto pipeline (.put val)))
+  (abort [pipeline err] (doto pipeline (.abort err))))
 
 (defn deferred
   []
@@ -94,42 +113,13 @@
 
 ;; ==== Pipeline stuff
 
-(deftype Recur [val])
-
-(defn- stage
-  [last curr next f]
-  (receive
-   curr
-   (fn cycle [val]
-     (try
-       (loop [ret (f val)]
-         (cond
-          (instance? Recur ret)
-          (let [ret (.val ret)]
-            (if (received? ret)
-              (recur (f (received ret)))
-              (receive ret cycle #(abort last %))))
-
-          :else
-          (receive ret #(put next %) #(abort last %))))
-       (catch Exception err
-         (abort last err))))
-   #(abort last %)))
-
 (defn pipeline
-  [seed & stage-fns]
-  (let [last (deferred)]
-    (loop [curr seed [f & more] stage-fns]
-      (if more
-        (let [next (deferred)]
-          (stage last curr next f)
-          (recur next more))
-        (stage last curr last f)))
-    last))
+  [stages catchers finalizer]
+  (Pipeline. (reverse stages) catchers finalizer))
 
 (defn arecur
-  ([]    (arecur nil))
-  ([val] (Recur. val)))
+  ([]    (Pipeline$Recur. nil))
+  ([val] (Pipeline$Recur. val)))
 
 ;; ==== Async macro
 
@@ -159,57 +149,16 @@
       [(conj stages clause) catches finally]))
    [[] [] nil] clauses))
 
-(defn- finally-handler
-  [ret after stmts]
-  (if-not stmts
-    after
-    `(try
-       ~@stmts
-       ~after
-       (catch Exception err#
-         (abort ~ret err#)))))
+(defn- to-catcher
+  [[ _ k b & stmts]]
+  `(Pipeline$Catcher. ~k (fn [~b] ~@stmts)))
 
-(defn- success-handler
-  [ret [_ & finally]]
-  (let [val (gensym "value")]
-    `(fn [~val]
-       ~(finally-handler ret `(put ~ret ~val) finally))))
-
-(defn- catch-handler
-  [ret err finally else [_ klass binding & stmts]]
-  (let [val (gensym "value")]
-    `(if (instance? ~klass ~err)
-       (let [~val (let [~binding ~err] ~@stmts)]
-         ~(finally-handler ret `(put ~ret ~val) finally))
-       ~else)))
-
-(defn- err-handler
-  [ret catches [_ & finally]]
-  (let [err (gensym "error")]
-    (if (empty? catches)
-      `(fn [~err]
-         ~(finally-handler ret `(abort ~ret ~err) finally))
-
-      `(fn [~err]
-         (try
-           ~(reduce
-              (partial catch-handler ret err finally)
-              (finally-handler ret `(abort ~ret ~err) finally)
-              catches)
-           (catch Exception ~err
-             ~(finally-handler ret `(abort ~ret ~err) finally)))))))
+(defn- to-finally
+  [[_ & stmts]]
+  `(fn [] ~@stmts))
 
 (defmacro doasync
   [seed & clauses]
-  (let [[stages catches finally] (partition-clauses clauses)
-        ret (gensym "return-value")]
-    (if (and (empty? catches) (empty? finally))
-      ;; If there are no catches and no finally clause, then there is
-      ;; no need for the extra deferred value
-      `(pipeline ~seed ~@stages)
-      `(let [~ret (deferred)]
-         (receive
-          (pipeline ~seed ~@stages)
-          ~(success-handler ret finally)
-          ~(err-handler ret catches finally))
-         ~ret))))
+  (let [[stages catches finally] (partition-clauses clauses)]
+    `(doto (pipeline [~@stages] [~@(map to-catcher catches)] ~(to-finally finally))
+       (put ~seed))))

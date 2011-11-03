@@ -5,7 +5,7 @@ import clojure.lang.IBlockingDeref;
 import clojure.lang.IPending;
 import java.util.LinkedList;
 
-public final class Deferred implements IDeref, IBlockingDeref, IPending {
+public final class Deferred implements Receivable, IDeref, IBlockingDeref, IPending {
 
   /*
    * Whether or not the current deferred value is realized.
@@ -30,10 +30,10 @@ public final class Deferred implements IDeref, IBlockingDeref, IPending {
   /*
    * The callbacks to invoke when the deferred value is realized.
    */
-  final LinkedList<DeferredReceiver> receivers;
+  final LinkedList<Receiver> receivers;
 
   public Deferred() {
-    receivers = new LinkedList<DeferredReceiver>();
+    receivers = new LinkedList<Receiver>();
   }
 
   public boolean isRealized() {
@@ -65,7 +65,7 @@ public final class Deferred implements IDeref, IBlockingDeref, IPending {
 
     // Invoke any pending receivers
 
-    DeferredReceiver r;
+    Receiver r;
     while ((r = receivers.poll()) != null) {
       invoke(r);
     }
@@ -86,13 +86,13 @@ public final class Deferred implements IDeref, IBlockingDeref, IPending {
       }
     }
 
-    DeferredReceiver r;
+    Receiver r;
     while ((r = receivers.poll()) != null) {
       invoke(r);
     }
   }
 
-  public void receive(DeferredReceiver r) {
+  public void receive(Receiver r) {
     if (r == null) {
       throw new NullPointerException("Receiver is null");
     }
@@ -155,7 +155,7 @@ public final class Deferred implements IDeref, IBlockingDeref, IPending {
     }
   }
 
-  private void invoke(DeferredReceiver receiver) {
+  private void invoke(Receiver receiver) {
     try {
       if (err != null) {
         receiver.error(err);

@@ -46,7 +46,7 @@ public final class Channel implements Seqable, IPending {
     head     = tail;
   }
 
-  public Deferred put(Object v) {
+  public Receivable put(Object v) {
     DeferredSeq curr;
 
     synchronized (this) {
@@ -62,7 +62,7 @@ public final class Channel implements Seqable, IPending {
     return curr.put(v);
   }
 
-  public Deferred putLast(Object v) {
+  public Receivable putLast(Object v) {
     DeferredSeq curr;
 
     synchronized (this) {

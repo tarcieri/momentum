@@ -11,14 +11,6 @@
       (put d (inc i)))
     d))
 
-(deftest simple-pipeline
-  (let [res (atom nil)]
-    (receive
-     (pipeline 1 inc #(if (= 2 %) 3 0))
-     #(reset! res %)
-     identity)
-    (is (= 3 @res))))
-
 (deftest simple-do-async
   (let [res (atom nil)]
     (receive
@@ -114,6 +106,107 @@
      #(reset! res %)
      #(reset! res %))
     (is (= :hello @res))))
+
+;; === Finally statements
+
+(deftest finally-statement-called-after-value-realized
+  (let [res (atom nil)]
+    (doasync 1
+      #(reset! res %)
+      (finally
+       (compare-and-set! res 1 :win)))
+    (is (= :win @res))))
+
+(deftest finally-statement-called-after-aborted
+  (let [res (atom nil)]
+    (doasync 1
+      (fn [_] (throw (Exception.)))
+      (finally
+       (compare-and-set! res nil :win)))
+    (is (= :win @res))))
+
+(deftest finally-statement-called-after-caught-exception
+  (let [res (atom nil)]
+    (doasync 1
+      (fn [_] (throw (Exception.)))
+      (catch Exception _)
+      (finally
+       (compare-and-set! res nil :win)))
+    (is (= :win @res))))
+
+(deftest throwing-in-finally
+  (is (thrown-with-msg?
+        Exception #"BOOM"
+        @(doasync 1 inc
+           (finally (throw (Exception. "BOOM")))))))
+
+(deftest throwing-in-finally-overrides-aborted-exception
+  (is (thrown-with-msg?
+        Exception #"BOOM"
+        @(doasync 1
+           (fn [_] (throw (Exception. "BAM")))
+           (finally (throw (Exception. "BOOM")))))))
+
+(deftest aborting-in-progress
+  (is (thrown-with-msg?
+        Exception #"BOOM"
+        (let [d (deferred)]
+          @(doasync 1 inc
+             (finally (throw (Exception. "BOOM"))))
+          (abort d (Exception. "BAM"))))))
+
+;; ==== Aborting pipelines in progress
+
+(deftest aborting-a-pipeline-after-first-stage
+  (let [res (atom nil)
+        err (Exception. "BOOM")
+        pipeline
+        (doasync 1 inc
+          (fn [v]
+            (compare-and-set! res nil v)
+            (future*
+             (Thread/sleep 10)
+             (inc v))))]
+    (abort pipeline err)
+    (receive
+     pipeline
+     (fn [_] (reset! res :fail))
+     #(compare-and-set! res 2 %))
+    (is (= err @res))))
+
+(deftest aborting-a-pipeline-before-seed-is-realized
+  (let [res (atom nil) res2 (atom nil)
+        err (Exception. "BOOM")
+        pipeline
+        (doasync (future* (Thread/sleep 20) 1)
+          #(reset! res2 %))]
+    (abort pipeline err)
+    (receive
+     pipeline
+     (fn [v] (reset! res [v :fail]))
+     #(compare-and-set! res nil %))
+    (Thread/sleep 40)
+    (is (= err @res))
+    (is (nil? @res2))))
+
+(deftest aborting-a-pipeline-mid-stage
+  (let [res (atom nil) res2 (atom nil)
+        err (Exception. "BOOM")
+        pipeline
+        (doasync 1
+          (fn [v]
+            (future*
+             (Thread/sleep 10)
+             (inc v)))
+          #(reset! res2 %))]
+    (abort pipeline err)
+    (receive
+     pipeline
+     (fn [v] (reset! res [v :fail]))
+     #(compare-and-set! res nil %))
+    (Thread/sleep 40)
+    (is (= err @res))
+    (is (nil? @res2))))
 
 ;; ==== arecur
 

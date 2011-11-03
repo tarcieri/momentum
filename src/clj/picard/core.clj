@@ -70,3 +70,13 @@
          ~@body
          (when more#
            (arecur more#))))))
+
+(defmacro future*
+  [& stages]
+  `(let [d# (deferred)]
+     (future
+       (try
+         (put d# (do ~@stages))
+         (catch Exception e#
+           (abort d# e#))))
+     d#))

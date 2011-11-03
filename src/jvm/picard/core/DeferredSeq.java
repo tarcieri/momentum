@@ -7,7 +7,7 @@ import clojure.lang.IPending;
 import clojure.lang.IPersistentMap;
 import java.util.LinkedList;
 
-public final class DeferredSeq extends ASeq implements IPending {
+public final class DeferredSeq extends ASeq implements Receivable, IPending {
 
   /*
    * Channel that populates the seq
@@ -37,7 +37,7 @@ public final class DeferredSeq extends ASeq implements IPending {
   /*
    * The callbacks to invoke when the head of the seq is realized.
    */
-  final LinkedList<DeferredReceiver> receivers;
+  final LinkedList<Receiver> receivers;
 
   /*
    * Deferred value representing the moment that the head of this seq is read.
@@ -54,7 +54,7 @@ public final class DeferredSeq extends ASeq implements IPending {
     chan = ch;
     read = new Deferred();
 
-    receivers = new LinkedList<DeferredReceiver>();
+    receivers = new LinkedList<Receiver>();
   }
 
   public boolean isRealized() {
@@ -76,7 +76,7 @@ public final class DeferredSeq extends ASeq implements IPending {
     return next;
   }
 
-  public Deferred put(Object v) {
+  Receivable put(Object v) {
     synchronized (this) {
       if (isRealized) {
         throw new IllegalStateException("Deferred seq head previously realized");
@@ -94,7 +94,7 @@ public final class DeferredSeq extends ASeq implements IPending {
       }
     }
 
-    DeferredReceiver r;
+    Receiver r;
     while ((r = receivers.poll()) != null) {
       deliver(r);
     }
@@ -102,7 +102,7 @@ public final class DeferredSeq extends ASeq implements IPending {
     return read;
   }
 
-  void abort(Exception e) {
+  public void abort(Exception e) {
     synchronized (this) {
       if (isRealized) {
         throw new IllegalStateException("Deferred seq head previously realized");
@@ -117,13 +117,13 @@ public final class DeferredSeq extends ASeq implements IPending {
       }
     }
 
-    DeferredReceiver r;
+    Receiver r;
     while ((r = receivers.poll()) != null) {
       deliver(r);
     }
   }
 
-  public void receive(DeferredReceiver r) {
+  public void receive(Receiver r) {
     if (r == null) {
       throw new NullPointerException("Receiver is null");
     }
@@ -201,7 +201,7 @@ public final class DeferredSeq extends ASeq implements IPending {
     }
   }
 
-  private void deliver(DeferredReceiver r) {
+  private void deliver(Receiver r) {
     try {
       if (err != null) {
         r.error(err);
