@@ -208,7 +208,7 @@
     (is (= err @res))
     (is (nil? @res2))))
 
-;; ==== arecur
+;; ==== recur*
 
 (deftest simple-async-recursion-with-primitives
   (let [res (atom nil)]
@@ -216,7 +216,7 @@
      (doasync 1
        (fn [val]
          (if (< val 4)
-           (arecur (inc val))
+           (recur* (inc val))
            (inc val))))
      #(compare-and-set! res nil %)
      #(reset! res %))
@@ -234,7 +234,7 @@
                       (future
                         (Thread/sleep 10)
                         (put nxt (inc val)))
-                      (arecur nxt))
+                      (recur* nxt))
                     (inc val))))))))
 
 ;; ==== doseq*

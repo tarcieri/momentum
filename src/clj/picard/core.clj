@@ -45,7 +45,7 @@
 
 ;; ==== Async goodness
 (def abort               picard.core.deferred/abort)
-(def arecur              picard.core.deferred/arecur)
+(def recur*              picard.core.deferred/recur*)
 (def blocking-channel    picard.core.deferred/blocking-channel)
 (def channel             picard.core.deferred/channel)
 (def close               picard.core.deferred/close)
@@ -69,7 +69,7 @@
        (fn [[~binding & more#]]
          ~@body
          (when more#
-           (arecur more#))))))
+           (recur* more#))))))
 
 (defmacro future*
   [& stages]

@@ -117,7 +117,7 @@
   [stages catchers finalizer]
   (Pipeline. (reverse stages) catchers finalizer))
 
-(defn arecur
+(defn recur*
   ([]    (Pipeline$Recur. nil))
   ([val] (Pipeline$Recur. val)))
 
