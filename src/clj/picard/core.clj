@@ -60,6 +60,22 @@
   [& args]
   `(picard.core.deferred/doasync ~@args))
 
+(defmacro channeling
+  [binding & stmts]
+  (assert (vector? binding)     "a vector is required for its binding")
+  (assert (= (count binding) 1) "binding count must be 1")
+
+  (let [ch (first binding)]
+    `(let [~ch (channel)]
+       (try
+         (receive
+          (do ~@stmts)
+          (fn [v#] (close ~ch))
+          (fn [e#] (abort ~ch e#)))
+         (catch Exception e#
+           (abort ~ch e#)))
+       (seq ~ch))))
+
 (defmacro doseq*
   [seq-exprs & body]
   (assert (vector? seq-exprs) "a vector for its binding")

@@ -237,6 +237,56 @@
                       (recur* nxt))
                     (inc val))))))))
 
+(deftest channeling-creates-deferred-seq
+  (let [ret (channeling [ch] (put ch "Hello"))]
+    (is (seq ret))
+    (is (= ["Hello" nil] ret))))
+
+(deftest channeling-handles-thrown-exceptions
+  (let [res (atom nil)
+        err (Exception. "BOOM")
+        ret (channeling [_] (throw err))]
+    (receive ret
+             (fn [v] (reset! res [:fail v]))
+             #(compare-and-set! res nil %))
+    (is (= err @res))))
+
+(deftest channeling-handles-async-reading
+  (let [res (atom [])]
+    @(doasync
+       (channeling [ch]
+         (doasync 1
+           (fn [v]
+             (put ch v)
+             (when (< v 3)
+               (recur*
+                (future*
+                 (Thread/sleep 10)
+                 (inc v)))))))
+       (fn [[chunk & more]]
+         (swap! res #(conj % chunk))
+         (when more
+           (recur* more))))
+    (is (= [1 2 3 nil] @res))))
+
+(deftest channeling-handles-async
+  (let [err (Exception.)
+        res (atom nil)]
+    @(doasync
+       (channeling [ch]
+         (doasync 1
+           (fn [v]
+             (put ch v)
+             (future*
+              (Thread/sleep 10)
+              (throw err)))))
+       (fn [[v & more]]
+         (compare-and-set! res nil v)
+         (recur* more))
+       (catch Exception e
+         (compare-and-set! res 1 e)))
+    (is (= err @res))))
+
 ;; ==== doseq*
 
 (deftest simple-synchronous-doseq
