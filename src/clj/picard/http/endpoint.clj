@@ -3,14 +3,6 @@
    picard.core
    picard.http.routing))
 
-(defn respond
-  [format content & opts]
-  (when (not= :text format)
-    (throw (Exception. "Unsupported format: " format)))
-
-  (let [opts (apply hash-map opts)]
-    [(opts :status 200) {} content]))
-
 (defn map-request
   [ch [hdrs body]]
   (cond

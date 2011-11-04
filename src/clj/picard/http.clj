@@ -1,9 +1,10 @@
 (ns picard.http
   (:require
    [picard.http.endpoint :as endpoint]
+   [picard.http.response :as response]
    [picard.http.routing  :as routing]))
 
-(def respond endpoint/respond)
+(def respond response/respond)
 
 (defmacro endpoint
   [& routes]
