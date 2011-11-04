@@ -9,7 +9,7 @@
     (throw (Exception. "Unsupported format: " format)))
 
   (let [opts (apply hash-map opts)]
-    [(opts :status 200) {} (buffer content)]))
+    [(opts :status 200) {} content]))
 
 (defn map-request
   [ch [hdrs body]]
@@ -20,6 +20,14 @@
    :else
    (assoc hdrs :body body)))
 
+(defn- handle-response-body
+  [dn body]
+  (doasync body
+    (fn [[chunk & more]]
+      (dn :body (buffer chunk))
+      (when chunk
+        (recur* more)))))
+
 (defn endpoint*
   [f]
   (fn [dn]
@@ -28,7 +36,12 @@
         (cond
          (= :request evt)
          (doasync (f (map-request ch val))
-           #(dn :response %)
+           (fn [[status hdrs body]]
+             (if (coll? body)
+               (do
+                 (dn :response [status hdrs :chunked])
+                 (handle-response-body dn body))
+               (dn :response [status hdrs (buffer body)])))
            (catch Exception err
              (dn :abort err)))
 

@@ -53,8 +53,23 @@
                (respond :text "Done"))))))
 
       (POST "/foo" :chunked)
-      (chunks "one" "two" "three" nil)
+      (send-chunks "one" "two" "three" nil)
 
       (is (= 200 (response-status)))
       (is (= (buffer "Done") (response-body)))
       (is (= (map #(buffer %) ["one" "two" "three"]) @res)))))
+
+(deftest streaming-response-body
+  (with-app
+    (endpoint
+     (GET "/foo" [request]
+       (let [ch (channel)]
+         (future
+           (dotimes [i 3]
+             (Thread/sleep 10)
+             (put ch (buffer (str "Chunk " i))))
+           (close ch))
+         (respond :text (seq ch)))))
+
+    (GET "/foo")
+    (is (= :chunked (response-body)))))

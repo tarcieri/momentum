@@ -49,7 +49,7 @@
 (def closed?         net/closed?)
 (def last-request    last-connection)
 
-(defn chunks
+(defn send-chunks
   [& chunks]
   (doseq [chunk chunks]
     (last-connection :body (buffer chunk))))
@@ -78,6 +78,11 @@
 (defn response-body
   [& args]
   (nth (apply response args) 2))
+
+(defn response-body-chunks
+  ([] (response-body-chunks (last-connection)))
+  ([conn]
+     (filter (fn [[evt val]] (= :body evt)) conn)))
 
 (defn response-body-chunks
   [& args]
