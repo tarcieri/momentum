@@ -49,6 +49,11 @@
 (def closed?         net/closed?)
 (def last-request    last-connection)
 
+(defn chunks
+  [& chunks]
+  (doseq [chunk chunks]
+    (last-connection :body (buffer chunk))))
+
 (defn- normalize-response
   [[status hdrs body]]
   [status hdrs (if (keyword? body) body (buffer body))])
@@ -58,12 +63,9 @@
   [status hdrs (if (buffer? body) (to-string body) body)])
 
 (defn response
-  [& args]
-  (let [[[_ response]]
-        (filter
-         (fn [[evt val]] (= :response evt))
-         (apply received args))]
-    response))
+  ([] (response (last-connection)))
+  ([conn]
+     (second (first (filter (fn [[evt val]] (= :response evt)) conn)))))
 
 (defn response-status
   [& args]
