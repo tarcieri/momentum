@@ -3,14 +3,25 @@
    clojure.test
    picard.core.buffer)
   (:require
-   [picard.http.server :as server]
-   [picard.net.test    :as net]))
+   [picard.http.server  :as server]
+   [picard.net.test     :as net]
+   [picard.utils.base64 :as base64]
+   [picard.utils.digest :as digest]
+   [picard.utils.random :as random]))
 
-(def default-hdrs
-  {:script-name  ""
-   :query-string ""
-   :http-version [1 1]
-   "host"        "example.org"})
+(defn- ws-hdrs
+  [hdrs]
+  (merge
+   (when (= "websocket" (hdrs "upgrade"))
+     {"connection" "upgrade"
+      "sec-websocket-key" (base64/encode (random/secure-random 16))
+      "sec-websocket-origin" "http://localhost"}) hdrs))
+
+(defn- default-hdrs
+  [hdrs]
+  (ws-hdrs
+   (merge {:script-name  ""    :query-string ""
+           :http-version [1 1] "host" "example.org"} hdrs)))
 
 (defn- normalize-request-body
   [o]
@@ -24,7 +35,8 @@
 (defn- request*
   [method path hdrs body]
   (let [conn (net/open)
-        hdrs (merge default-hdrs hdrs {:request-method method :path-info path})]
+        hdrs (default-hdrs hdrs)
+        hdrs (merge hdrs {:request-method method :path-info path})]
     (conn :request [hdrs (normalize-request-body body)])
     conn))
 

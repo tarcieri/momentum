@@ -44,7 +44,7 @@
     (with-app
       (endpoint
        (POST "/foo" [request]
-         (doasync (request :body)
+         (doasync (request :input)
            (fn [[chunk & more]]
              (if chunk
                (do

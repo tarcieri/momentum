@@ -156,6 +156,7 @@
 
       (GET "/" {"upgrade"    "websocket"
                 "connection" "upgrade"
+                "sec-websocket-key" nil
                 "sec-websocket-origin" "http://localhost"} :upgraded)
 
       (is (closed?)))))

@@ -4,10 +4,10 @@
    picard.http.routing))
 
 (defn map-request
-  [ch [hdrs body]]
+  [ch hdrs body]
   (cond
-   (= body :chunked)
-   (assoc hdrs :body (seq ch))
+   (#{:chunked :upgraded} body)
+   (assoc hdrs :input (seq ch))
 
    :else
    (assoc hdrs :body body)))
@@ -27,15 +27,16 @@
       (fn [evt val]
         (cond
          (= :request evt)
-         (doasync (f (map-request ch val))
-           (fn [[status hdrs body]]
-             (if (coll? body)
-               (do
-                 (dn :response [status hdrs :chunked])
-                 (handle-response-body dn body))
-               (dn :response [status hdrs (buffer body)])))
-           (catch Exception err
-             (dn :abort err)))
+         (let [[hdrs req-body] val]
+           (doasync (f (map-request ch hdrs req-body))
+             (fn [[status hdrs resp-body]]
+               (if (coll? resp-body)
+                 (let [type (if (= 101 status) :upgraded :chunked)]
+                   (dn :response [status hdrs type])
+                   (handle-response-body dn resp-body))
+                 (dn :response [status hdrs (buffer resp-body)])))
+             (catch Exception err
+               (dn :abort err))))
 
          (= :body evt)
          (if val
