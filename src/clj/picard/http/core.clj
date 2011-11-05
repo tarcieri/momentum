@@ -1,10 +1,10 @@
 (ns picard.http.core
   (:use
-   picard.core.buffer
-   picard.http.parser)
+   picard.core.buffer)
   (:require
    [clojure.string     :as str]
-   [picard.net.message :as msg])
+   [picard.net.message :as msg]
+   [picard.http.parser :as parser])
   (:import
    [picard.core
     Buffer]
@@ -163,7 +163,7 @@
 (defn request-parser
   "Wraps an upstream function with the basic HTTP parser."
   [f]
-  (let [p (parser f)]
+  (let [p (parser/request f)]
     (fn [evt val]
       (if (= :message evt)
         (p val)

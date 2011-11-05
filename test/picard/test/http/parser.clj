@@ -619,4 +619,4 @@
        HttpParserException
        (parsing (concat ["GET / HTTP/1.1\r\n"] (repeat 15 "a"))))))
 
-(use-fixtures :each #(with-parser parser %))
+(use-fixtures :each #(with-parser request %))

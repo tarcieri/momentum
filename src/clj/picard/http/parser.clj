@@ -9,7 +9,7 @@
 (def BLANK "")
 
 (defn- request-headers
-  [parser hdrs]
+  [hdrs parser]
   (persistent!
    (assoc!
     hdrs
@@ -18,6 +18,13 @@
     :script-name    BLANK
     :query-string   (.. parser getQueryString)
     :http-version   [(.getHttpMajor parser) (.getHttpMinor parser)])))
+
+(defn- map-body
+  [body parser]
+  (cond
+   body                body
+   (.hasBody parser)   :chunked
+   (.isUpgrade parser) :upgraded))
 
 (defn- mk-callback
   [f]
@@ -38,17 +45,7 @@
          (assoc! headers name (conj existing value)))))
 
     (message [_ parser hdrs body]
-      (let [hdrs (request-headers parser hdrs)
-            body (cond
-                  body
-                  body
-
-                  (.hasBody parser)
-                  :chunked
-
-                  (.isUpgrade parser)
-                  :upgraded)]
-        (f :request [hdrs body])))
+      (f :request [(request-headers hdrs parser) (map-body body parser)]))
 
     (body [_ parser buf]
       (f :body buf))
@@ -56,7 +53,12 @@
     (message [_ parser buf]
       (f :message buf))))
 
-(defn parser
+(defn request
   [f]
-  (let [parser (HttpParser. (mk-callback f))]
+  (let [parser (HttpParser/request (mk-callback f))]
+    (fn [buf] (.execute parser buf))))
+
+(defn response
+  [f]
+  (let [parser (HttpParser/response (mk-callback f))]
     (fn [buf] (.execute parser buf))))

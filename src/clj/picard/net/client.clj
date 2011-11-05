@@ -66,9 +66,10 @@
       (.connect (.bootstrap client) addr pipeline)))
 
   (do-release [client]
-    (doasync (.. client channel-group close)
+    (doasync
+      (ch-group-future-as-deferred (.. client channel-group close))
       (fn [_]
-       (.releaseExternalResources (.bootstrap client)))))
+        (.releaseExternalResources (.bootstrap client)))))
 
   clojure.lang.IFn
   (invoke [this app {host :host port :port :as opts}]

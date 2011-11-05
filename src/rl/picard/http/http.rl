@@ -35,6 +35,9 @@
          | "PATCH"       % method_patch
          ;
 
+  # === HTTP status code
+  status_code = ( digit digit digit ) % http_status_digit;
+
   # === HTTP request URI
   request_uri = ( TEXT -- LWSP ) +
                   > start_uri
@@ -175,7 +178,12 @@
 
   # === HTTP head
   request_line  = method " " + request_uri ( " " + http_version ) ? CRLF;
-  exchange_head = ( CRLF * request_line headers CRLF )
+  response_line = http_version " " + status_code ( " " TEXT * ) ? CRLF;
+  start_line    = request_line  % http_request
+                | response_line % http_response
+                ;
+
+  exchange_head = ( CRLF * start_line headers CRLF )
                     > start_head
                     @ end_head;
 
