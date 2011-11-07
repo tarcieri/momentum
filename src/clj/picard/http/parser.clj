@@ -8,6 +8,10 @@
 
 (def BLANK "")
 
+(defn- http-version
+  [parser]
+  [(.getHttpMajor parser) (.getHttpMinor parser)])
+
 (defn- request-headers
   [hdrs parser]
   (persistent!
@@ -17,7 +21,12 @@
     :path-info      (.. parser getPathInfo)
     :script-name    BLANK
     :query-string   (.. parser getQueryString)
-    :http-version   [(.getHttpMajor parser) (.getHttpMinor parser)])))
+    :http-version   (http-version parser))))
+
+(defn- response-headers
+  [hdrs parser]
+  (persistent!
+   (assoc! hdrs :http-version (http-version parser))))
 
 (defn- map-body
   [body parser]
@@ -48,7 +57,7 @@
       (f :request [(request-headers hdrs parser) (map-body body parser)]))
 
     (response [_ parser status hdrs body]
-      (f :response [status (persistent! hdrs) (map-body body parser)]))
+      (f :response [status (response-headers hdrs parser) (map-body body parser)]))
 
     (body [_ parser buf]
       (f :body buf))

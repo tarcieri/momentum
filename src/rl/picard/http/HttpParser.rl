@@ -59,6 +59,8 @@ public final class HttpParser extends AFn {
   public static final byte[] EMPTY_BUFFER = new byte[0];
   public static final Buffer SPACE = Buffer.wrap(new byte[] { SP });
 
+  public static final int MAX_BUFFERED = 4096;
+
   // Map of hexadecimal chars to their numeric value
   public static final byte[] HEX_MAP = new byte [] {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -374,7 +376,7 @@ public final class HttpParser extends AFn {
       // Not parsing the HTTP message head anymore
       flags ^= PARSING_HEAD;
 
-      Buffer body = null;
+      Buffer b = null;
 
       if (isUpgrade()) {
         fnext upgraded;
@@ -382,15 +384,35 @@ public final class HttpParser extends AFn {
       else if (isRequest() || (status >= 200 && status != 204 && status != 304)){
         if (isIdentityBody()) {
           int remaining = buf.limit() - fpc;
+          int toRead;
 
           // If the remaining content length is present in the
           // buffer, just include it in the callback.
           if (remaining >= contentLength && !isExpectingContinue()) {
-            int toRead = (int) contentLength;
+            toRead = (int) contentLength;
+
             ++fpc;
-            body = slice(buf, fpc, fpc + toRead);
+
+            b = slice(buf, fpc, fpc + toRead);
             fpc += toRead - 1;
             contentLength = 0;
+          }
+          // If the entire body is less than a set maximum (default 4kb), just
+          // allocate a new buffer and copy the chunks into it.
+          else if (contentLength <= MAX_BUFFERED && !isExpectingContinue()) {
+            body   = Buffer.allocate((int) contentLength);
+            toRead = remaining - 1;
+
+            if (remaining > 1) {
+              ++fpc;
+
+              body.put(buf, fpc, toRead);
+
+              contentLength -= toRead;
+              fpc += toRead;
+            }
+
+            fnext identity_body;
           }
           else {
             fnext identity_body;
@@ -404,15 +426,17 @@ public final class HttpParser extends AFn {
         }
       }
 
-      if (isRequest()) {
-        callback.request(this, headers, body);
-      }
-      else {
-        callback.response(this, status, headers, body);
-      }
+      if (body == null) {
+        if (isRequest()) {
+          callback.request(this, headers, b);
+        }
+        else {
+          callback.response(this, status, headers, b);
+        }
 
-      // Unset references to allow the GC to reclaim the memory
-      resetHeadState();
+        // Unset references to allow the GC to reclaim the memory
+        resetHeadState();
+      }
     }
 
     action handling_body {
@@ -425,16 +449,36 @@ public final class HttpParser extends AFn {
       if (toRead > 0) {
         contentLength -= toRead;
 
-        callback.body(this, slice(buf, fpc, fpc + toRead));
+        if (body != null) {
+          body.put(buf, fpc, toRead);
 
-        fpc += toRead - 1;
+          fpc += toRead - 1;
 
-        if (contentLength == 0) {
-          callback.body(this, null);
+          if (contentLength == 0) {
+            body.flip();
+
+            if (isRequest()) {
+              callback.request(this, headers, body);
+            }
+            else {
+              callback.response(this, status, headers, body);
+            }
+
+            body = null;
+            resetHeadState();
+
+            fnext main;
+          }
         }
+        else {
+          callback.body(this, slice(buf, fpc, fpc + toRead));
 
-        if (contentLength == 0) {
-          fnext main;
+          fpc += toRead - 1;
+
+          if (contentLength == 0) {
+            callback.body(this, null);
+            fnext main;
+          }
         }
       }
     }
@@ -528,65 +572,92 @@ public final class HttpParser extends AFn {
 
   %% write data;
 
-  // Variable used by ragel to represent the current state of the
-  // parser. This must be an integer and it should persist across
-  // invocations of the machine when the data is broken into blocks
-  // that are processed independently. This variable may be modified
-  // from outside the execution loop, but not from within.
+  /*
+  * Variable used by ragel to represent the current state of the
+  * parser. This must be an integer and it should persist across
+  * invocations of the machine when the data is broken into blocks
+  * that are processed independently. This variable may be modified
+  * from outside the execution loop, but not from within.
+  */
   private int cs;
 
-  // Stores some miscellaneous parser state such as whether or not
-  // the body is chunked or not, whether or not the connection is
-  // keep alive or upgraded, etc...
+  /*
+  * Stores some miscellaneous parser state such as whether or not
+  * the body is chunked or not, whether or not the connection is
+  * keep alive or upgraded, etc...
+  */
   private int flags;
 
-  // The number of bytes read while parsing the HTTP message
-  // head. This is to protect against a possible attack where
-  // somebody sends unbounded HTTP message heads and causes out of
-  // memory errors.
+  /*
+  * The number of bytes read while parsing the HTTP message
+  * head. This is to protect against a possible attack where
+  * somebody sends unbounded HTTP message heads and causes out of
+  * memory errors.
+  */
   private int hread;
 
-  // When starting to parse an HTTP message head, an object is
-  // requested from the callback. This object should be the
-  // structure that contains HTTP headers for the message being
-  // processed.
+  /*
+  * When starting to parse an HTTP message head, an object is
+  * requested from the callback. This object should be the
+  * structure that contains HTTP headers for the message being
+  * processed.
+  */
   private Object headers;
 
-  // The HTTP protocol version used by the current message being
-  // parsed. The major and minor numbers are broken up since they
-  // will be moved into a clojure vector.
+  /*
+  * The HTTP protocol version used by the current message being
+  * parsed. The major and minor numbers are broken up since they
+  * will be moved into a clojure vector.
+  */
   private short httpMajor;
   private short httpMinor;
 
-  // Tracks whether the current parser instance is parsing an HTTP
-  // request or an HTTP response. Even though the parser can be
-  // reused to parse multiple messages, each message must be of the
-  // same type. In other words, if the first message a parser
-  // instance parses is an HTTP request, then all subsequent
-  // messages parsed by the same instance must also be HTTP
-  // requests.
+  /*
+  * Tracks whether the current parser instance is parsing an HTTP
+  * request or an HTTP response. Even though the parser can be
+  * reused to parse multiple messages, each message must be of the
+  * same type. In other words, if the first message a parser
+  * instance parses is an HTTP request, then all subsequent
+  * messages parsed by the same instance must also be HTTP
+  * requests.
+  */
   final private MessageType type;
 
-  // Tracks the HTTP method of the currently parsed request. If the
-  // HTTP message being currently parsed is a response, then this
-  // will be nil.
+  /*
+  * Tracks the HTTP method of the currently parsed request. If the
+  * HTTP message being currently parsed is a response, then this
+  * will be nil.
+  */
   private HttpMethod method;
 
-  // The response status if the current message being parsed is a
-  // response.
+  /*
+  * The response status if the current message being parsed is a
+  * response.
+  */
   private short status;
 
-  // Tracks the various message information
+  /*
+   * Tracks the various message information
+   */
   private URI          uri;
   private ChunkedValue uriMark;
   private String       headerName;
   private ChunkedValue headerNameChunks;
   private HeaderValue  headerValue;
 
-  // Track the content length of the HTTP message
+  /*
+   * Track the content length of the HTTP message
+   */
   private long contentLength;
 
-  // The object that gets called on various parse events.
+  /*
+   * Possibly aggregated body
+   */
+  private Buffer body;
+
+  /*
+   * The object that gets called on various parse events.
+   */
   private HttpParserCallback callback;
 
   public final static HttpParser request(HttpParserCallback callback) {

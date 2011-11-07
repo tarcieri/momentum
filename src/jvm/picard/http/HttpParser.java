@@ -61,6 +61,8 @@ public final class HttpParser extends AFn {
   public static final byte[] EMPTY_BUFFER = new byte[0];
   public static final Buffer SPACE = Buffer.wrap(new byte[] { SP });
 
+  public static final int MAX_BUFFERED = 4096;
+
   // Map of hexadecimal chars to their numeric value
   public static final byte[] HEX_MAP = new byte [] {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -149,7 +151,7 @@ public final class HttpParser extends AFn {
   }
 
   
-// line 514 "src/rl/picard/http/HttpParser.rl"
+// line 558 "src/rl/picard/http/HttpParser.rl"
 
 
   public static final long ALMOST_MAX_LONG     = Long.MAX_VALUE / 10;
@@ -166,7 +168,7 @@ public final class HttpParser extends AFn {
   public static final int  ERROR           = 1 << 7;
 
   
-// line 170 "src/jvm/picard/http/HttpParser.java"
+// line 172 "src/jvm/picard/http/HttpParser.java"
 private static byte[] init__http_actions_0()
 {
 	return new byte [] {
@@ -2705,67 +2707,94 @@ static final int http_en_upgraded = 753;
 static final int http_en_main = 1;
 
 
-// line 530 "src/rl/picard/http/HttpParser.rl"
+// line 574 "src/rl/picard/http/HttpParser.rl"
 
-  // Variable used by ragel to represent the current state of the
-  // parser. This must be an integer and it should persist across
-  // invocations of the machine when the data is broken into blocks
-  // that are processed independently. This variable may be modified
-  // from outside the execution loop, but not from within.
+  /*
+  * Variable used by ragel to represent the current state of the
+  * parser. This must be an integer and it should persist across
+  * invocations of the machine when the data is broken into blocks
+  * that are processed independently. This variable may be modified
+  * from outside the execution loop, but not from within.
+  */
   private int cs;
 
-  // Stores some miscellaneous parser state such as whether or not
-  // the body is chunked or not, whether or not the connection is
-  // keep alive or upgraded, etc...
+  /*
+  * Stores some miscellaneous parser state such as whether or not
+  * the body is chunked or not, whether or not the connection is
+  * keep alive or upgraded, etc...
+  */
   private int flags;
 
-  // The number of bytes read while parsing the HTTP message
-  // head. This is to protect against a possible attack where
-  // somebody sends unbounded HTTP message heads and causes out of
-  // memory errors.
+  /*
+  * The number of bytes read while parsing the HTTP message
+  * head. This is to protect against a possible attack where
+  * somebody sends unbounded HTTP message heads and causes out of
+  * memory errors.
+  */
   private int hread;
 
-  // When starting to parse an HTTP message head, an object is
-  // requested from the callback. This object should be the
-  // structure that contains HTTP headers for the message being
-  // processed.
+  /*
+  * When starting to parse an HTTP message head, an object is
+  * requested from the callback. This object should be the
+  * structure that contains HTTP headers for the message being
+  * processed.
+  */
   private Object headers;
 
-  // The HTTP protocol version used by the current message being
-  // parsed. The major and minor numbers are broken up since they
-  // will be moved into a clojure vector.
+  /*
+  * The HTTP protocol version used by the current message being
+  * parsed. The major and minor numbers are broken up since they
+  * will be moved into a clojure vector.
+  */
   private short httpMajor;
   private short httpMinor;
 
-  // Tracks whether the current parser instance is parsing an HTTP
-  // request or an HTTP response. Even though the parser can be
-  // reused to parse multiple messages, each message must be of the
-  // same type. In other words, if the first message a parser
-  // instance parses is an HTTP request, then all subsequent
-  // messages parsed by the same instance must also be HTTP
-  // requests.
+  /*
+  * Tracks whether the current parser instance is parsing an HTTP
+  * request or an HTTP response. Even though the parser can be
+  * reused to parse multiple messages, each message must be of the
+  * same type. In other words, if the first message a parser
+  * instance parses is an HTTP request, then all subsequent
+  * messages parsed by the same instance must also be HTTP
+  * requests.
+  */
   final private MessageType type;
 
-  // Tracks the HTTP method of the currently parsed request. If the
-  // HTTP message being currently parsed is a response, then this
-  // will be nil.
+  /*
+  * Tracks the HTTP method of the currently parsed request. If the
+  * HTTP message being currently parsed is a response, then this
+  * will be nil.
+  */
   private HttpMethod method;
 
-  // The response status if the current message being parsed is a
-  // response.
+  /*
+  * The response status if the current message being parsed is a
+  * response.
+  */
   private short status;
 
-  // Tracks the various message information
+  /*
+   * Tracks the various message information
+   */
   private URI          uri;
   private ChunkedValue uriMark;
   private String       headerName;
   private ChunkedValue headerNameChunks;
   private HeaderValue  headerValue;
 
-  // Track the content length of the HTTP message
+  /*
+   * Track the content length of the HTTP message
+   */
   private long contentLength;
 
-  // The object that gets called on various parse events.
+  /*
+   * Possibly aggregated body
+   */
+  private Buffer body;
+
+  /*
+   * The object that gets called on various parse events.
+   */
   private HttpParserCallback callback;
 
   public final static HttpParser request(HttpParserCallback callback) {
@@ -2778,12 +2807,12 @@ static final int http_en_main = 1;
 
   public HttpParser(MessageType type, HttpParserCallback callback) {
     
-// line 2782 "src/jvm/picard/http/HttpParser.java"
+// line 2811 "src/jvm/picard/http/HttpParser.java"
 	{
 	cs = http_start;
 	}
 
-// line 602 "src/rl/picard/http/HttpParser.rl"
+// line 673 "src/rl/picard/http/HttpParser.rl"
 
     this.type     = type;
     this.callback = callback;
@@ -2894,9 +2923,9 @@ static final int http_en_main = 1;
     try {
       parseLoop: {
         
-// line 712 "src/rl/picard/http/HttpParser.rl"
+// line 783 "src/rl/picard/http/HttpParser.rl"
         
-// line 2900 "src/jvm/picard/http/HttpParser.java"
+// line 2929 "src/jvm/picard/http/HttpParser.java"
 	{
 	int _klen;
 	int _trans = 0;
@@ -2939,7 +2968,7 @@ case 1:
 	case 0: {
 		_widec = 65536 + (( buf.get(p)) - 0);
 		if ( 
-// line 418 "src/rl/picard/http/HttpParser.rl"
+// line 442 "src/rl/picard/http/HttpParser.rl"
 
       contentLength > 0
      ) _widec += 65536;
@@ -3011,7 +3040,7 @@ case 1:
 			switch ( _http_actions[_acts++] )
 			{
 	case 0:
-// line 152 "src/rl/picard/http/HttpParser.rl"
+// line 154 "src/rl/picard/http/HttpParser.rl"
 	{
       if (type != MessageType.REQUEST) {
         throw new HttpParserException("Expecting HTTP response but got request");
@@ -3019,7 +3048,7 @@ case 1:
     }
 	break;
 	case 1:
-// line 158 "src/rl/picard/http/HttpParser.rl"
+// line 160 "src/rl/picard/http/HttpParser.rl"
 	{
       if (type != MessageType.RESPONSE) {
         throw new HttpParserException("Expecting HTTP request but got response");
@@ -3027,372 +3056,372 @@ case 1:
     }
 	break;
 	case 2:
-// line 164 "src/rl/picard/http/HttpParser.rl"
+// line 166 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.HEAD;        }
 	break;
 	case 3:
-// line 165 "src/rl/picard/http/HttpParser.rl"
+// line 167 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.GET;         }
 	break;
 	case 4:
-// line 166 "src/rl/picard/http/HttpParser.rl"
+// line 168 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.POST;        }
 	break;
 	case 5:
-// line 167 "src/rl/picard/http/HttpParser.rl"
+// line 169 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.PUT;         }
 	break;
 	case 6:
-// line 168 "src/rl/picard/http/HttpParser.rl"
+// line 170 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.DELETE;      }
 	break;
 	case 7:
-// line 169 "src/rl/picard/http/HttpParser.rl"
+// line 171 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.CONNECT;     }
 	break;
 	case 8:
-// line 170 "src/rl/picard/http/HttpParser.rl"
+// line 172 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.OPTIONS;     }
 	break;
 	case 9:
-// line 171 "src/rl/picard/http/HttpParser.rl"
+// line 173 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.TRACE;       }
 	break;
 	case 10:
-// line 172 "src/rl/picard/http/HttpParser.rl"
+// line 174 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.COPY;        }
 	break;
 	case 11:
-// line 173 "src/rl/picard/http/HttpParser.rl"
+// line 175 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.LOCK;        }
 	break;
 	case 12:
-// line 174 "src/rl/picard/http/HttpParser.rl"
+// line 176 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.MKCOL;       }
 	break;
 	case 13:
-// line 175 "src/rl/picard/http/HttpParser.rl"
+// line 177 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.MOVE;        }
 	break;
 	case 14:
-// line 176 "src/rl/picard/http/HttpParser.rl"
+// line 178 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.PROPFIND;    }
 	break;
 	case 15:
-// line 177 "src/rl/picard/http/HttpParser.rl"
+// line 179 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.PROPPATCH;   }
 	break;
 	case 16:
-// line 178 "src/rl/picard/http/HttpParser.rl"
+// line 180 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.UNLOCK;      }
 	break;
 	case 17:
-// line 179 "src/rl/picard/http/HttpParser.rl"
+// line 181 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.REPORT;      }
 	break;
 	case 18:
-// line 180 "src/rl/picard/http/HttpParser.rl"
+// line 182 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.MKACTIVITY;  }
 	break;
 	case 19:
-// line 181 "src/rl/picard/http/HttpParser.rl"
+// line 183 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.CHECKOUT;    }
 	break;
 	case 20:
-// line 182 "src/rl/picard/http/HttpParser.rl"
+// line 184 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.MERGE;       }
 	break;
 	case 21:
-// line 183 "src/rl/picard/http/HttpParser.rl"
+// line 185 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.MSEARCH;     }
 	break;
 	case 22:
-// line 184 "src/rl/picard/http/HttpParser.rl"
+// line 186 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.NOTIFY;      }
 	break;
 	case 23:
-// line 185 "src/rl/picard/http/HttpParser.rl"
+// line 187 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.SUBSCRIBE;   }
 	break;
 	case 24:
-// line 186 "src/rl/picard/http/HttpParser.rl"
+// line 188 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.UNSUBSCRIBE; }
 	break;
 	case 25:
-// line 187 "src/rl/picard/http/HttpParser.rl"
+// line 189 "src/rl/picard/http/HttpParser.rl"
 	{ method = HttpMethod.PATCH;       }
 	break;
 	case 26:
-// line 189 "src/rl/picard/http/HttpParser.rl"
+// line 191 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_ACCEPT);                    }
 	break;
 	case 27:
-// line 190 "src/rl/picard/http/HttpParser.rl"
+// line 192 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_ACCEPT_CHARSET);            }
 	break;
 	case 28:
-// line 191 "src/rl/picard/http/HttpParser.rl"
+// line 193 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_ACCEPT_ENCODING);           }
 	break;
 	case 29:
-// line 192 "src/rl/picard/http/HttpParser.rl"
+// line 194 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_ACCEPT_LANGUAGE);           }
 	break;
 	case 30:
-// line 193 "src/rl/picard/http/HttpParser.rl"
+// line 195 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_ACCEPT_RANGES);             }
 	break;
 	case 31:
-// line 194 "src/rl/picard/http/HttpParser.rl"
+// line 196 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_AGE);                       }
 	break;
 	case 32:
-// line 195 "src/rl/picard/http/HttpParser.rl"
+// line 197 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_ALLOW);                     }
 	break;
 	case 33:
-// line 196 "src/rl/picard/http/HttpParser.rl"
+// line 198 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_AUTHORIZATION);             }
 	break;
 	case 34:
-// line 197 "src/rl/picard/http/HttpParser.rl"
+// line 199 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_CACHE_CONTROL);             }
 	break;
 	case 35:
-// line 198 "src/rl/picard/http/HttpParser.rl"
+// line 200 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONNECTION);                }
 	break;
 	case 36:
-// line 199 "src/rl/picard/http/HttpParser.rl"
+// line 201 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONTENT_ENCODING);          }
 	break;
 	case 37:
-// line 200 "src/rl/picard/http/HttpParser.rl"
+// line 202 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONTENT_LANGUAGE);          }
 	break;
 	case 38:
-// line 201 "src/rl/picard/http/HttpParser.rl"
+// line 203 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONTENT_LENGTH);            }
 	break;
 	case 39:
-// line 202 "src/rl/picard/http/HttpParser.rl"
+// line 204 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONTENT_LOCATION);          }
 	break;
 	case 40:
-// line 203 "src/rl/picard/http/HttpParser.rl"
+// line 205 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONTENT_MD5);               }
 	break;
 	case 41:
-// line 204 "src/rl/picard/http/HttpParser.rl"
+// line 206 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONTENT_DISPOSITION);       }
 	break;
 	case 42:
-// line 205 "src/rl/picard/http/HttpParser.rl"
+// line 207 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONTENT_RANGE);             }
 	break;
 	case 43:
-// line 206 "src/rl/picard/http/HttpParser.rl"
+// line 208 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONTENT_TYPE);              }
 	break;
 	case 44:
-// line 207 "src/rl/picard/http/HttpParser.rl"
+// line 209 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_COOKIE);                    }
 	break;
 	case 45:
-// line 208 "src/rl/picard/http/HttpParser.rl"
+// line 210 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_DATE);                      }
 	break;
 	case 46:
-// line 209 "src/rl/picard/http/HttpParser.rl"
+// line 211 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_DNT);                       }
 	break;
 	case 47:
-// line 210 "src/rl/picard/http/HttpParser.rl"
+// line 212 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_ETAG);                      }
 	break;
 	case 48:
-// line 211 "src/rl/picard/http/HttpParser.rl"
+// line 213 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_EXPECT);                    }
 	break;
 	case 49:
-// line 212 "src/rl/picard/http/HttpParser.rl"
+// line 214 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_EXPIRES);                   }
 	break;
 	case 50:
-// line 213 "src/rl/picard/http/HttpParser.rl"
+// line 215 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_FROM);                      }
 	break;
 	case 51:
-// line 214 "src/rl/picard/http/HttpParser.rl"
+// line 216 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_HOST);                      }
 	break;
 	case 52:
-// line 215 "src/rl/picard/http/HttpParser.rl"
+// line 217 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_IF_MATCH);                  }
 	break;
 	case 53:
-// line 216 "src/rl/picard/http/HttpParser.rl"
+// line 218 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_IF_MODIFIED_SINCE);         }
 	break;
 	case 54:
-// line 217 "src/rl/picard/http/HttpParser.rl"
+// line 219 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_IF_NONE_MATCH);             }
 	break;
 	case 55:
-// line 218 "src/rl/picard/http/HttpParser.rl"
+// line 220 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_IF_RANGE);                  }
 	break;
 	case 56:
-// line 219 "src/rl/picard/http/HttpParser.rl"
+// line 221 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_IF_UNMODIFIED_SINCE);       }
 	break;
 	case 57:
-// line 220 "src/rl/picard/http/HttpParser.rl"
+// line 222 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_KEEP_ALIVE);                }
 	break;
 	case 58:
-// line 221 "src/rl/picard/http/HttpParser.rl"
+// line 223 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_LAST_MODIFIED);             }
 	break;
 	case 59:
-// line 222 "src/rl/picard/http/HttpParser.rl"
+// line 224 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_LINK);                      }
 	break;
 	case 60:
-// line 223 "src/rl/picard/http/HttpParser.rl"
+// line 225 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_LOCATION);                  }
 	break;
 	case 61:
-// line 224 "src/rl/picard/http/HttpParser.rl"
+// line 226 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_MAX_FORWARDS);              }
 	break;
 	case 62:
-// line 225 "src/rl/picard/http/HttpParser.rl"
+// line 227 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_P3P);                       }
 	break;
 	case 63:
-// line 226 "src/rl/picard/http/HttpParser.rl"
+// line 228 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_PRAGMA);                    }
 	break;
 	case 64:
-// line 227 "src/rl/picard/http/HttpParser.rl"
+// line 229 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_PROXY_AUTHENTICATE);        }
 	break;
 	case 65:
-// line 228 "src/rl/picard/http/HttpParser.rl"
+// line 230 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_PROXY_AUTHORIZATION);       }
 	break;
 	case 66:
-// line 229 "src/rl/picard/http/HttpParser.rl"
+// line 231 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_RANGE);                     }
 	break;
 	case 67:
-// line 230 "src/rl/picard/http/HttpParser.rl"
+// line 232 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_REFERER);                   }
 	break;
 	case 68:
-// line 231 "src/rl/picard/http/HttpParser.rl"
+// line 233 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_REFRESH);                   }
 	break;
 	case 69:
-// line 232 "src/rl/picard/http/HttpParser.rl"
+// line 234 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_RETRY_AFTER);               }
 	break;
 	case 70:
-// line 233 "src/rl/picard/http/HttpParser.rl"
+// line 235 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_SERVER);                    }
 	break;
 	case 71:
-// line 234 "src/rl/picard/http/HttpParser.rl"
+// line 236 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_SET_COOKIE);                }
 	break;
 	case 72:
-// line 235 "src/rl/picard/http/HttpParser.rl"
+// line 237 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_STRICT_TRANSPORT_SECURITY); }
 	break;
 	case 73:
-// line 236 "src/rl/picard/http/HttpParser.rl"
+// line 238 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_TE);                        }
 	break;
 	case 74:
-// line 237 "src/rl/picard/http/HttpParser.rl"
+// line 239 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_TRAILER);                   }
 	break;
 	case 75:
-// line 238 "src/rl/picard/http/HttpParser.rl"
+// line 240 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_TRANSFER_ENCODING);         }
 	break;
 	case 76:
-// line 239 "src/rl/picard/http/HttpParser.rl"
+// line 241 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_UPGRADE);                   }
 	break;
 	case 77:
-// line 240 "src/rl/picard/http/HttpParser.rl"
+// line 242 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_USER_AGENT);                }
 	break;
 	case 78:
-// line 241 "src/rl/picard/http/HttpParser.rl"
+// line 243 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_VARY);                      }
 	break;
 	case 79:
-// line 242 "src/rl/picard/http/HttpParser.rl"
+// line 244 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_VIA);                       }
 	break;
 	case 80:
-// line 243 "src/rl/picard/http/HttpParser.rl"
+// line 245 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_WARNING);                   }
 	break;
 	case 81:
-// line 244 "src/rl/picard/http/HttpParser.rl"
+// line 246 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_WWW_AUTHENTICATE);          }
 	break;
 	case 82:
-// line 245 "src/rl/picard/http/HttpParser.rl"
+// line 247 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_X_CONTENT_TYPE_OPTIONS);    }
 	break;
 	case 83:
-// line 246 "src/rl/picard/http/HttpParser.rl"
+// line 248 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_X_DO_NOT_TRACK);            }
 	break;
 	case 84:
-// line 247 "src/rl/picard/http/HttpParser.rl"
+// line 249 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_X_FORWARDED_FOR);           }
 	break;
 	case 85:
-// line 248 "src/rl/picard/http/HttpParser.rl"
+// line 250 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_X_FORWARDED_PROTO);         }
 	break;
 	case 86:
-// line 249 "src/rl/picard/http/HttpParser.rl"
+// line 251 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_X_FRAME_OPTIONS);           }
 	break;
 	case 87:
-// line 250 "src/rl/picard/http/HttpParser.rl"
+// line 252 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_X_POWERED_BY);              }
 	break;
 	case 88:
-// line 251 "src/rl/picard/http/HttpParser.rl"
+// line 253 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_X_REQUESTED_WITH);          }
 	break;
 	case 89:
-// line 252 "src/rl/picard/http/HttpParser.rl"
+// line 254 "src/rl/picard/http/HttpParser.rl"
 	{ setHeaderName(HDR_X_XSS_PROTECTION);          }
 	break;
 	case 90:
-// line 254 "src/rl/picard/http/HttpParser.rl"
+// line 256 "src/rl/picard/http/HttpParser.rl"
 	{
       status *= 10;
       status += ( buf.get(p)) - '0';
     }
 	break;
 	case 91:
-// line 259 "src/rl/picard/http/HttpParser.rl"
+// line 261 "src/rl/picard/http/HttpParser.rl"
 	{
       httpMinor = 0;
     }
 	break;
 	case 92:
-// line 263 "src/rl/picard/http/HttpParser.rl"
+// line 265 "src/rl/picard/http/HttpParser.rl"
 	{
       httpMajor *= 10;
       httpMajor += ( buf.get(p)) - '0';
@@ -3403,7 +3432,7 @@ case 1:
     }
 	break;
 	case 93:
-// line 272 "src/rl/picard/http/HttpParser.rl"
+// line 274 "src/rl/picard/http/HttpParser.rl"
 	{
       httpMinor *= 10;
       httpMinor += ( buf.get(p)) - '0';
@@ -3414,13 +3443,13 @@ case 1:
     }
 	break;
 	case 94:
-// line 281 "src/rl/picard/http/HttpParser.rl"
+// line 283 "src/rl/picard/http/HttpParser.rl"
 	{
       uriMark = new ChunkedValue(buf, p);
     }
 	break;
 	case 95:
-// line 285 "src/rl/picard/http/HttpParser.rl"
+// line 287 "src/rl/picard/http/HttpParser.rl"
 	{
       uriMark.push(p);
 
@@ -3437,7 +3466,7 @@ case 1:
     }
 	break;
 	case 96:
-// line 300 "src/rl/picard/http/HttpParser.rl"
+// line 302 "src/rl/picard/http/HttpParser.rl"
 	{
       if (contentLength >= ALMOST_MAX_LONG) {
         throw new HttpParserException("The content-length is WAY too big");
@@ -3448,7 +3477,7 @@ case 1:
     }
 	break;
 	case 97:
-// line 309 "src/rl/picard/http/HttpParser.rl"
+// line 311 "src/rl/picard/http/HttpParser.rl"
 	{
       // Hack to get Java to compile
       if (true) {
@@ -3457,7 +3486,7 @@ case 1:
     }
 	break;
 	case 98:
-// line 316 "src/rl/picard/http/HttpParser.rl"
+// line 318 "src/rl/picard/http/HttpParser.rl"
 	{
       if (isChunkedBody()) {
         throw new HttpParserException("The message head is invalid");
@@ -3471,7 +3500,7 @@ case 1:
     }
 	break;
 	case 99:
-// line 328 "src/rl/picard/http/HttpParser.rl"
+// line 330 "src/rl/picard/http/HttpParser.rl"
 	{
       if (isIdentityBody()) {
         throw new HttpParserException("The message head is invalid");
@@ -3485,7 +3514,7 @@ case 1:
     }
 	break;
 	case 100:
-// line 340 "src/rl/picard/http/HttpParser.rl"
+// line 342 "src/rl/picard/http/HttpParser.rl"
 	{
       flags |= CONN_CLOSE;
 
@@ -3495,7 +3524,7 @@ case 1:
     }
 	break;
 	case 101:
-// line 348 "src/rl/picard/http/HttpParser.rl"
+// line 350 "src/rl/picard/http/HttpParser.rl"
 	{
       flags |= UPGRADE;
 
@@ -3505,7 +3534,7 @@ case 1:
     }
 	break;
 	case 102:
-// line 356 "src/rl/picard/http/HttpParser.rl"
+// line 358 "src/rl/picard/http/HttpParser.rl"
 	{
       if (isHttp11()) {
         flags |= EXPECT_CONTINUE;
@@ -3517,7 +3546,7 @@ case 1:
     }
 	break;
 	case 103:
-// line 366 "src/rl/picard/http/HttpParser.rl"
+// line 368 "src/rl/picard/http/HttpParser.rl"
 	{
       reset();
 
@@ -3526,12 +3555,12 @@ case 1:
     }
 	break;
 	case 104:
-// line 373 "src/rl/picard/http/HttpParser.rl"
+// line 375 "src/rl/picard/http/HttpParser.rl"
 	{
       // Not parsing the HTTP message head anymore
       flags ^= PARSING_HEAD;
 
-      Buffer body = null;
+      Buffer b = null;
 
       if (isUpgrade()) {
         cs = 753;
@@ -3539,15 +3568,35 @@ case 1:
       else if (isRequest() || (status >= 200 && status != 204 && status != 304)){
         if (isIdentityBody()) {
           int remaining = buf.limit() - p;
+          int toRead;
 
           // If the remaining content length is present in the
           // buffer, just include it in the callback.
           if (remaining >= contentLength && !isExpectingContinue()) {
-            int toRead = (int) contentLength;
+            toRead = (int) contentLength;
+
             ++p;
-            body = slice(buf, p, p + toRead);
+
+            b = slice(buf, p, p + toRead);
             p += toRead - 1;
             contentLength = 0;
+          }
+          // If the entire body is less than a set maximum (default 4kb), just
+          // allocate a new buffer and copy the chunks into it.
+          else if (contentLength <= MAX_BUFFERED && !isExpectingContinue()) {
+            body   = Buffer.allocate((int) contentLength);
+            toRead = remaining - 1;
+
+            if (remaining > 1) {
+              ++p;
+
+              body.put(buf, p, toRead);
+
+              contentLength -= toRead;
+              p += toRead;
+            }
+
+            cs = 751;
           }
           else {
             cs = 751;
@@ -3561,41 +3610,63 @@ case 1:
         }
       }
 
-      if (isRequest()) {
-        callback.request(this, headers, body);
-      }
-      else {
-        callback.response(this, status, headers, body);
-      }
+      if (body == null) {
+        if (isRequest()) {
+          callback.request(this, headers, b);
+        }
+        else {
+          callback.response(this, status, headers, b);
+        }
 
-      // Unset references to allow the GC to reclaim the memory
-      resetHeadState();
+        // Unset references to allow the GC to reclaim the memory
+        resetHeadState();
+      }
     }
 	break;
 	case 105:
-// line 422 "src/rl/picard/http/HttpParser.rl"
+// line 446 "src/rl/picard/http/HttpParser.rl"
 	{
       int toRead = min(contentLength, buf.limit() - p);
 
       if (toRead > 0) {
         contentLength -= toRead;
 
-        callback.body(this, slice(buf, p, p + toRead));
+        if (body != null) {
+          body.put(buf, p, toRead);
 
-        p += toRead - 1;
+          p += toRead - 1;
 
-        if (contentLength == 0) {
-          callback.body(this, null);
+          if (contentLength == 0) {
+            body.flip();
+
+            if (isRequest()) {
+              callback.request(this, headers, body);
+            }
+            else {
+              callback.response(this, status, headers, body);
+            }
+
+            body = null;
+            resetHeadState();
+
+            cs = 1;
+          }
         }
+        else {
+          callback.body(this, slice(buf, p, p + toRead));
 
-        if (contentLength == 0) {
-          cs = 1;
+          p += toRead - 1;
+
+          if (contentLength == 0) {
+            callback.body(this, null);
+            cs = 1;
+          }
         }
       }
     }
 	break;
 	case 106:
-// line 442 "src/rl/picard/http/HttpParser.rl"
+// line 486 "src/rl/picard/http/HttpParser.rl"
 	{
       int toRead = buf.limit() - p;
 
@@ -3606,7 +3677,7 @@ case 1:
     }
 	break;
 	case 107:
-// line 451 "src/rl/picard/http/HttpParser.rl"
+// line 495 "src/rl/picard/http/HttpParser.rl"
 	{
       int toRead = min(contentLength, buf.limit() - p);
 
@@ -3620,7 +3691,7 @@ case 1:
     }
 	break;
 	case 108:
-// line 463 "src/rl/picard/http/HttpParser.rl"
+// line 507 "src/rl/picard/http/HttpParser.rl"
 	{
       int remaining = buf.limit() - p;
 
@@ -3631,19 +3702,19 @@ case 1:
     }
 	break;
 	case 109:
-// line 472 "src/rl/picard/http/HttpParser.rl"
+// line 516 "src/rl/picard/http/HttpParser.rl"
 	{
       callback.body(this, null);
     }
 	break;
 	case 110:
-// line 476 "src/rl/picard/http/HttpParser.rl"
+// line 520 "src/rl/picard/http/HttpParser.rl"
 	{
       contentLength = 0;
     }
 	break;
 	case 111:
-// line 480 "src/rl/picard/http/HttpParser.rl"
+// line 524 "src/rl/picard/http/HttpParser.rl"
 	{
       if (contentLength >= ALMOST_MAX_LONG_HEX) {
         throw new HttpParserException("The content-length is WAY too big");
@@ -3654,7 +3725,7 @@ case 1:
     }
 	break;
 	case 112:
-// line 489 "src/rl/picard/http/HttpParser.rl"
+// line 533 "src/rl/picard/http/HttpParser.rl"
 	{
       if (true) {
         throw new HttpParserException("Invalid chunk size");
@@ -3662,7 +3733,7 @@ case 1:
     }
 	break;
 	case 114:
-// line 499 "src/rl/picard/http/HttpParser.rl"
+// line 543 "src/rl/picard/http/HttpParser.rl"
 	{
       if (++hread > MAX_HEADER_SIZE) {
         throw new HttpParserException("The HTTP message head is too large");
@@ -3670,7 +3741,7 @@ case 1:
     }
 	break;
 	case 115:
-// line 505 "src/rl/picard/http/HttpParser.rl"
+// line 549 "src/rl/picard/http/HttpParser.rl"
 	{
       if (true) {
         String msg = parseErrorMsg(buf, p);
@@ -3737,7 +3808,7 @@ case 1:
       }
   }
 	break;
-// line 3741 "src/jvm/picard/http/HttpParser.java"
+// line 3812 "src/jvm/picard/http/HttpParser.java"
 			}
 		}
 	}
@@ -3748,12 +3819,12 @@ case 2:
 	while ( _nacts-- > 0 ) {
 		switch ( _http_actions[_acts++] ) {
 	case 113:
-// line 495 "src/rl/picard/http/HttpParser.rl"
+// line 539 "src/rl/picard/http/HttpParser.rl"
 	{
       cs = 1;
     }
 	break;
-// line 3757 "src/jvm/picard/http/HttpParser.java"
+// line 3828 "src/jvm/picard/http/HttpParser.java"
 		}
 	}
 
@@ -3773,7 +3844,7 @@ case 4:
 	while ( __nacts-- > 0 ) {
 		switch ( _http_actions[__acts++] ) {
 	case 97:
-// line 309 "src/rl/picard/http/HttpParser.rl"
+// line 311 "src/rl/picard/http/HttpParser.rl"
 	{
       // Hack to get Java to compile
       if (true) {
@@ -3782,7 +3853,7 @@ case 4:
     }
 	break;
 	case 112:
-// line 489 "src/rl/picard/http/HttpParser.rl"
+// line 533 "src/rl/picard/http/HttpParser.rl"
 	{
       if (true) {
         throw new HttpParserException("Invalid chunk size");
@@ -3790,7 +3861,7 @@ case 4:
     }
 	break;
 	case 115:
-// line 505 "src/rl/picard/http/HttpParser.rl"
+// line 549 "src/rl/picard/http/HttpParser.rl"
 	{
       if (true) {
         String msg = parseErrorMsg(buf, p);
@@ -3798,7 +3869,7 @@ case 4:
       }
     }
 	break;
-// line 3802 "src/jvm/picard/http/HttpParser.java"
+// line 3873 "src/jvm/picard/http/HttpParser.java"
 		}
 	}
 	}
@@ -3808,7 +3879,7 @@ case 5:
 	break; }
 	}
 
-// line 713 "src/rl/picard/http/HttpParser.rl"
+// line 784 "src/rl/picard/http/HttpParser.rl"
       }
     }
     catch (RuntimeException e) {

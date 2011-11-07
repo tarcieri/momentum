@@ -256,7 +256,7 @@
   {"content-length" "1000"})
 
 (deftest parsing-standard-headers
-  (doseq [expected standard-headers]
+  (doseq [expected (disj standard-headers "content-length")]
     (let [[[_ [hdrs]]]
           (parsing
            (str "GET / HTTP/1.1\r\n"
@@ -282,8 +282,8 @@
 (deftest parsing-content-lengths
   (is (parsed
        (str "GET / HTTP/1.1\r\n"
-            "Content-Length: 1000\r\n\r\n")
-       :request [(assoc get-request "content-length" "1000") :chunked]))
+            "Content-Length: 10000\r\n\r\n")
+       :request [(assoc get-request "content-length" "10000") :chunked]))
 
   (is (parsed
        (str "GET / HTTP/1.1\r\n"
@@ -362,18 +362,13 @@
        [(str "GET / HTTP/1.1\r\n"
              "Content-Length: 5\r\n\r\n")
         "Hello"]
-       :request [(assoc get-request "content-length" "5") :chunked]
-       :body    "Hello"
-       :body    nil))
+       :request [(assoc get-request "content-length" "5") "Hello"]))
 
   (is (parsed
        [(str "GET / HTTP/1.1\r\n"
              "Content-Length: 10\r\n\r\n")
         "Hello" "World"]
-       :request [(assoc get-request "content-length" "10") :chunked]
-       :body    "Hello"
-       :body    "World"
-       :body    nil))
+       :request [(assoc get-request "content-length" "10") "HelloWorld"]))
 
   (is (parsed
        (str "GET / HTTP/1.1\r\n"
@@ -410,11 +405,25 @@
                    "content-length" "5") "Hello"]))
 
   (is (parsed
-       (str "POST / HTTP/1.1\r\n"
-            "Content-Length: 10000\r\n\r\n"
-            "TROLLOLOLOLOLLLOLOLOLLOL")
+       (apply str
+              "POST / HTTP/1.1\r\n"
+              "Content-Length: 10000\r\n\r\n"
+              (repeat 5000 "x"))
        :request [(assoc post-request "content-length" "10000") :chunked]
-       :body    "TROLLOLOLOLOLLLOLOLOLLOL")))
+       :body    (apply str (repeat 5000 "x"))))
+
+  (is (parsed
+       [(apply str
+               "POST / HTTP/1.1\r\n"
+               "Content-Length: 10000\r\n\r\n"
+               (repeat 100 "x"))
+        (apply str (repeat 8000 "y"))
+        (apply str (repeat 1900 "z"))]
+       :request [(assoc post-request "content-length" "10000") :chunked]
+       :body    (apply str (repeat 100 "x"))
+       :body    (apply str (repeat 8000 "y"))
+       :body    (apply str (repeat 1900 "z"))
+       :body    nil)))
 
 (deftest parsing-chunked-bodies
   (is (parsed
@@ -546,10 +555,7 @@
         "CONTENT-LENGTH: 11\r\n\r\nHello world"
         "GET / HTTP/1.1\r\n\r\n"]
        :request [(assoc get-request "host" "localhost") nil]
-       :request [(assoc post-request "content-length" "11") :chunked]
-       :body    "Hello "
-       :body    "world"
-       :body    nil
+       :request [(assoc post-request "content-length" "11") "Hello world"]
        :request [(assoc post-request "content-length" "11") "Hello world"]
        :request [get-request nil]))
 
@@ -625,21 +631,21 @@
       ;; Simple single no content response
       (is (parsed
            (str "HTTP/1.1 204 No Content\r\n\r\n")
-           :response [204 {} nil]))
+           :response [204 {:http-version [1 1]} nil]))
 
       ;; Multiple sequential no content responses
       (is (parsed
            (str "HTTP/1.1 204 No Content\r\n\r\n"
                 "HTTP/1.1 204 No Content\r\n\r\n")
-           :response [204 {} nil]
-           :response [204 {} nil]))
+           :response [204 {:http-version [1 1]} nil]
+           :response [204 {:http-version [1 1]} nil]))
 
       ;; Connection: close response with no body info
       (is (parsed
            (str "HTTP/1.1 200 OK\r\n"
                 "Connection: close\r\n\r\n"
                 "Foo Bar")
-           :response [200 {"connection" "close"} nil]
+           :response [200 {:http-version [1 1] "connection" "close"} nil]
            :body     "Foo Bar"))
 
       ;; Handling 100 continue
@@ -648,8 +654,8 @@
                 "HTTP/1.1 200 OK\r\n"
                 "Content-Length: 5\r\n\r\n"
                 "Hello")
-           :response [100 {} nil]
-           :response [200 {"content-length" "5"} "Hello"]))
+           :response [100 {:http-version [1 1]} nil]
+           :response [200 {:http-version [1 1] "content-length" "5"} "Hello"]))
 
       ;; 204 responses do not have a body
       (is (parsed
@@ -658,9 +664,9 @@
                 "HTTP/1.1 204 No Content\r\n"
                 "Transfer-Encoding: chunked\r\n\r\n"
                 "HTTP/1.1 204 No Content\r\n\r\n")
-           :response [204 {"content-length" "5"} nil]
-           :response [204 {"transfer-encoding" "chunked"} nil]
-           :response [204 {} nil]))
+           :response [204 {:http-version [1 1] "content-length" "5"} nil]
+           :response [204 {:http-version [1 1] "transfer-encoding" "chunked"} nil]
+           :response [204 {:http-version [1 1]} nil]))
 
       ;; 304 responses do not have a body
       (is (parsed
@@ -669,15 +675,15 @@
                 "HTTP/1.1 304 Not Modified\r\n"
                 "Transfer-Encoding: chunked\r\n\r\n"
                 "HTTP/1.1 304 Not Modified\r\n\r\n")
-           :response [304 {"content-length" "5"} nil]
-           :response [304 {"transfer-encoding" "chunked"} nil]
-           :response [304 {} nil]))
+           :response [304 {:http-version [1 1] "content-length" "5"} nil]
+           :response [304 {:http-version [1 1] "transfer-encoding" "chunked"} nil]
+           :response [304 {:http-version [1 1]} nil]))
 
       ;; Handles responses with no status reasons
       (is (parsed
            (str "HTTP/1.1 200\r\n"
                 "Content-length: 5\r\n\r\n"
                 "Hello")
-           :response [200 {"content-length" "5"} "Hello"])))))
+           :response [200 {:http-version [1 1] "content-length" "5"} "Hello"])))))
 
 (use-fixtures :each #(with-parser request %))
