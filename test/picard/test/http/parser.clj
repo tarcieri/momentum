@@ -423,7 +423,20 @@
        :body    (apply str (repeat 100 "x"))
        :body    (apply str (repeat 8000 "y"))
        :body    (apply str (repeat 1900 "z"))
-       :body    nil)))
+       :body    nil))
+
+  (is (parsed
+       (str "POST / HTTP/1.1\r\n"
+            "Content-Length: 5\r\n\r\n"
+            "HelloG")
+       :request [(assoc post-request "content-length" "5") "Hello"]))
+
+  (is (parsed
+       [(str "POST / HTTP/1.1\r\n"       ;; 16
+             "Content-Length: 5\r\n\r\n" ;; 37
+             "Hell")                     ;; 41
+        "o"]
+       :request [(assoc post-request "content-length" "5") "Hello"])))
 
 (deftest parsing-chunked-bodies
   (is (parsed

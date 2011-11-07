@@ -388,7 +388,7 @@ public final class HttpParser extends AFn {
 
           // If the remaining content length is present in the
           // buffer, just include it in the callback.
-          if (remaining >= contentLength && !isExpectingContinue()) {
+          if (remaining > contentLength && !isExpectingContinue()) {
             toRead = (int) contentLength;
 
             ++fpc;
@@ -409,7 +409,7 @@ public final class HttpParser extends AFn {
               body.put(buf, fpc, toRead);
 
               contentLength -= toRead;
-              fpc += toRead;
+              fpc += toRead - 1;
             }
 
             fnext identity_body;

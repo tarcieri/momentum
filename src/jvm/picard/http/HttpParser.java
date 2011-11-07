@@ -3572,7 +3572,7 @@ case 1:
 
           // If the remaining content length is present in the
           // buffer, just include it in the callback.
-          if (remaining >= contentLength && !isExpectingContinue()) {
+          if (remaining > contentLength && !isExpectingContinue()) {
             toRead = (int) contentLength;
 
             ++p;
@@ -3593,7 +3593,7 @@ case 1:
               body.put(buf, p, toRead);
 
               contentLength -= toRead;
-              p += toRead;
+              p += toRead - 1;
             }
 
             cs = 751;
