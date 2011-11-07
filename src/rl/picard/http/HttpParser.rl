@@ -379,27 +379,37 @@ public final class HttpParser extends AFn {
       if (isUpgrade()) {
         fnext upgraded;
       }
-      else if (isIdentityBody()) {
-        int remaining = buf.limit() - fpc;
+      else if (isRequest() || (status >= 200 && status != 204 && status != 304)){
+        if (isIdentityBody()) {
+          int remaining = buf.limit() - fpc;
 
-        // If the remaining content length is present in the
-        // buffer, just include it in the callback.
-        if (remaining >= contentLength && !isExpectingContinue()) {
-          int toRead = (int) contentLength;
-          ++fpc;
-          body = slice(buf, fpc, fpc + toRead);
-          fpc += toRead - 1;
-          contentLength = 0;
+          // If the remaining content length is present in the
+          // buffer, just include it in the callback.
+          if (remaining >= contentLength && !isExpectingContinue()) {
+            int toRead = (int) contentLength;
+            ++fpc;
+            body = slice(buf, fpc, fpc + toRead);
+            fpc += toRead - 1;
+            contentLength = 0;
+          }
+          else {
+            fnext identity_body;
+          }
         }
-        else {
-          fnext identity_body;
+        else if (isChunkedBody()) {
+          fnext chunked_body;
+        }
+        else if (isResponse() && isConnectionClose()) {
+          fnext untracked_body;
         }
       }
-      else if (isChunkedBody()) {
-        fnext chunked_body;
-      }
 
-      callback.message(this, headers, body);
+      if (isRequest()) {
+        callback.request(this, headers, body);
+      }
+      else {
+        callback.response(this, status, headers, body);
+      }
 
       // Unset references to allow the GC to reclaim the memory
       resetHeadState();
@@ -426,6 +436,15 @@ public final class HttpParser extends AFn {
         if (contentLength == 0) {
           fnext main;
         }
+      }
+    }
+
+    action handle_untracked_body {
+      int toRead = buf.limit() - fpc;
+
+      if (toRead > 0) {
+        callback.body(this, slice(buf, fpc, fpc + toRead));
+        fpc += toRead - 1;
       }
     }
 
@@ -603,7 +622,8 @@ public final class HttpParser extends AFn {
   }
 
   public boolean hasBody() {
-    return isIdentityBody() || isChunkedBody();
+    return (isIdentityBody() || isChunkedBody()) &&
+      (isRequest() || (status >= 200 && status != 204 && status != 304));
   }
 
   public boolean isIdentityBody() {
@@ -616,6 +636,10 @@ public final class HttpParser extends AFn {
 
   public boolean isKeepAlive() {
     return ( flags & KEEP_ALIVE ) == KEEP_ALIVE;
+  }
+
+  public boolean isConnectionClose() {
+    return ( flags & CONN_CLOSE ) == CONN_CLOSE;
   }
 
   public boolean isUpgrade() {

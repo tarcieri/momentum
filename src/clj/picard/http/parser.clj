@@ -44,8 +44,11 @@
          :else
          (assoc! headers name (conj existing value)))))
 
-    (message [_ parser hdrs body]
+    (request [_ parser hdrs body]
       (f :request [(request-headers hdrs parser) (map-body body parser)]))
+
+    (response [_ parser status hdrs body]
+      (f :response [status (persistent! hdrs) (map-body body parser)]))
 
     (body [_ parser buf]
       (f :body buf))

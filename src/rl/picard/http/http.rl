@@ -36,7 +36,7 @@
          ;
 
   # === HTTP status code
-  status_code = ( digit digit digit ) % http_status_digit;
+  status_code = ( digit digit digit ) $ http_status_digit;
 
   # === HTTP request URI
   request_uri = ( TEXT -- LWSP ) +
@@ -217,6 +217,8 @@
 
   identity_body := identity_chunk *
                      $! something_went_wrong;
+
+  untracked_body := any $ handle_untracked_body;
 
   # === Upgraded connections
   upgraded := any * $ handle_message;

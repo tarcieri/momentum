@@ -619,4 +619,65 @@
        HttpParserException
        (parsing (concat ["GET / HTTP/1.1\r\n"] (repeat 15 "a"))))))
 
+(deftest http-responses
+  (with-parser response
+    (fn []
+      ;; Simple single no content response
+      (is (parsed
+           (str "HTTP/1.1 204 No Content\r\n\r\n")
+           :response [204 {} nil]))
+
+      ;; Multiple sequential no content responses
+      (is (parsed
+           (str "HTTP/1.1 204 No Content\r\n\r\n"
+                "HTTP/1.1 204 No Content\r\n\r\n")
+           :response [204 {} nil]
+           :response [204 {} nil]))
+
+      ;; Connection: close response with no body info
+      (is (parsed
+           (str "HTTP/1.1 200 OK\r\n"
+                "Connection: close\r\n\r\n"
+                "Foo Bar")
+           :response [200 {"connection" "close"} nil]
+           :body     "Foo Bar"))
+
+      ;; Handling 100 continue
+      (is (parsed
+           (str "HTTP/1.1 100 Continue\r\n\r\n"
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Length: 5\r\n\r\n"
+                "Hello")
+           :response [100 {} nil]
+           :response [200 {"content-length" "5"} "Hello"]))
+
+      ;; 204 responses do not have a body
+      (is (parsed
+           (str "HTTP/1.1 204 No Content\r\n"
+                "Content-Length: 5\r\n\r\n"
+                "HTTP/1.1 204 No Content\r\n"
+                "Transfer-Encoding: chunked\r\n\r\n"
+                "HTTP/1.1 204 No Content\r\n\r\n")
+           :response [204 {"content-length" "5"} nil]
+           :response [204 {"transfer-encoding" "chunked"} nil]
+           :response [204 {} nil]))
+
+      ;; 304 responses do not have a body
+      (is (parsed
+           (str "HTTP/1.1 304 Not Modified\r\n"
+                "Content-Length: 5\r\n\r\n"
+                "HTTP/1.1 304 Not Modified\r\n"
+                "Transfer-Encoding: chunked\r\n\r\n"
+                "HTTP/1.1 304 Not Modified\r\n\r\n")
+           :response [304 {"content-length" "5"} nil]
+           :response [304 {"transfer-encoding" "chunked"} nil]
+           :response [304 {} nil]))
+
+      ;; Handles responses with no status reasons
+      (is (parsed
+           (str "HTTP/1.1 200\r\n"
+                "Content-length: 5\r\n\r\n"
+                "Hello")
+           :response [200 {"content-length" "5"} "Hello"])))))
+
 (use-fixtures :each #(with-parser request %))

@@ -10,7 +10,10 @@ public interface HttpParserCallback {
     void header(Object headers, String name, String value);
 
     // The HTTP request head is parsed
-    void message(HttpParser parser, Object headers, Buffer body);
+    void request(HttpParser parser, Object headers, Buffer body);
+
+    // The HTTP response head is parsed
+    void response(HttpParser parser, int status, Object headers, Buffer body);
 
     // Called with body chunks
     void body(HttpParser parser, Buffer buf);
