@@ -2,6 +2,7 @@ package picard.http;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Queue;
 import clojure.lang.AFn;
 import picard.core.Buffer;
 
@@ -15,41 +16,6 @@ public final class HttpParser extends AFn {
   public enum MessageType {
     REQUEST,
     RESPONSE
-  }
-
-  public enum HttpMethod {
-    HEAD,
-    GET,
-    POST,
-    PUT,
-    DELETE,
-    CONNECT,
-    OPTIONS,
-    TRACE,
-
-    // webdav
-    COPY,
-    LOCK,
-    MKCOL,
-    MOVE,
-    PROPFIND,
-    PROPPATCH,
-    UNLOCK,
-
-    // subversion
-    REPORT,
-    MKACTIVITY,
-    CHECKOUT,
-    MERGE,
-
-    // upnp
-    MSEARCH,
-    NOTIFY,
-    SUBSCRIBE,
-    UNSUBSCRIBE,
-
-    // RFC-5789
-    PATCH
   }
 
   public static final byte SP = (byte) 0x20; // Space
@@ -72,6 +38,44 @@ public final class HttpParser extends AFn {
     -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1
   };
+
+  /*
+   * Listing out all the HTTP methods that we care about
+   */
+
+  // basic
+  public static final String MTH_HEAD    = "HEAD".intern();
+  public static final String MTH_GET     = "GET".intern();
+  public static final String MTH_POST    = "POST".intern();
+  public static final String MTH_PUT     = "PUT".intern();
+  public static final String MTH_DELETE  = "DELETE".intern();
+  public static final String MTH_CONNECT = "CONNECT".intern();
+  public static final String MTH_OPTIONS = "OPTIONS".intern();
+  public static final String MTH_TRACE   = "TRACE".intern();
+
+  // webdav
+  public static final String MTH_COPY      = "COPY".intern();
+  public static final String MTH_LOCK      = "LOCK".intern();
+  public static final String MTH_MKCOL     = "MKCOL".intern();
+  public static final String MTH_MOVE      = "MOVE".intern();
+  public static final String MTH_PROPFIND  = "PROPFIND".intern();
+  public static final String MTH_PROPPATCH = "PROPPATCH".intern();
+  public static final String MTH_UNLOCK    = "UNLOCK".intern();
+
+  // subversion
+  public static final String MTH_REPORT     = "REPORT".intern();
+  public static final String MTH_MKACTIVITY = "MKACTIVITY".intern();
+  public static final String MTH_CHECKOUT   = "CHECKOUT".intern();
+  public static final String MTH_MERGE      = "MERGE".intern();
+
+  // upnp
+  public static final String MTH_MSEARCH     = "MSEARCH".intern();
+  public static final String MTH_NOTIFY      = "NOTIFY".intern();
+  public static final String MTH_SUBSCRIBE   = "SUBSCRIBE".intern();
+  public static final String MTH_UNSUBSCRIBE = "UNSUBSCRIBE".intern();
+
+  // RFC-5789
+  public static final String MTH_PATCH = "PATCH".intern();
 
   // Listing out all of the headers that we are going to use
   public static final String HDR_ACCEPT                    = "accept".intern();
@@ -161,32 +165,34 @@ public final class HttpParser extends AFn {
       if (type != MessageType.RESPONSE) {
         throw new HttpParserException("Expecting HTTP request but got response");
       }
+
+      method = methodQueue.poll();
     }
 
-    action method_head        { method = HttpMethod.HEAD;        }
-    action method_get         { method = HttpMethod.GET;         }
-    action method_post        { method = HttpMethod.POST;        }
-    action method_put         { method = HttpMethod.PUT;         }
-    action method_delete      { method = HttpMethod.DELETE;      }
-    action method_connect     { method = HttpMethod.CONNECT;     }
-    action method_options     { method = HttpMethod.OPTIONS;     }
-    action method_trace       { method = HttpMethod.TRACE;       }
-    action method_copy        { method = HttpMethod.COPY;        }
-    action method_lock        { method = HttpMethod.LOCK;        }
-    action method_mkcol       { method = HttpMethod.MKCOL;       }
-    action method_move        { method = HttpMethod.MOVE;        }
-    action method_propfind    { method = HttpMethod.PROPFIND;    }
-    action method_proppatch   { method = HttpMethod.PROPPATCH;   }
-    action method_unlock      { method = HttpMethod.UNLOCK;      }
-    action method_report      { method = HttpMethod.REPORT;      }
-    action method_mkactivity  { method = HttpMethod.MKACTIVITY;  }
-    action method_checkout    { method = HttpMethod.CHECKOUT;    }
-    action method_merge       { method = HttpMethod.MERGE;       }
-    action method_msearch     { method = HttpMethod.MSEARCH;     }
-    action method_notify      { method = HttpMethod.NOTIFY;      }
-    action method_subscribe   { method = HttpMethod.SUBSCRIBE;   }
-    action method_unsubscribe { method = HttpMethod.UNSUBSCRIBE; }
-    action method_patch       { method = HttpMethod.PATCH;       }
+    action method_head        { method = MTH_HEAD;        }
+    action method_get         { method = MTH_GET;         }
+    action method_post        { method = MTH_POST;        }
+    action method_put         { method = MTH_PUT;         }
+    action method_delete      { method = MTH_DELETE;      }
+    action method_connect     { method = MTH_CONNECT;     }
+    action method_options     { method = MTH_OPTIONS;     }
+    action method_trace       { method = MTH_TRACE;       }
+    action method_copy        { method = MTH_COPY;        }
+    action method_lock        { method = MTH_LOCK;        }
+    action method_mkcol       { method = MTH_MKCOL;       }
+    action method_move        { method = MTH_MOVE;        }
+    action method_propfind    { method = MTH_PROPFIND;    }
+    action method_proppatch   { method = MTH_PROPPATCH;   }
+    action method_unlock      { method = MTH_UNLOCK;      }
+    action method_report      { method = MTH_REPORT;      }
+    action method_mkactivity  { method = MTH_MKACTIVITY;  }
+    action method_checkout    { method = MTH_CHECKOUT;    }
+    action method_merge       { method = MTH_MERGE;       }
+    action method_msearch     { method = MTH_MSEARCH;     }
+    action method_notify      { method = MTH_NOTIFY;      }
+    action method_subscribe   { method = MTH_SUBSCRIBE;   }
+    action method_unsubscribe { method = MTH_UNSUBSCRIBE; }
+    action method_patch       { method = MTH_PATCH;       }
 
     action hn_accept                    { setHeaderName(HDR_ACCEPT);                    }
     action hn_accept_charset            { setHeaderName(HDR_ACCEPT_CHARSET);            }
@@ -320,7 +326,9 @@ public final class HttpParser extends AFn {
         throw new HttpParserException("The message head is invalid");
       }
 
-      flags |= IDENTITY_BODY;
+      if (isRequest() || method != MTH_HEAD) {
+        flags |= IDENTITY_BODY;
+      }
 
       headerName  = null;
       headerValue = null;
@@ -332,7 +340,9 @@ public final class HttpParser extends AFn {
         throw new HttpParserException("The message head is invalid");
       }
 
-      flags |= CHUNKED_BODY;
+      if (isRequest() || method != MTH_HEAD) {
+        flags |= CHUNKED_BODY;
+      }
 
       headerName  = null;
       headerValue = null;
@@ -628,7 +638,7 @@ public final class HttpParser extends AFn {
   * HTTP message being currently parsed is a response, then this
   * will be nil.
   */
-  private HttpMethod method;
+  private String method;
 
   /*
   * The response status if the current message being parsed is a
@@ -656,23 +666,38 @@ public final class HttpParser extends AFn {
   private Buffer body;
 
   /*
+   * A queue of the HTTP methods from the requests that generated the responses
+   * being parsed.
+   *
+   * This is only used when parsing HTTP responses since when making a HEAD
+   * request, a response will be returned containing information indicating
+   * that there will be a response body but there will be no body. Before
+   * parsing an HTTP response body, the parser will poll this queue. If the
+   * value is HEAD (as an interned string), then the response body will be
+   * skipped.
+   */
+  final private Queue<String> methodQueue;
+
+  /*
    * The object that gets called on various parse events.
    */
-  private HttpParserCallback callback;
+  final private HttpParserCallback callback;
 
   public final static HttpParser request(HttpParserCallback callback) {
-    return new HttpParser(MessageType.REQUEST, callback);
+    return new HttpParser(MessageType.REQUEST, null, callback);
   }
 
-  public final static HttpParser response(HttpParserCallback callback) {
-    return new HttpParser(MessageType.RESPONSE, callback);
+  public final static HttpParser response(Queue<String> q, HttpParserCallback callback) {
+    return new HttpParser(MessageType.RESPONSE, q, callback);
   }
 
-  public HttpParser(MessageType type, HttpParserCallback callback) {
+  public HttpParser(MessageType type, Queue<String> q, HttpParserCallback callback) {
     %% write init;
 
-    this.type     = type;
-    this.callback = callback;
+    this.type        = type;
+    this.callback    = callback;
+    this.methodQueue = q;
+
     reset();
   }
 
@@ -714,7 +739,7 @@ public final class HttpParser extends AFn {
   }
 
   public boolean isUpgrade() {
-    return ( flags & UPGRADE ) == UPGRADE || method == HttpMethod.CONNECT;
+    return ( flags & UPGRADE ) == UPGRADE || method == MTH_CONNECT;
   }
 
   public boolean isExpectingContinue() {
@@ -725,7 +750,7 @@ public final class HttpParser extends AFn {
     return ( flags & ERROR ) == ERROR;
   }
 
-  public HttpMethod getMethod() {
+  public String getMethod() {
     return method;
   }
 

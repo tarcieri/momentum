@@ -29,6 +29,7 @@
     URI]))
 
 (def SP          (buffer " "))
+(def QM          (buffer "?"))
 (def CRLF        (buffer "\r\n"))
 (def http-1-0    [1 0])
 (def http-1-1    [1 1])
@@ -169,6 +170,14 @@
         (p val)
         (f evt val)))))
 
+(defn response-parser
+  [queue f]
+  (let [p (parser/response queue f)]
+    (fn [evt val]
+      (if (= :message evt)
+        (p val)
+        (f evt val)))))
+
 ;; Converting HTTP messages to buffers
 
 (def http-version-bytes
@@ -208,6 +217,24 @@
         ver (http-version-to-bytes version)
         rsn (status-to-reason status)]
     (write buf ver SP (str status) SP rsn CRLF)
+    (write-message-headers buf hdrs)
+    (dn :message (flip buf)))
+
+  (when (and body (not (keyword? body)))
+    (dn :message body)))
+
+(defn- write-request-path
+  [buf {path :path-info pfx :script-name qs :query-string}]
+  (write buf (or pfx "") path)
+  (when (seq qs)
+    (write buf QM qs)))
+
+(defn send-request
+  [dn {version :http-version method :request-method :as hdrs} body]
+  (let [buf (dynamic-buffer)]
+    (write buf method SP)
+    (write-request-path buf hdrs)
+    (write buf SP (http-version-to-bytes version) CRLF)
     (write-message-headers buf hdrs)
     (dn :message (flip buf)))
 

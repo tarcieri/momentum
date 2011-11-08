@@ -305,7 +305,7 @@
       (is (next-msgs
            ch2
            :open     :dont-care
-           :response [200 {:http-version [1 1] "foo" "bar"} nil]
+           :response [200 {:http-version [1 1] "foo" "bar" "transfer-encoding" "chunked"} nil]
            :done     nil))
 
       (Thread/sleep 50)))
@@ -395,7 +395,7 @@
       (is (next-msgs
            ch2
            :open     :dont-care
-           :response [304 {:http-version [1 1]} nil]
+           :response [304 {:http-version [1 1] "transfer-encoding" "chunked"} nil]
            :done     nil))
 
       (Thread/sleep 50)))
@@ -481,8 +481,7 @@
 
   (is (next-msgs
        ch2
-       :response [200 {:http-version    [1 1]
-                       "content-length" "5"} "Hello"]
+       :response [200 {:http-version    [1 1] "content-length" "5"} "Hello"]
        :done nil)))
 
 ;; (defcoretest issuing-immediate-abort)

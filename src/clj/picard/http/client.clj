@@ -6,11 +6,15 @@
    [picard.net.client :as net])
   (:import
    [picard.http
-    HttpClientCodec]))
+    HttpClientCodec]
+   [java.util.concurrent
+    LinkedBlockingQueue]))
 
 (declare
  handle-request
  handle-response)
+
+(def HEAD (.intern "HEAD"))
 
 (defrecord ExchangeState
     [upstream
@@ -21,20 +25,22 @@
      chunked?
      head?
      expecting-100?
+     queue
      opts])
 
 (defn- mk-initial-state
-  [downstream opts]
+  [downstream queue opts]
   (ExchangeState.
-   nil             ;; upstream
-   downstream      ;; downstream
-   handle-response ;; next-up-fn
-   handle-request  ;; next-dn-fn
-   true            ;; keepalive?
-   false           ;; chunked?
-   false           ;; head?
-   false           ;; expecting-100?
-   opts))          ;; opts
+   nil              ;; upstream
+   downstream       ;; downstream
+   handle-response  ;; next-up-fn
+   handle-request   ;; next-dn-fn
+   true             ;; keepalive?
+   false            ;; chunked?
+   false            ;; head?
+   false            ;; expecting-100?
+   queue            ;; queue
+   opts))           ;; opts
 
 (defn- not-expecting-message
   [evt val]
@@ -137,7 +143,7 @@
     (throw (Exception. "Expecting a :body event")))
 
   (if chunk
-    ((.downstream current-state) :message (chunk->netty-chunk chunk))
+    (send-chunk (.downstream current-state) (.chunked? current-state) chunk)
     (swap-then!
      state
      (fn [current-state]
@@ -148,24 +154,23 @@
          (assoc current-state
            :next-dn-fn awaiting-response)))
      (fn [current-state]
-       (let [downstream (.downstream current-state)
-             chunked?   (.chunked? current-state)]
-         (cond
-          chunk    (downstream :message (chunk->netty-chunk chunk))
-          chunked? (downstream :message last-chunk))
-         (maybe-finalize-exchange current-state))))))
+       (send-chunk (.downstream current-state) (.chunked? current-state) chunk)
+       (maybe-finalize-exchange current-state)))))
 
 (defn- handle-request
   [state evt request current-state]
   (when-not (= :request evt)
     (throw (Exception. "Expecting a :request event")))
 
-  (let [[hdrs body]  request
+  (let [[{method :request-method :as hdrs} body]  request
+        method       (.intern method)
         hdrs         (or hdrs {})
         keepalive?   (keepalive-request? request)
-        head?        (= "HEAD" (hdrs :request-method))
-        chunked?     (and (= (hdrs "transfer-encoding" "chunked")) (not head?))
-        expects-100? (expecting-100? request)]
+        head?        (identical? HEAD method)
+        chunked?     (and (= (hdrs "transfer-encoding") "chunked") (not head?))
+        expects-100? (expecting-100? request)
+        queue        (.queue current-state)]
+    (.put queue method)
     (swap-then!
      state
      (fn [current-state]
@@ -178,8 +183,7 @@
                            stream-or-finalize-request
                            awaiting-response)))
      (fn [current-state]
-       (let [dn (.downstream current-state)]
-         (dn :message (request->netty-request hdrs body)))))))
+       (send-request (.downstream current-state) hdrs body)))))
 
 (defn- mk-downstream-fn
   [state dn]
@@ -200,35 +204,33 @@
 (defn proto
   [app opts]
   (fn [dn]
-    (let [state (atom (mk-initial-state dn opts))
+    (let [queue   (LinkedBlockingQueue.)
+          state   (atom (mk-initial-state dn queue opts))
           next-up (app (mk-downstream-fn state dn))]
       ;; Save off the upstream function
       (swap! state #(assoc % :upstream next-up))
       ;; Return the protocol upstream function
-      (fn [evt val]
-        (let [current-state @state]
-          (cond
-           (#{:response :body} evt)
-           (let [next-up-fn (.next-up-fn current-state)]
-             (next-up-fn state evt val current-state))
+      (response-parser
+       queue
+       (fn [evt val]
+         (let [current-state @state]
+           (cond
+            (#{:response :body} evt)
+            (let [next-up-fn (.next-up-fn current-state)]
+              (next-up-fn state evt val current-state))
 
-           (= :open evt)
-           (next-up evt (dissoc val :exchange-count))
+            (= :open evt)
+            (next-up evt (dissoc val :exchange-count))
 
-           (= :close evt)
-           (when (not= exchange-complete (.next-up-fn current-state))
-             (throw (Exception. "Connection reset by peer")))
+            (= :close evt)
+            (when (not= exchange-complete (.next-up-fn current-state))
+              (throw (Exception. "Connection reset by peer")))
 
-           (= :abort evt)
-           (next-up evt val)
+            (= :abort evt)
+            (next-up evt val)
 
-           :else
-           (next-up evt val)))))))
-
-(defn- http-pipeline
-  [p _]
-  (doto p
-    (.addLast "codec" (HttpClientCodec.))))
+            :else
+            (next-up evt val))))))))
 
 (def client net/client)
 
@@ -236,18 +238,13 @@
   {:keepalive 60
    :timeout   5})
 
-(defn- merge-opts
-  [opts]
-  (merge default-options opts {:pipeline-fn http-pipeline}))
-
 (def default-client (net/client {:pool {:keepalive 60}}))
 
 (def release net/release)
 
 (defn connect
   ([app opts]
-     (let [opts (merge-opts opts)]
-       (net/connect default-client (proto app opts) opts)))
+     (connect default-client app opts))
   ([client app opts]
-     (let [opts (merge-opts opts)]
+     (let [opts (merge default-options opts)]
        (net/connect client (proto app opts) opts))))

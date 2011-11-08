@@ -4,7 +4,9 @@
   (:import
    [picard.http
     HttpParser
-    HttpParserCallback]))
+    HttpParserCallback]
+   [java.util.concurrent
+    LinkedBlockingQueue]))
 
 (def BLANK "")
 
@@ -17,7 +19,7 @@
   (persistent!
    (assoc!
     hdrs
-    :request-method (.. parser getMethod toString)
+    :request-method (.. parser getMethod)
     :path-info      (.. parser getPathInfo)
     :script-name    BLANK
     :query-string   (.. parser getQueryString)
@@ -71,6 +73,7 @@
     (fn [buf] (.execute parser buf))))
 
 (defn response
-  [f]
-  (let [parser (HttpParser/response (mk-callback f))]
-    (fn [buf] (.execute parser buf))))
+  ([f] (response (LinkedBlockingQueue.) f))
+  ([queue f]
+     (let [parser (HttpParser/response queue (mk-callback f))]
+       (fn [buf] (.execute parser buf)))))

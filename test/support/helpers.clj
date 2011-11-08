@@ -196,14 +196,13 @@
        (catch TimeoutException err ["reading the channel timed out" nil])))))
 
 (defn assert-no-msgs-for
-  [msg chs]
+  [f msg chs]
   (Thread/sleep 50)
   (let [received (into {} (filter (fn [[_ ch]] (realized? ch)) chs))]
-    (do-report
-     {:type     (if (empty? received) :pass :fail)
-      :message  msg
-      :expected []
-      :actual   received})))
+    (f {:type     (if (empty? received) :pass :fail)
+        :message  msg
+        :expected []
+        :actual   received})))
 
 (defn assert-next-msgs
   [f msg ch & expected]
@@ -226,7 +225,7 @@
 (defmethod assert-expr 'no-msgs [msg form]
   (let [[_ & args] form
         chs (zipmap (map str args) args)]
-    `(assert-no-msgs-for ~msg ~chs)))
+    `(assert-no-msgs-for #(do-report %) ~msg ~chs)))
 
 (defn- read-n-as-str
   [n]
