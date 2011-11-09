@@ -4,7 +4,7 @@
    momentum.http.test))
 
 (defn- echo-app
-  [dn]
+  [dn _]
   (fn [evt val]
     (if (= :request evt)
       (dn :response (cons 200 val))

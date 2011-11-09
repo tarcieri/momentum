@@ -22,7 +22,7 @@
 
 (defn endpoint*
   [f]
-  (fn [dn]
+  (fn [dn _]
     (let [ch (channel)]
       (fn [evt val]
         (cond

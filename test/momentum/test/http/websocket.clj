@@ -22,7 +22,7 @@
 (deftest exchanges-without-upgrade-header-are-ignored
   (with-app
     (ws/proto
-     (fn [dn]
+     (fn [dn _]
        (defstream
          (request [_]
            (dn :response [200 {"content-length" "5"} (buffer "Hello")])))))
@@ -33,7 +33,7 @@
 (deftest simple-websocket-exchange
   (let [ch (blocking-channel 100)]
     (with-ws-app
-      (fn [dn]
+      (fn [dn _]
         (defstream
           (request [hdrs body]
             (dn :response [101 {} :upgraded]))
@@ -91,7 +91,7 @@
 
 (deftest responding-with-regular-status-during-handshake
   (with-ws-app
-    (fn [dn]
+    (fn [dn _]
       (fn [evt val]
         (when (= :request evt)
           (dn :response [200 {"content-length" "5"} (buffer "Hello")]))))
@@ -106,7 +106,7 @@
     (is (= 200 (response-status))))
 
   (with-ws-app
-    (fn [dn]
+    (fn [dn _]
       (fn [evt val]
         (when (= :request evt)
           (dn :response [200 {"transer-encoding" "chunked"} :chunked])
@@ -122,7 +122,7 @@
 
 (deftest closing-sockets-from-server
   (with-ws-app
-    (fn [dn]
+    (fn [dn _]
       (defstream
         (request [_]
           (dn :response [101 {} :upgraded])
@@ -150,7 +150,7 @@
 (deftest aborts-socket-when-key-not-set
   (let [ch (channel)]
     (with-ws-app
-      (fn [dn]
+      (fn [dn _]
         (fn [evt val]
           (put ch [evt val])))
 

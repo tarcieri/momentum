@@ -203,10 +203,10 @@
 
 (defn proto
   [app opts]
-  (fn [dn]
+  (fn [dn env]
     (let [queue   (LinkedBlockingQueue.)
           state   (atom (mk-initial-state dn queue opts))
-          next-up (app (mk-downstream-fn state dn))]
+          next-up (app (mk-downstream-fn state dn) env)]
       ;; Save off the upstream function
       (swap! state #(assoc % :upstream next-up))
       ;; Return the protocol upstream function

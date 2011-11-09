@@ -212,9 +212,9 @@
 
 (defn proto
   [app]
-  (fn [dn]
+  (fn [dn env]
     (let [state  (mk-socket)
-          up     (app (mk-downstream state dn))
+          up     (app (mk-downstream state dn) env)
           decode (mk-decoder state up dn)]
 
       (fn [evt val]

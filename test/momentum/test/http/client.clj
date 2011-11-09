@@ -14,16 +14,16 @@
   (net/start
    (build-stack
     (fn [app]
-      (fn [dn]
+      (fn [dn env]
         (enqueue ch [:connect nil])
-        (app dn)))
+        (app dn env)))
     server/proto
     app)))
 
 (defn- start-conn-tracking-hello-world
   [ch]
   (tracking-connections
-   ch (fn [dn]
+   ch (fn [dn _]
         (fn [evt val]
           (when (= :request evt)
             (dn :response [200 {"content-length" "5"} (buffer "Hello")]))))))
@@ -32,7 +32,7 @@
   ([] (start-hello-world-app nil))
   ([ch]
      (server/start
-      (fn [dn]
+      (fn [dn _]
         (fn [evt val]
           (when ch (enqueue ch [evt val]))
           (when (= :request evt)
@@ -46,7 +46,7 @@
 
   (doseq [method ["GET" "POST" "PUT" "DELETE"]]
     (connect
-     (fn [dn]
+     (fn [dn _]
        (fn [evt val]
          (enqueue ch2 [evt val])
          (when (= :open evt)
@@ -79,7 +79,7 @@
   (start-hello-world-app ch1)
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch2 [evt val])
        (when (= :open evt)
@@ -111,7 +111,7 @@
 (defcoretest request-and-response-with-duplicated-headers
   [ch1 ch2]
   (server/start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
@@ -122,7 +122,7 @@
                              "baz"            ["1" "2" "3"]} (buffer "")])))))
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch2 [evt val])
        (when (= :open evt)
@@ -151,7 +151,7 @@
 (defcoretest receiving-a-chunked-body
   [ch1]
   (server/start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (when (= :request evt)
          (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
@@ -160,7 +160,7 @@
          (dn :body nil)))))
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :open evt)
@@ -185,7 +185,7 @@
   (start-hello-world-app ch1)
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch2 [evt val])
        (when (= :open evt)
@@ -217,7 +217,7 @@
 
   (dotimes [_ 2]
     (connect
-     (fn [dn]
+     (fn [dn _]
        (fn [evt val]
          (enqueue ch2 [evt val])
          (when (= :open evt)
@@ -233,7 +233,7 @@
     (Thread/sleep 100))
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch2 [evt val])
        (when (= :open evt)
@@ -261,7 +261,7 @@
     (dotimes [_ 3]
       (connect
        pool
-       (fn [dn]
+       (fn [dn _]
          (fn [evt val]
            (enqueue ch2 [evt val])
            (when (= :open evt)
@@ -285,7 +285,7 @@
 (defcoretest keepalive-head-requests-te-chunked
   [ch1 ch2]
   (tracking-connections
-   ch1 (fn [dn]
+   ch1 (fn [dn _]
          (fn [evt val]
            (when (= :request evt)
              (dn :response [200 {"transfer-encoding" "chunked"
@@ -295,7 +295,7 @@
     (dotimes [_ 3]
       (connect
        pool
-       (fn [dn]
+       (fn [dn _]
          (fn [evt val]
            (enqueue ch2 [evt val])
            (when (= :open evt)
@@ -316,7 +316,7 @@
 (defcoretest keepalive-204-responses
   [ch1 ch2]
   (tracking-connections
-   ch1 (fn [dn]
+   ch1 (fn [dn _]
          (fn [evt val]
            (when (= :request evt)
              (dn :response [204 {} nil])))))
@@ -325,7 +325,7 @@
     (dotimes [_ 3]
       (connect
        pool
-       (fn [dn]
+       (fn [dn _]
          (fn [evt val]
            (enqueue ch2 [evt val])
            (when (= :open evt)
@@ -346,7 +346,7 @@
 (defcoretest keepalive-304-responses
   [ch1 ch2]
   (tracking-connections
-   ch1 (fn [dn]
+   ch1 (fn [dn _]
          (fn [evt val]
            (when (= :request evt)
              (dn :response [304 {"content-length" "10000"} nil])))))
@@ -355,7 +355,7 @@
     (dotimes [_ 3]
       (connect
        pool
-       (fn [dn]
+       (fn [dn _]
          (fn [evt val]
            (enqueue ch2 [evt val])
            (when (= :open evt)
@@ -376,7 +376,7 @@
 (defcoretest keepalive-304-responses-chunked
   [ch1 ch2]
   (tracking-connections
-   ch1 (fn [dn]
+   ch1 (fn [dn _]
          (fn [evt val]
            (when (= :request evt)
              (dn :response [304 {"transfer-encoding" "chunked"} nil])))))
@@ -385,7 +385,7 @@
     (dotimes [_ 3]
       (connect
        pool
-       (fn [dn]
+       (fn [dn _]
          (fn [evt val]
            (enqueue ch2 [evt val])
            (when (= :open evt)
@@ -408,7 +408,7 @@
   (start-hello-world-app)
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch [evt val])
        (when (= :open evt)
@@ -438,7 +438,7 @@
 (defcoretest handling-100-continue-requests-and-responses
   [ch1 ch2 ch3]
   (server/start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
@@ -448,7 +448,7 @@
          (dn :response [200 {"content-length" "5"} (buffer "Hello")])))))
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (doseq* [args (seq ch3)]
        (apply dn args))
      (fn [evt val]

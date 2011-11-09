@@ -48,7 +48,7 @@
        (throw (Exception. "No app set, use (with-app ...)")))
 
      (let [queue    (LinkedBlockingQueue.)
-           upstream (*app* (mk-downstream queue))
+           upstream (*app* (mk-downstream queue) {:test true})
            cache    (atom clojure.lang.PersistentQueue/EMPTY)
            conn     (Connection. queue upstream cache)]
        (upstream :open (merge default-addrs addrs))

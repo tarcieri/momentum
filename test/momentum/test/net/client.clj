@@ -14,7 +14,7 @@
   ([] (start-echo-server nil))
   ([ch]
      (server/start
-      (fn [dn]
+      (fn [dn _]
         (fn [evt val]
           (when ch (enqueue ch [evt val]))
           (when (= :message evt)
@@ -38,7 +38,7 @@
            [:close   nil])
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch2 [evt val])
        (apply dn (first (seq ch3)))))
@@ -62,13 +62,13 @@
 (defcoretest writing-to-closed-socket
   [ch1]
   (server/start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (when (= :open evt)
          (dn :close nil)))))
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :open evt)
@@ -91,7 +91,7 @@
   nil
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (enqueue ch1 [:binding nil])
      (fn [evt val]
        (enqueue ch1 [evt val])))
@@ -110,7 +110,7 @@
 
   (try
     (connect
-     (fn [dn]
+     (fn [dn _]
        (throw (Exception. "TROLLOLOL")))
      {:host "localhost" :port 4040})
     (catch Exception e
@@ -125,7 +125,7 @@
   (start-echo-server ch1)
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch2 [evt val])
        (when (= :open evt)
@@ -147,7 +147,7 @@
   (start-echo-server ch1)
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch2 [evt val])
        (when (= :open evt)
@@ -173,7 +173,7 @@
   (start-echo-server ch1)
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch2 [evt val])
        (when (#{:open :abort} evt)
@@ -185,7 +185,7 @@
   (start-echo-server ch1)
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (let [depth (atom 0)]
        (fn [evt val]
          (let [count (swap! depth inc)]
@@ -220,7 +220,7 @@
   (start-echo-server ch1)
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch2 [evt val])
        (when (= :open evt)
@@ -239,7 +239,7 @@
 (defn- start-black-hole-server
   [ch]
   (server/start
-   (fn [dn]
+   (fn [dn _]
      (doasync (seq ch)
        (fn [_] (dn :resume nil)))
      (fn [evt val]
@@ -251,7 +251,7 @@
   (start-black-hole-server ch2)
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (let [latch (atom true)]
        (fn [evt val]
          (enqueue ch1 [evt val])
@@ -287,7 +287,7 @@
   (start-black-hole-server ch2)
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (let [latch (atom true)]
        (fn [evt val]
          (enqueue ch1 [evt val])
@@ -315,7 +315,7 @@
   (start-black-hole-server ch2)
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (let [latch (atom true)]
        (fn [evt val]
          (enqueue ch1 [evt val])
@@ -349,7 +349,7 @@
 (defcoretest telling-the-server-to-chill-out
   [ch1 ch2 ch3]
   (server/start
-   (fn [dn]
+   (fn [dn _]
      (doasync (seq ch2)
        (fn [_]
          (dn :message (buffer "Goodbye world"))
@@ -359,7 +359,7 @@
          (dn :message (buffer "Hello world"))))))
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (doasync (seq ch3)
        (fn [_] (dn :resume nil)))
      (let [latch (atom true)]
@@ -392,7 +392,7 @@
   (start-echo-server)
 
   (connect
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (dn :abort (Exception. "TROLLOLOL"))))

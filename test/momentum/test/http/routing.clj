@@ -20,19 +20,19 @@
   [204 {:script-name script-name :path-info path-info} nil])
 
 (defn- hello-world
-  [dn]
+  [dn _]
   (fn [evt val]
     (when (= :request evt)
       (dn :response hello-response))))
 
 (defn- echo-params
-  [dn]
+  [dn _]
   (fn [evt val]
     (when (= :request evt)
       (dn :response [204 {:params (-> val first :params)} nil]))))
 
 (defn- echo-path
-  [dn]
+  [dn _]
   (fn [evt val]
     (when (= :request evt)
       (dn :response [204 (select-keys (first val) [:path-info :script-name]) nil]))))
@@ -41,7 +41,7 @@
   [200 {"content-length" "4"} (buffer "fail")])
 
 (defn- fail
-  [dn]
+  [dn _]
   (fn [evt val]
     (when (= :request evt)
       (dn :response fail-response))))

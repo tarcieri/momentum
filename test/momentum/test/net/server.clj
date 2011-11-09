@@ -12,7 +12,7 @@
 (defcoretest simple-echo-server
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :message evt)
@@ -33,7 +33,7 @@
 (defcoretest sending-multiple-packets
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val]))))
 
@@ -54,7 +54,7 @@
 (defcoretest sending-close-event-closes-connection
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :open evt)
@@ -73,7 +73,7 @@
 (defcoretest writing-to-closed-socket
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :open evt)
@@ -95,7 +95,7 @@
 (defcoretest handling-exception-in-bind-function
   [ch1]
   (start
-   (fn [dn] (throw (Exception. "TROLLOLOL"))))
+   (fn [dn _] (throw (Exception. "TROLLOLOL"))))
 
   (with-socket
     (Thread/sleep 30)
@@ -104,7 +104,7 @@
 (defcoretest handling-exception-after-open-event
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :open evt)
@@ -119,7 +119,7 @@
 (defcoretest handling-exception-after-message-event
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :message evt)
@@ -137,7 +137,7 @@
 (defcoretest handling-exception-after-abort-event
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (#{:open :abort} evt)
@@ -156,7 +156,7 @@
 (defcoretest abort-messages-get-prioritized-over-other-events
   [ch1 ch2]
   (start
-   (fn [dn]
+   (fn [dn _]
      (let [depth (atom 0)]
        (fn [evt val]
          (let [count (swap! depth inc)]
@@ -182,7 +182,7 @@
 (defcoretest thrown-exceptions-get-prioritized-over-other-events
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :message evt)
@@ -201,7 +201,7 @@
 (defcoretest telling-the-application-to-chill-out
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (let [latch (atom true)]
        (fn [evt val]
          (enqueue ch1 [evt val])
@@ -231,7 +231,7 @@
 (defcoretest raising-error-during-pause-event
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (let [latch (atom true)]
        (fn [evt val]
          (enqueue ch1 [evt val])
@@ -260,7 +260,7 @@
 (defcoretest raising-error-during-resume-event
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (let [latch (atom true)]
        (fn [evt val]
          (enqueue ch1 [evt val])
@@ -294,7 +294,7 @@
 (defcoretest telling-the-server-to-chill-out
   [ch1 ch2]
   (start
-   (fn [dn]
+   (fn [dn _]
      (doasync (seq ch2)
        (fn [_] (dn :resume nil)))
      (let [latch (atom true)]
@@ -329,7 +329,7 @@
 (defcoretest avoiding-abort-loops
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (dn :abort (Exception. "TROLLOLOL")))))
@@ -345,7 +345,7 @@
 (defcoretest throws-exception-when-receiving-unknown-event
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :open evt)
@@ -362,7 +362,7 @@
 (defcoretest scheduling-fn-in-reactor
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (when (= :open evt)
          (dn :schedule

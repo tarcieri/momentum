@@ -5,7 +5,7 @@
 
 (deftest simple-echo-client
   (with-app
-    (fn [dn]
+    (fn [dn _]
       (fn [evt val]
         (when (= :message evt)
           (dn :message val))))

@@ -91,7 +91,7 @@
            downstream? (opts :downstream)
            hard-limit  (opts :hard-limit)
            soft-limit  (opts :soft-limit)]
-       (fn [dn]
+       (fn [dn env]
         (aggregator
-         (app (aggregator dn dn downstream? hard-limit soft-limit))
+         (app (aggregator dn dn downstream? hard-limit soft-limit) env)
          dn upstream? hard-limit soft-limit)))))

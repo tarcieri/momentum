@@ -10,7 +10,7 @@
   ([] (echo-app {}))
   ([opts]
      (aggregate/middleware
-      (fn [dn]
+      (fn [dn _]
         (fn [evt val]
           (cond
            (= :request evt)

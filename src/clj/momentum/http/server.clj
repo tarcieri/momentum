@@ -385,9 +385,9 @@
        (dn evt val)))))
 
 (defn- exchange
-  [app dn conn address-info opts]
+  [app dn conn address-info env opts]
   (let [state   (atom (initial-exchange-state conn dn address-info opts))
-        next-up (app (mk-downstream-fn state dn))]
+        next-up (app (mk-downstream-fn state dn) env)]
     ;; Track the upstream
     (swap! state #(assoc % :upstream next-up))
 
@@ -431,7 +431,7 @@
 (defn handler
   [app opts]
   (let [opts (merge default-opts opts)]
-    (fn [dn]
+    (fn [dn env]
       (let [state (atom (initial-connection-state dn opts))]
         (fn [evt val]
           (let [current-state @state
@@ -448,7 +448,7 @@
                  (let [address-info
                        (.address-info current-state)
                        next-up
-                       (exchange app dn state address-info opts)]
+                       (exchange app dn state address-info env opts)]
                    ;; Setup the new exchange
                    (swap! state #(assoc % :upstream next-up))
                    (next-up evt val))))
@@ -488,9 +488,9 @@
   ([app] (proto app {}))
   ([app opts]
      (let [app (handler app opts)]
-       (fn [dn]
+       (fn [dn env]
          (request-parser
-          (app (encoder dn)))))))
+          (app (encoder dn) env))))))
 
 (defn start
   ([app] (start app {}))

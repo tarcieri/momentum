@@ -83,7 +83,7 @@
 
 (defn- echo-server
   [ch]
-  (fn [dn]
+  (fn [dn _]
     (fn [evt val]
       (when ch (enqueue ch [evt val]))
       (when (= :message evt)
@@ -91,7 +91,7 @@
 
 (defn- slow-echo-server
   [ch]
-  (fn [dn]
+  (fn [dn _]
     (fn [evt val]
       (when ch (enqueue ch [evt val]))
       (when (= :message evt)
@@ -124,7 +124,7 @@
     (dotimes [i 2]
       (Thread/sleep 50)
       (connect
-       (fn [dn]
+       (fn [dn _]
          (enqueue ch2 [:binding nil])
          (fn [evt val]
            (enqueue ch2 [evt val])
@@ -150,7 +150,7 @@
 (defn- run-echo-client
   [ch connect msg]
   (connect
-   (fn [dn]
+   (fn [dn _]
      (enqueue ch [:binding nil])
      (fn [evt val]
        (enqueue ch [evt val])
@@ -198,7 +198,7 @@
 
   (let [pool (client {:pool true})]
     (pool
-     (fn [dn]
+     (fn [dn _]
        (enqueue ch2 [:binding nil])
        (fn [evt val]
          (enqueue ch2 [evt val])
@@ -236,7 +236,7 @@
 (defcoretest requests-to-the-same-host-in-parallel
   [ch1 ch2 ch3]
   (server/start
-   (fn [dn]
+   (fn [dn _]
      (enqueue ch1 [:binding nil])
      (fn [evt val]
        (when (= :message evt)
@@ -247,7 +247,7 @@
   (let [connect (client {:pool true})]
     (doseq [ch [ch2 ch3]]
       (connect
-       (fn [dn]
+       (fn [dn _]
          (fn [evt val]
            (enqueue ch [evt val])
            (when (= :open evt)
@@ -276,7 +276,7 @@
 (defcoretest connecting-to-a-server-that-closes-the-connection
   [ch1 ch2]
   (server/start
-   (fn [dn]
+   (fn [dn _]
      (enqueue ch1 [:binding nil])
      (fn [evt val]
        (enqueue ch1 [evt val])
@@ -288,7 +288,7 @@
     (dotimes [i 2]
       (Thread/sleep 50)
       (connect
-       (fn [dn]
+       (fn [dn _]
          (fn [evt val]
            (enqueue ch2 [evt val])
            (when (= :open evt)
@@ -311,7 +311,7 @@
 (defcoretest closed-connections-are-removed-from-pool
   [ch1 ch2 ch3]
   (server/start
-   (fn [dn]
+   (fn [dn _]
      (enqueue ch1 [:binding nil])
      (fn [evt val]
        (when (= :message evt)
@@ -325,7 +325,7 @@
       (Thread/sleep 50)
 
       (connect
-       (fn [dn]
+       (fn [dn _]
          (fn [evt val]
            (when (= :abort evt)
              (enqueue ch3 [evt val]))
@@ -349,7 +349,7 @@
 
   (let [connect (client {:pool true})]
     (connect
-     (fn [dn]
+     (fn [dn _]
        (fn [evt val]
          (enqueue ch1 [evt val])))
      ;; Hopefully this is an invalid IP address and port
@@ -367,7 +367,7 @@
   (let [connect (client {:pool {:max-conns 1}})]
     (doseq [ch [ch1 ch2]]
       (connect
-       (fn [dn]
+       (fn [dn _]
          (fn [evt val]
            (enqueue ch [evt val])
            (when (= :open evt)
@@ -387,7 +387,7 @@
 (defcoretest pool-count-decrements-when-connections-expire
   [ch1 ch2]
   (server/start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (when (= :message evt)
          (dn :message val)
@@ -398,7 +398,7 @@
   (let [connect (client {:pool {:max-conns 1}})]
     (doseq [ch [ch1 ch2]]
       (connect
-       (fn [dn]
+       (fn [dn _]
          (fn [evt val]
            (enqueue ch [evt val])
            (when (= :open evt)
@@ -429,7 +429,7 @@
   (let [connect (client {:pool {:max-conns 2}})]
     (doseq [ch [ch1 ch2 ch3]]
       (connect
-       (fn [dn]
+       (fn [dn _]
          (fn [evt val]
            (enqueue ch [evt val])
            (when (= :open evt)
@@ -461,7 +461,7 @@
   (let [connect (client {:pool {:max-conns-per-addr 1}})]
     (doseq [ch [ch1 ch2 ch3]]
       (connect
-       (fn [dn]
+       (fn [dn _]
          (fn [evt val]
            (enqueue ch [evt val])
            (when (= :open evt)
@@ -493,7 +493,7 @@
   (let [connect (client {:pool {:max-conns 1}})]
     (doseq [ch [ch1 ch2]]
       (connect
-       (fn [dn]
+       (fn [dn _]
          (fn [evt val]
            (enqueue ch [evt val])
            (when (= :open evt)
@@ -511,7 +511,7 @@
 (defcoretest timing-out-stale-connections-after-keepalve
   [ch1 ch2]
   (server/start
-   (fn [dn]
+   (fn [dn _]
      (enqueue ch1 [:binding nil])
      (fn [evt val]
        (when (= :message evt)
@@ -535,7 +535,7 @@
 (defcoretest reopening-connections-that-have-been-closed
   [ch1 ch2]
   (server/start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (when (= :message evt)
          (dn :message val)
@@ -544,7 +544,7 @@
   (let [connect (client {:pool true})]
     (dotimes [_ 30]
       (connect
-       (fn [dn]
+       (fn [dn _]
          (enqueue ch1 [:binding nil])
          (let [reopened? (atom false)
                pong?     (atom false)]

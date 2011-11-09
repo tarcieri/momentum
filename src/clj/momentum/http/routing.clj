@@ -9,18 +9,18 @@
 
 (defn- not-found
   "Basic endpoint that responds with a 404 not found"
-  [dn]
+  [dn _]
   (fn [evt val]
     (when (= :request evt)
       (dn :response [404 {"content-length" "9"} (buffer "Not found")]))))
 
 (defprotocol Dispatchable
-  (^{:private true} dispatch [this state dn method path hdrs body]))
+  (^{:private true} dispatch [this state dn env method path hdrs body]))
 
 (extend-type Object
   Dispatchable
-  (dispatch [this state dn method path hdrs body]
-    (let [upstream (this dn)]
+  (dispatch [this state dn env method path hdrs body]
+    (let [upstream (this dn env)]
       (reset! state upstream)
       (upstream :request [hdrs body])
       upstream)))
@@ -38,7 +38,7 @@
 
 (defrecord Route [method pattern segments names target anchor?]
   Dispatchable
-  (dispatch [this state dn method path hdrs body]
+  (dispatch [this state dn env method path hdrs body]
     (if-let [pattern (.pattern this)]
       (when (or (nil? (.method this)) (= method (.method this)))
         (when-let [[m sn & vals] (re-match pattern path)]
@@ -46,7 +46,7 @@
                        :params      (zipmap (.names this) vals)
                        :path-info   (slice-path path m)
                        :script-name sn)]
-            (dispatch (.target this) state dn method path hdrs body))))
+            (dispatch (.target this) state dn env method path hdrs body))))
       (throw (Exception. "Route is not finalized")))))
 
 (defn- compile-pattern
@@ -102,20 +102,20 @@
    targets))
 
 (defn- handle-request
-  [state routes dn [{path :path-info method :request-method :as hdrs} body]]
+  [state routes dn env [{path :path-info method :request-method :as hdrs} body]]
   (loop [[r & more] routes]
-    (when-not (dispatch r state dn method path hdrs body)
+    (when-not (dispatch r state dn env method path hdrs body)
       (if more
         (recur more)))))
 
 (defn routing
   [& routes]
   (let [routes (finalize (conj (vec routes) not-found))]
-    (fn [dn]
+    (fn [dn env]
       (let [state (atom nil)]
         (fn [evt val]
           (if (= :request evt)
-            (handle-request state routes dn val)
+            (handle-request state routes dn env val)
             (if-let [upstream @state]
               (upstream evt val)
               (throw (Exception. "Invalid state")))))))))

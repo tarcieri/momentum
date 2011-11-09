@@ -276,9 +276,9 @@
 
 (defn handler
   [app]
-  (fn [dn]
+  (fn [dn env]
     (let [state    (atom (mk-initial-state dn))
-          upstream (app (mk-downstream dn state))]
+          upstream (app (mk-downstream dn state) env)]
       ;; Save off the upstream
       (swap! state #(assoc % :upstream upstream))
       ;; And now the upstream
@@ -341,7 +341,7 @@
   [^ChannelGroup channel-group app _]
   (let [state    (atom (mk-initial-netty-state))
         app      (handler app)
-        upstream (app (mk-netty-downstream-fn state))]
+        upstream (app (mk-netty-downstream-fn state) {})]
 
     ;; The actual Netty upstream handler.
     (reify ChannelUpstreamHandler

@@ -8,7 +8,7 @@
 (defn- start-hello-world-app
   [ch]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch [evt val])
        (when (= :request evt)
@@ -105,7 +105,7 @@
 (defcoretest non-string-response-headers
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (when (= :request evt)
          (dn :response [200 {"content-length" 5
@@ -126,7 +126,7 @@
 (defcoretest honors-http-1-0-responses
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (when (= :request evt)
          (dn :response [200 {:http-version [1 0]} (buffer "Hello")])))))
@@ -143,7 +143,7 @@
 (defcoretest head-request-with-content-length
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (when (= :request evt)
          (let [[hdrs] val]
@@ -162,7 +162,7 @@
 (defcoretest head-request-with-content-length-and-response
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (when (= :request evt)
          (let [[hdrs] val]
@@ -181,7 +181,7 @@
 (defcoretest head-request-with-te-chunked-and-response-body
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (when (= :request evt)
          (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
@@ -207,7 +207,7 @@
 (defcoretest no-content-response-but-with-content
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
@@ -231,7 +231,7 @@
 (defcoretest not-modified-response-but-with-content
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
@@ -274,7 +274,7 @@
 (defcoretest request-and-response-with-duplicated-headers
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
@@ -323,7 +323,7 @@
 (defcoretest keepalive-requests
   [ch1 ch2]
   (start
-   (fn [dn]
+   (fn [dn _]
      (enqueue ch2 [:binding nil])
      (fn [evt val]
        (enqueue ch1 [evt val])
@@ -377,7 +377,7 @@
   [ch1]
   (start
    (let [latch (atom true)]
-     (fn [dn]
+     (fn [dn _]
        (fn [evt val]
          (when (= :request evt)
            (if @latch
@@ -414,7 +414,7 @@
 (defcoretest keepalive-head-requests
   [ch1 ch2]
   (start
-   (fn [dn]
+   (fn [dn _]
      (enqueue ch2 [:binding nil])
      (fn [evt val]
        (enqueue ch1 [evt val])
@@ -467,7 +467,7 @@
 (defcoretest keepalive-204-responses
   [ch1 ch2]
   (start
-   (fn [dn]
+   (fn [dn _]
      (enqueue ch2 [:binding nil])
      (fn [evt val]
        (enqueue ch1 [evt val])
@@ -504,7 +504,7 @@
 (defcoretest keepalive-304-responses
   [ch1 ch2]
   (start
-   (fn [dn]
+   (fn [dn _]
      (enqueue ch2 [:binding nil])
      (fn [evt val]
        (enqueue ch1 [evt val])
@@ -543,7 +543,7 @@
 (defcoretest returning-connection-close-terminates-connection
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
@@ -562,7 +562,7 @@
 (defcoretest returning-connection-close-and-chunks
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
@@ -589,7 +589,7 @@
 (defcoretest transfer-encoding-chunked-and-keep-alive
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (when (= :request evt)
          (let [[hdrs] val]
@@ -651,7 +651,7 @@
 
 (defcoretest single-chunked-response
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (when (= :request evt)
          (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
@@ -672,7 +672,7 @@
 (defcoretest chunked-response-with-content-length
   [ch1 ch2]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (try
@@ -701,7 +701,7 @@
 (defcoretest chunked-requests-keep-alive
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
@@ -777,7 +777,7 @@
 (defcoretest request-callback-happens-before-body-is-recieved
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (when-not (= :body evt)
          (enqueue ch1 [evt val]))
@@ -808,7 +808,7 @@
 (defcoretest handling-100-continue-requests-with-100-response
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (cond
@@ -841,7 +841,7 @@
 (defcoretest handling-100-continue-requests-by-responding-directly
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
@@ -884,7 +884,7 @@
 (defcoretest sending-multiple-100-continue-responses
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (cond
         (= :request evt)
@@ -917,7 +917,7 @@
 (defcoretest client-sends-body-and-expects-100
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= [:body nil] [evt val])
@@ -943,7 +943,7 @@
 (defcoretest client-sends-body-and-expects-100-2
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (cond
@@ -974,7 +974,7 @@
 (defcoretest sending-100-continue-to-1-0-client
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
@@ -1003,7 +1003,7 @@
 (defcoretest timing-out-without-writing-request
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (enqueue ch1 [:binding nil])
      (fn [_ _]))
    {:keepalive 1})
@@ -1016,7 +1016,7 @@
 (defcoretest timing-out-halfway-streamed-chunked-request
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])))
    {:timeout 1})
@@ -1042,7 +1042,7 @@
 (defcoretest each-event-resets-timer
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])))
    {:timeout 1})
@@ -1074,7 +1074,7 @@
 (defcoretest timing-out-halfway-through-streamed-chunked-response
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
@@ -1097,7 +1097,7 @@
 (defcoretest timing-out-during-keepalive
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (dn :response [200 {"content-length" "5"} (buffer "Hello")])))
@@ -1118,7 +1118,7 @@
 (defcoretest closing-connection-during-keepalive
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
@@ -1145,7 +1145,7 @@
 (defcoretest race-condition-between-requests
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
@@ -1175,7 +1175,7 @@
 (defcoretest closing-the-connection-immedietly-after-receiving-body
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
@@ -1205,7 +1205,7 @@
 ;; (defcoretest  pausing-te-chunked-request
 ;;   [ch1 ch2]
 ;;   (start
-;;    (fn [dn]
+;;    (fn [dn _]
 ;;      (receive ch2 #(dn % nil))
 ;;      (fn [evt val]
 ;;        (enqueue ch1 [evt val])
@@ -1235,7 +1235,7 @@
 (defcoretest hard-closing-socket-before-response
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
@@ -1254,7 +1254,7 @@
 (defcoretest hard-closing-socket-while-streaming-request
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :body evt)
@@ -1281,7 +1281,7 @@
 (defcoretest hard-closing-socket-while-streaming-response
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
@@ -1309,7 +1309,7 @@
 (defcoretest upgrading-the-connection-to-echo-server
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
@@ -1350,7 +1350,7 @@
 (defcoretest denying-an-upgrade-request
   [ch1]
   (start
-   (fn [dn]
+   (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt val])
        (when (= :request evt)
