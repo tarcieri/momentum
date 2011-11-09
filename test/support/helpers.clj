@@ -2,11 +2,11 @@
   (:use
    clojure.test
    support.string
-   picard.core)
+   momentum.core)
   (:require
-   [picard.net.server :as server])
+   [momentum.net.server :as server])
   (:import
-   [picard.core
+   [momentum.core
     TimeoutException]
    [org.jboss.netty.buffer
     ChannelBuffer]

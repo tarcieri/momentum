@@ -2,11 +2,11 @@
   (:use
    clojure.test
    support.helpers
-   picard.core.buffer)
+   momentum.core.buffer)
   (:require
-   [picard.http.parser :as http])
+   [momentum.http.parser :as http])
   (:import
-   [picard.http
+   [momentum.http
     HttpParser]))
 
 (def valid-methods
