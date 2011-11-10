@@ -29,13 +29,13 @@
                          #(compare-and-set! res nil %)
                          (fn [_] (reset! res :fail)))))
     (is (nil? @res))
-    (is (= dval (put dval :hello)))
+    (is (= true (put dval :hello)))
     (is (= :hello @res)))
 
   (let [dval (deferred)
         res  (atom nil)]
 
-    (is (= dval (put dval :hello)))
+    (is (= true (put dval :hello)))
     (receive
      dval
      #(compare-and-set! res nil %)
@@ -116,6 +116,27 @@
       (abort dval (Exception. "BOOM")))
     (receive dval identity identity)
     (is (thrown-with-msg? Exception #"BOOM" @dval))
+    (is (thrown-with-msg? Exception #"BOOM" @dval))))
+
+(deftest putting-into-realized-deferred-value-returns-false
+  (let [dval (deferred)]
+    (is (= true  (put dval :hello)))
+    (is (= false (put dval :fail)))
+    (is (= :hello @dval)))
+
+  (let [dval (deferred)]
+    (is (= true  (abort dval (Exception. "BOOM"))))
+    (is (= false (put dval :fail)))
+    (is (thrown-with-msg? Exception #"BOOM" @dval)))
+
+  (let [dval (deferred)]
+    (put dval :hello)
+    (is (= false (abort dval (Exception. "BOOM"))))
+    (is (= :hello @dval)))
+
+  (let [dval (deferred)]
+    (abort dval (Exception. "BOOM"))
+    (is (= false (abort dval (Exception. "BAM"))))
     (is (thrown-with-msg? Exception #"BOOM" @dval))))
 
 ;; ==== Channels
@@ -265,4 +286,8 @@
     (is (thrown-with-msg? Exception #"BOOM"
           (vec (seq ch))))))
 
-;; Test calling next / rest w/o ever calling first
+;; (deftest putting-value-into-closed-channel
+;;   (let [ch (channel)]
+;;     (close ch)
+;;     (is (= false (put ch :hello)))
+;;     (is (= [] (seq ch)))))

@@ -48,13 +48,13 @@ public final class Deferred implements Receivable, IDeref, IBlockingDeref, IPend
     return isRealized && err != null;
   }
 
-  public void put(Object v) {
+  public boolean put(Object v) {
     synchronized (this) {
       if (isRealized) {
-        throw new RuntimeException("Not able ot accept value");
+        return false;
       }
 
-      value  = v;
+      value = v;
       // isRealized must be set last in order to preserve the happens-before semantics
       isRealized = true;
 
@@ -69,12 +69,14 @@ public final class Deferred implements Receivable, IDeref, IBlockingDeref, IPend
     while ((r = receivers.poll()) != null) {
       invoke(r);
     }
+
+    return true;
   }
 
-  public void abort(Exception e) {
+  public boolean abort(Exception e) {
     synchronized (this) {
       if (isRealized) {
-        throw new RuntimeException("The deferred value has already been realized");
+        return false;
       }
 
       err = e;
@@ -90,6 +92,8 @@ public final class Deferred implements Receivable, IDeref, IBlockingDeref, IPend
     while ((r = receivers.poll()) != null) {
       invoke(r);
     }
+
+    return true;
   }
 
   public void receive(Receiver r) {

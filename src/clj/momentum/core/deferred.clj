@@ -71,16 +71,16 @@
 
 (extend-protocol DeferredRealizer
   Channel
-  (put   [ch val] (doto ch (.put val)))
-  (abort [ch err] (doto ch (.abort err)))
+  (put   [ch val] (.put ch val))
+  (abort [ch err] (.abort ch err))
 
   Deferred
-  (put [dval val]   (doto dval (.put val)))
-  (abort [dval err] (doto dval (.abort err)))
+  (put [dval val]   (.put dval val))
+  (abort [dval err] (.abort dval err))
 
   Pipeline
-  (put   [pipeline val] (doto pipeline (.put val)))
-  (abort [pipeline err] (doto pipeline (.abort err))))
+  (put   [pipeline val] (.put pipeline val))
+  (abort [pipeline err] (.abort pipeline err)))
 
 (defn deferred
   []
