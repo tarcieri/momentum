@@ -1,1 +1,3 @@
-language: clojure
+language:      clojure
+before_script: "lein deps, javac"
+script:        "lein test"
