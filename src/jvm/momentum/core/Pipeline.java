@@ -1,5 +1,6 @@
 package momentum.core;
 
+import clojure.lang.AFn;
 import clojure.lang.IFn;
 import clojure.lang.IDeref;
 import clojure.lang.IBlockingDeref;
@@ -8,7 +9,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
-public final class Pipeline implements Receivable, IDeref, IBlockingDeref, IPending {
+public final class Pipeline extends AFn implements Receivable, IDeref, IBlockingDeref, IPending {
 
   public static class Catcher {
     final Class klass;
@@ -173,11 +174,11 @@ public final class Pipeline implements Receivable, IDeref, IBlockingDeref, IPend
     this.finalizer = finalizer;
   }
 
-  public void put(final Object v) {
+  public boolean put(final Object v) {
     // Step one is to set the current state to the first stage. The expected
     // current state is null.
     if (!cs.compareAndSet(null, head)) {
-      throw new RuntimeException("Not able to accept the value");
+      return false;
     }
 
     if (v instanceof Receivable) {
@@ -189,10 +190,16 @@ public final class Pipeline implements Receivable, IDeref, IBlockingDeref, IPend
       // value into the first stage.
       head.put(v);
     }
+
+    return true;
   }
 
-  public void abort(Exception e) {
-    error(e);
+  public Object invoke(Object v) {
+    return put(v);
+  }
+
+  public boolean abort(Exception e) {
+    return error(e);
   }
 
   public boolean isRealized() {
@@ -238,7 +245,7 @@ public final class Pipeline implements Receivable, IDeref, IBlockingDeref, IPend
     }
   }
 
-  void error(Exception err) {
+  boolean error(Exception err) {
     // First, do a getAndSet so that the current state can be betched as well
     // as ensure that the state gets transitioned to a final state.
     final Stage curr = cs.getAndSet(FINAL);
@@ -247,7 +254,7 @@ public final class Pipeline implements Receivable, IDeref, IBlockingDeref, IPend
     // then the pipeline was in a valid state and should be aborted, otherwise,
     // we are done.
     if (curr == FINAL) {
-      return;
+      return false;
     }
 
     boolean caught = false;
@@ -288,5 +295,7 @@ public final class Pipeline implements Receivable, IDeref, IBlockingDeref, IPend
     else {
       result.abort(err);
     }
+
+    return true;
   }
 }

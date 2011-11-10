@@ -42,6 +42,12 @@
      (fn [_] (reset! res :fail)))
     (is (= :hello @res))))
 
+(deftest realizing-deferred-value-by-invoking-it
+  (let [dval (deferred)
+        res  (atom nil)]
+    (dval :hello)
+    (is (= :hello @dval))))
+
 (deftest aborting-deferred-values
   (let [dval (deferred)
         err  (Exception.)
@@ -285,6 +291,12 @@
       (abort ch (Exception. "BOOM")))
     (is (thrown-with-msg? Exception #"BOOM"
           (vec (seq ch))))))
+
+(deftest invoking-channel-puts-value
+  (let [ch (blocking-channel)]
+    (ch :hello)
+    (close ch)
+    (is (= [:hello nil] (seq ch)))))
 
 ;; (deftest putting-value-into-closed-channel
 ;;   (let [ch (channel)]

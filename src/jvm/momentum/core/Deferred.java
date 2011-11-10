@@ -1,11 +1,12 @@
 package momentum.core;
 
+import clojure.lang.AFn;
 import clojure.lang.IDeref;
 import clojure.lang.IBlockingDeref;
 import clojure.lang.IPending;
 import java.util.LinkedList;
 
-public final class Deferred implements Receivable, IDeref, IBlockingDeref, IPending {
+public final class Deferred extends AFn implements Receivable, IDeref, IBlockingDeref, IPending {
 
   /*
    * Whether or not the current deferred value is realized.
@@ -67,10 +68,14 @@ public final class Deferred implements Receivable, IDeref, IBlockingDeref, IPend
 
     Receiver r;
     while ((r = receivers.poll()) != null) {
-      invoke(r);
+      deliver(r);
     }
 
     return true;
+  }
+
+  public Object invoke(Object v) {
+    return put(v);
   }
 
   public boolean abort(Exception e) {
@@ -90,7 +95,7 @@ public final class Deferred implements Receivable, IDeref, IBlockingDeref, IPend
 
     Receiver r;
     while ((r = receivers.poll()) != null) {
-      invoke(r);
+      deliver(r);
     }
 
     return true;
@@ -103,7 +108,7 @@ public final class Deferred implements Receivable, IDeref, IBlockingDeref, IPend
 
     // If the deferred value is already realized, just invoke the receiver
     if (isRealized) {
-      invoke(r);
+      deliver(r);
       return;
     }
 
@@ -116,7 +121,7 @@ public final class Deferred implements Receivable, IDeref, IBlockingDeref, IPend
 
     // If we get here, then the deferred value was realized between the first
     // check and the second, so just invoke the callback now.
-    invoke(r);
+    deliver(r);
   }
 
   public Object deref() {
@@ -159,7 +164,7 @@ public final class Deferred implements Receivable, IDeref, IBlockingDeref, IPend
     }
   }
 
-  private void invoke(Receiver receiver) {
+  private void deliver(Receiver receiver) {
     try {
       if (err != null) {
         receiver.error(err);

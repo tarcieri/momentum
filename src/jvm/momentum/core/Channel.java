@@ -1,5 +1,6 @@
 package momentum.core;
 
+import clojure.lang.AFn;
 import clojure.lang.Cons;
 import clojure.lang.IPending;
 import clojure.lang.ISeq;
@@ -9,7 +10,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /*
  * seq() returns a sequable object 
  */
-public final class Channel implements Seqable, IPending {
+public final class Channel extends AFn implements Seqable, IPending {
 
   /*
    * Whether or not the sequences are aloud to block waiting be realized
@@ -60,6 +61,10 @@ public final class Channel implements Seqable, IPending {
     }
 
     return curr.put(v);
+  }
+
+  public Object invoke(Object v) {
+    return put(v);
   }
 
   public Receivable putLast(Object v) {
