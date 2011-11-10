@@ -6,9 +6,9 @@ or documentation yet.__
 Momentum is a high performance asynchronous networking framework built for the Clojure programming language. Momentum is still very young and currently only supports HTTP, however there are plans to make it more generic for arbitrary network programming.
 
 Currently, Momentum provides:
-  * An HTTP server abstraction
-  * An HTTP client abstraction
-  * An HTTP proxy abstraction
+  * Generic async abstractions
+  * A general networking abstraction
+  * Middleware for HTTP (client and server)
   * A connection pool for client HTTP connections.
 
 Yes, the README is still quite lacking, but more will come. I just wanted to get this out to the world.
@@ -18,10 +18,10 @@ Yes, the README is still quite lacking, but more will come. I just wanted to get
 First, require the momentum namespace. Then:
 
        (momentum/start-server
-        (fn [downstream]
-            (fn [evt val]
-                (when (= :request evt)
-                      (downstream :response [200 {"content-length" "5"} "Hello"])))))
+        (fn [downstream env]
+          (fn [evt val]
+            (when (= :request evt)
+              (downstream :response [200 {"content-length" "5"} "Hello"])))))
 
 More details will come, but for now, there are fairly extensive tests.
 
