@@ -8,6 +8,18 @@ import java.util.LinkedList;
 
 public final class Deferred extends AFn implements Receivable, IDeref, IBlockingDeref, IPending {
 
+  public static Deferred aborted(Exception e) {
+    Deferred ret = new Deferred();
+    ret.abort(e);
+    return ret;
+  }
+
+  public static Deferred realized(Object v) {
+    Deferred ret = new Deferred();
+    ret.put(v);
+    return ret;
+  }
+
   /*
    * Whether or not the current deferred value is realized.
    */

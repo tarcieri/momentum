@@ -298,8 +298,9 @@
     (close ch)
     (is (= [:hello nil] (seq ch)))))
 
-;; (deftest putting-value-into-closed-channel
-;;   (let [ch (channel)]
-;;     (close ch)
-;;     (is (= false (put ch :hello)))
-;;     (is (= [] (seq ch)))))
+(deftest putting-value-into-closed-channel
+  (let [ch (channel)]
+    (close ch)
+    (let [d (put ch :hello)]
+      (is (realized? d))
+      (is (thrown-with-msg? RuntimeException #"Channel closed" @d)))))

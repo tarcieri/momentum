@@ -7,10 +7,9 @@ import clojure.lang.ISeq;
 import clojure.lang.Seqable;
 import java.util.concurrent.atomic.AtomicReference;
 
-/*
- * seq() returns a sequable object 
- */
 public final class Channel extends AFn implements Seqable, IPending {
+
+  static final Deferred channelClosed = Deferred.aborted(new RuntimeException("Channel closed"));
 
   /*
    * Whether or not the sequences are aloud to block waiting be realized
@@ -54,7 +53,7 @@ public final class Channel extends AFn implements Seqable, IPending {
       curr = tail;
 
       if (curr == null) {
-        throw new IllegalStateException("Channel closed");
+        return channelClosed;
       }
 
       tail = curr.grow();
@@ -74,7 +73,7 @@ public final class Channel extends AFn implements Seqable, IPending {
       curr = tail;
 
       if (curr == null) {
-        throw new IllegalStateException("Channel closed");
+        return channelClosed;
       }
 
       tail = null;
@@ -90,7 +89,7 @@ public final class Channel extends AFn implements Seqable, IPending {
       curr = tail;
 
       if (curr == null) {
-        throw new IllegalStateException("Channel closed");
+        return;
       }
 
       tail = null;
