@@ -1,3 +1,6 @@
+__This is still a very young project. As such, do not expect stability
+or documentation yet.__
+
 ## What is Momentum?
 
 Momentum is a high performance asynchronous networking framework built for the Clojure programming language. Momentum is still very young and currently only supports HTTP, however there are plans to make it more generic for arbitrary network programming.
