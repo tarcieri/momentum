@@ -295,7 +295,7 @@
 
 (defn mk-handler
   [conn]
-  (fn [dn _]
+  (fn [dn env]
     ;; Save off the downstream function. This function might change if
     ;; the upstream issues a :reopen event.
     (swap! (.state conn) #(assoc % :dn dn))
@@ -384,7 +384,7 @@
   [app pool addr connect-fn]
   (let [state    (atom nil)
         exchange (Exchange. state pool addr connect-fn)
-        upstream (app (mk-downstream exchange) {})]
+        upstream (app (mk-downstream exchange) {:connection-pool true})]
     (reset! state (ExchangeState. nil upstream))
     exchange))
 

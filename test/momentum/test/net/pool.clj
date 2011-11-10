@@ -124,8 +124,8 @@
     (dotimes [i 2]
       (Thread/sleep 50)
       (connect
-       (fn [dn _]
-         (enqueue ch2 [:binding nil])
+       (fn [dn env]
+         (enqueue ch2 [:binding env])
          (fn [evt val]
            (enqueue ch2 [evt val])
            (when (= :open evt)
@@ -142,7 +142,7 @@
 
       (is (next-msgs
            ch2
-           :binding nil
+           :binding {:connection-pool true}
            :open    (assoc client-addr-info :exchange-count 1)
            :message (str "ZOMG! " i)
            :close   nil)))))
