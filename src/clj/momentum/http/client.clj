@@ -1,5 +1,6 @@
 (ns momentum.http.client
   (:use
+   momentum.core
    momentum.http.core
    momentum.utils.core)
   (:require
@@ -7,6 +8,8 @@
   (:import
    [momentum.http
     HttpClientCodec]
+   [java.net
+    URI]
    [java.util.concurrent
     LinkedBlockingQueue]))
 
@@ -248,3 +251,40 @@
   ([client app opts]
      (let [opts (merge default-options opts)]
        (net/connect client (proto app opts) opts))))
+
+;; ==== Some higher level of abstraction APIs
+
+;; Probably should allow (GET {:host "localhost" :port 4040})
+(defn request
+  [method uri]
+  (let [uri  (URI. uri)
+        resp (deferred)
+        port (if (> (.getPort uri) 0)
+               (.getPort uri) 80)]
+    (connect
+     (fn [dn _]
+       (fn [evt val]
+         (cond
+          (= :open evt)
+          (dn :request
+              [{:http-version   [1 1]
+                :path-info      (.getPath uri)
+                :script-name    ""
+                :query-string   ""
+                :request-method method} nil])
+
+          (= :response evt)
+          (resp val)
+
+          :else
+          1 ;; (println "LULZ WTF: " [evt val])
+          )
+         ))
+     {:host (.getHost uri) :port port})
+    resp))
+
+(defn HEAD   [& args] (apply request "HEAD"   args))
+(defn GET    [& args] (apply request "GET"    args))
+(defn POST   [& args] (apply request "POST"   args))
+(defn PUT    [& args] (apply request "PUT"    args))
+(defn DELETE [& args] (apply request "DELETE" args))

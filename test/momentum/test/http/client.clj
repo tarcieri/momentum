@@ -487,3 +487,29 @@
 ;; (defcoretest issuing-immediate-abort)
 ;; (defcoretest defaults-to-port-80
 ;; (defcoretest connecting-to-an-invalid-server)
+
+;; ==== Higher level of abstraction tests
+
+(defcoretest simple-deferred-response-requests
+  [ch1 ch2]
+  (start-hello-world-app ch1)
+
+  (doseq [method ["GET" "POST" "PUT" "DELETE"]]
+    (is (= @(request method "http://localhost:4040/")
+           [200
+            {:http-version [1 1]
+             "content-length" "5"
+             "content-type"   "text/plain"
+             "connection"     "close"}
+            (buffer "Hello")]))
+
+    (is (next-msgs
+         ch1
+         :request [{:http-version   [1 1]
+                    :script-name    ""
+                    :path-info      "/"
+                    :query-string   ""
+                    :request-method method
+                    :remote-addr    :dont-care
+                    :local-addr     :dont-care} nil]
+         :done nil))))
