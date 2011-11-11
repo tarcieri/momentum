@@ -1,6 +1,8 @@
 package momentum.core;
 
-public interface Receivable {
+import clojure.lang.IPending;
+
+public interface Receivable extends IPending {
 
   /*
    * Register a callback.

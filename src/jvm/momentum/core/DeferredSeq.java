@@ -3,11 +3,10 @@ package momentum.core;
 import clojure.lang.Obj;
 import clojure.lang.ASeq;
 import clojure.lang.ISeq;
-import clojure.lang.IPending;
 import clojure.lang.IPersistentMap;
 import java.util.LinkedList;
 
-public final class DeferredSeq extends ASeq implements Receivable, IPending {
+public final class DeferredSeq extends ASeq implements Receivable {
 
   /*
    * Channel that populates the seq

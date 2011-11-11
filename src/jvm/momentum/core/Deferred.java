@@ -3,10 +3,9 @@ package momentum.core;
 import clojure.lang.AFn;
 import clojure.lang.IDeref;
 import clojure.lang.IBlockingDeref;
-import clojure.lang.IPending;
 import java.util.LinkedList;
 
-public final class Deferred extends AFn implements Receivable, IDeref, IBlockingDeref, IPending {
+public final class Deferred extends AFn implements Receivable, IDeref, IBlockingDeref {
 
   public static Deferred aborted(Exception e) {
     Deferred ret = new Deferred();

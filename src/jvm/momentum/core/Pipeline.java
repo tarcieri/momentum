@@ -4,12 +4,11 @@ import clojure.lang.AFn;
 import clojure.lang.IFn;
 import clojure.lang.IDeref;
 import clojure.lang.IBlockingDeref;
-import clojure.lang.IPending;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
-public final class Pipeline extends AFn implements Receivable, IDeref, IBlockingDeref, IPending {
+public final class Pipeline extends AFn implements Receivable, IDeref, IBlockingDeref {
 
   public static class Catcher {
     final Class klass;
