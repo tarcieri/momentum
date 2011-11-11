@@ -254,34 +254,67 @@
 
 ;; ==== Some higher level of abstraction APIs
 
-;; Probably should allow (GET {:host "localhost" :port 4040})
-(defn request
-  [method uri]
-  (let [uri  (URI. uri)
-        resp (deferred)
-        port (if (> (.getPort uri) 0)
-               (.getPort uri) 80)]
+(defn- uri-map
+  [uri]
+  (when uri
+    (let [uri  (URI. uri)
+          port (.getPort uri)]
+      {:host         (.getHost uri)
+       :port         (if (> port 0) port)
+       :path-info    (.getPath uri)
+       :script-name  ""
+       :query-string (or (.getQuery uri) "")})))
+
+(defn- request*
+  [method uri hdrs request-body]
+  (let [hdrs (merge {:http-version [1 1] :request-method method} (uri-map uri) hdrs)
+        resp (deferred)]
     (connect
      (fn [dn _]
-       (fn [evt val]
-         (cond
-          (= :open evt)
-          (dn :request
-              [{:http-version   [1 1]
-                :path-info      (.getPath uri)
-                :script-name    ""
-                :query-string   ""
-                :request-method method} nil])
+       (let [ch (channel)]
+        (fn [evt val]
+          (cond
+           (= :open evt)
+           (dn :request [hdrs nil])
 
-          (= :response evt)
-          (resp val)
+           (= :response evt)
+           (resp val)
 
-          :else
-          1 ;; (println "LULZ WTF: " [evt val])
-          )
-         ))
-     {:host (.getHost uri) :port port})
-    resp))
+           (= :abort evt)
+           (abort resp val)
+
+           :else
+           1 ;; (println "LULZ WTF: " [evt val])
+           )
+          )))
+     (select-keys hdrs [:host :port]))
+    resp)
+  )
+
+(defn request
+  ([hdrs]
+     (request* (hdrs :request-method) nil hdrs nil))
+
+  ([method arg]
+     (cond
+      (string? arg)
+      (request* method arg {} nil)
+
+      (map? arg)
+      (request* method nil arg nil)
+
+      :else
+      (throw (IllegalArgumentException.))))
+
+  ([method arg1 arg2]
+     (if (string? arg1)
+       (if (map? arg2)
+         (request* method arg1 arg2 nil)
+         (request* method arg1 {} arg2))
+       (request* method nil arg1 arg2)))
+
+  ([method uri hdrs body]
+     (request* method uri hdrs body)))
 
 (defn HEAD   [& args] (apply request "HEAD"   args))
 (defn GET    [& args] (apply request "GET"    args))

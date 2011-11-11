@@ -491,7 +491,7 @@
 ;; ==== Higher level of abstraction tests
 
 (defcoretest simple-deferred-response-requests
-  [ch1 ch2]
+  [ch1]
   (start-hello-world-app ch1)
 
   (doseq [method ["GET" "POST" "PUT" "DELETE"]]
@@ -513,3 +513,58 @@
                     :remote-addr    :dont-care
                     :local-addr     :dont-care} nil]
          :done nil))))
+
+(defcoretest passing-headers-to-deferred-request
+  [ch1]
+  (start-hello-world-app ch1)
+
+  (GET "http://localhost:4040/foo" {"x-foo" "barbar"})
+
+  (is (next-msgs
+       ch1
+       :request [#(includes-hdrs {:path-info "/foo" "x-foo" "barbar"} %) nil])))
+
+(defcoretest connecting-without-uri-string
+  [ch1]
+  (start-hello-world-app ch1)
+
+  (GET {:host "localhost" :port 4040 :path-info "/bar"})
+
+  (is (next-msgs
+       ch1
+       :request [#(includes-hdrs {:path-info "/bar"} %) nil])))
+
+(defcoretest deferred-request-errors-abort-response
+  nil
+
+  (is (thrown-with-msg? Exception #"Connection refused"
+        @(GET "http://localhost:4040"))))
+
+(defcoretest various-deferred-request-invocations
+  [ch1]
+  (start-hello-world-app ch1)
+
+  (GET "/" {:host "localhost" :port 4040})
+
+  (is (next-msgs
+       ch1
+       :request [#(includes-hdrs {:path-info "/"} %) nil])))
+
+;; (defcoretest handling-chunked-response-bodies
+;;   [ch1]
+;;   (server/start
+;;    (fn [dn _]
+;;      (fn [evt val]
+;;        (when (= :request evt)
+;;          (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
+;;          (dn :body (buffer "Hello"))
+;;          (dn :body (buffer "World"))
+;;          (dn :body (buffer "these are"))
+;;          (dn :body (buffer "chunks"))
+;;          (dn :body nil)))))
+
+;;   (let [[status hdrs body] @(GET "http://localhost:4040/")]
+;;     (is (= 200 status))
+;;     (is (= (hdrs "transfer-encoding") "chunked"))))
+
+;; Sending request w/ content-length and invalid body length
