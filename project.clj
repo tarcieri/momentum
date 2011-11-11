@@ -1,4 +1,4 @@
-(defproject momentum "0.2.0-SNAPSHOT"
+(defproject io.tilde/momentum "0.2.0-SNAPSHOT"
   :description "Async HTTP framework built on top of Netty"
 
   :dependencies [[org.clojure/clojure   "1.3.0"]
