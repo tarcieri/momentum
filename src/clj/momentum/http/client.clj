@@ -6,8 +6,6 @@
   (:require
    [momentum.net.client :as net])
   (:import
-   [momentum.http
-    HttpClientCodec]
    [java.net
     URI]
    [java.util.concurrent
