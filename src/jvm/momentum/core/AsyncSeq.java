@@ -13,49 +13,22 @@ import clojure.lang.Util;
 import java.util.List;
 import java.util.LinkedList;
 
-public final class AsyncSeq extends Obj implements ISeq, Sequential, Receivable, Receiver {
+public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Receiver {
 
   /*
    * Function that will realize the sequence
    */
   IFn fn;
 
-  /*
-   * The realized sequence
-   */
-  ISeq s;
-
-  /*
-   * The error that caused the seq to be aborted
-   */
-  Exception err;
-
-  /*
-   * The callbacks to invoke when the async seq is realized
-   */
-  final LinkedList<Receiver> receivers = new LinkedList<Receiver>();
-
-  /*
-   * Tracks the state of the async seq
-   */
-  volatile boolean isRealized;
-
   public AsyncSeq(IFn fn) {
     this.fn = fn;
-  }
-
-  /*
-   * Obj API
-   */
-  public Obj withMeta(IPersistentMap meta) {
-    return this;
   }
 
   /*
    * Evaluate the body of the async seq only once. If the return value is an
    * async value of some kind, then register a callback on it.
    */
-  boolean observe() {
+  public boolean isRealized() {
     if (isRealized) {
       return true;
     }
@@ -79,7 +52,7 @@ public final class AsyncSeq extends Obj implements ISeq, Sequential, Receivable,
     }
     catch (Exception e) {
       // Abort the seq
-      error(e);
+      realizeError(e);
 
       // Return true since the seq is realized
       return true;
@@ -104,84 +77,25 @@ public final class AsyncSeq extends Obj implements ISeq, Sequential, Receivable,
   }
 
   /*
-   * Receivable API
-   */
-  public void receive(Receiver r) {
-    if (r == null) {
-      throw new NullPointerException("Receiver is null");
-    }
-
-    if (!observe()) {
-      synchronized (this) {
-        // Check to make sure that the seq is still not realized now that a
-        // lock has been established.
-        if (!isRealized) {
-          receivers.add(r);
-          return;
-        }
-      }
-    }
-
-    deliver(r);
-  }
-
-  public boolean isRealized() {
-    return isRealized;
-  }
-
-  /*
    * Receiver API
    */
   public void success(Object val) {
     try {
       // Save off the realized sequence
-      s = RT.seq(val);
-
-      // Mark the async seq as complete
-      isRealized = true;
-
-      deliverAll();
+      ISeq s = RT.seq(val);
+      realizeSuccess(s);
     }
     catch (Exception e) {
-      error(e);
+      realizeError(e);
     }
   }
 
   public void error(Exception e) {
-    // Save off the error
-    err = e;
-
-    // Mark the async sequence as complete
-    isRealized = true;
-
-    deliverAll();
-  }
-
-  void deliverAll() {
-    Receiver r;
-    synchronized (this) {
-      while ((r = receivers.poll()) != null) {
-        deliver(r);
-      }
-    }
-  }
-
-  void deliver(Receiver r) {
-    try {
-      if (err != null) {
-        r.error(err);
-      }
-      else {
-        r.success(s);
-      }
-    }
-    catch (Exception e) {
-      // Nothing right now
-    }
+    realizeError(e);
   }
 
   void ensureSuccess() {
-    if (observe()) {
+    if (isRealized()) {
       if (err != null) {
         throw Util.runtimeException(err);
       }
@@ -202,31 +116,31 @@ public final class AsyncSeq extends Obj implements ISeq, Sequential, Receivable,
   public Object first() {
     ensureSuccess();
 
-    if (s == null) {
+    if (val == null) {
       return null;
     }
 
-    return s.first();
+    return val.first();
   }
 
   public ISeq next() {
     ensureSuccess();
 
-    if (s == null) {
+    if (val == null) {
       return null;
     }
 
-    return s.next();
+    return val.next();
   }
 
   public ISeq more() {
     ensureSuccess();
 
-    if (s == null) {
+    if (val == null) {
       return PersistentList.EMPTY;
     }
 
-    return s.more();
+    return val.more();
   }
 
   public ISeq cons(Object o) {
@@ -248,8 +162,8 @@ public final class AsyncSeq extends Obj implements ISeq, Sequential, Receivable,
   public boolean equals(Object o) {
     ensureSuccess();
 
-    if (s != null) {
-      return s.equiv(o);
+    if (val != null) {
+      return val.equiv(o);
     }
     else {
       return (o instanceof Sequential || o instanceof List) && RT.seq(o) == null;
