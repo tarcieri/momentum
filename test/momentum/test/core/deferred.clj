@@ -253,21 +253,6 @@
      identity)
     (is (= [:hello nil] @res))))
 
-(deftest closing-channel-after-observing-deferred-seq-tail
-  (let [ch  (channel)
-        res (atom nil)]
-    (receive
-     (seq ch)
-     (fn [[val & more]]
-       (compare-and-set! res nil val)
-       (receive more #(compare-and-set! res :hello %) identity))
-     identity)
-
-    (put ch :hello)
-    (is (= :hello @res))
-    (close ch)
-    (is (= nil @res))))
-
 (deftest observing-an-unrealized-non-blocking-deferred-seq
   (let [ch (channel)]
     (is (thrown? Exception (first (seq ch))))
