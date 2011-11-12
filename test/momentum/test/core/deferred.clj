@@ -266,7 +266,7 @@
     (put ch :hello)
     (is (= :hello @res))
     (close ch)
-    (is (= [nil] @res))))
+    (is (= nil @res))))
 
 (deftest observing-an-unrealized-non-blocking-deferred-seq
   (let [ch (channel)]

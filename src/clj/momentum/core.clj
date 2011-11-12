@@ -60,6 +60,10 @@
   [& args]
   `(momentum.core.deferred/doasync ~@args))
 
+(defmacro async-seq
+  [& body]
+  `(momentum.core.deferred/async-seq (fn [] ~@body)))
+
 (defmacro channeling
   [binding & stmts]
   (assert (vector? binding)     "a vector is required for its binding")

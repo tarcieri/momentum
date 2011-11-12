@@ -1,6 +1,7 @@
 (ns momentum.core.deferred
   (:import
    [momentum.core
+    AsyncSeq
     Channel
     Deferred
     DeferredSeq
@@ -162,3 +163,22 @@
   (let [[stages catches finally] (partition-clauses clauses)]
     `(doto (pipeline [~@stages] [~@(map to-catcher catches)] ~(to-finally finally))
        (put ~seed))))
+
+(defn async-seq
+  [f]
+  (AsyncSeq. f))
+
+(defn batch
+  "Returns a deferred value that is realized with the given collection
+  when all (or n if supplied) elements of the collection have been
+  realized."
+  ([coll]   (throw (Exception. "Not implemented")))
+  ([n coll] (throw (Exception. "Not implemented"))))
+
+(defn map*
+  [f coll]
+  (async-seq
+    (fn []
+      (doasync coll
+        (fn [[v & more]]
+          (cons v (map* f more)))))))

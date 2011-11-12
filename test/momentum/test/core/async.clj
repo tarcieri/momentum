@@ -237,6 +237,50 @@
                       (recur* nxt))
                     (inc val))))))))
 
+;; ==== async-seq
+
+(deftest async-seq-basics
+  (are [x] (seq? x)
+       (async-seq nil)
+       (async-seq [])
+       (async-seq [1 2]))
+
+  (are [x y] (= x y)
+       (async-seq nil)   ()
+       (async-seq [nil]) [nil]))
+
+(deftest async-seq-is-just-like-lazy-seq-by-default
+  (let [observed? (atom nil)
+        my-seq (async-seq (compare-and-set! observed? nil :yep) [:hello])]
+    (is (nil? @observed?))
+    (is (= (list :hello) (seq my-seq)))
+    (is (= :yep @observed?))))
+
+(deftest async-seq-with-simple-synchronous-pipeline
+  (are [x y] (= x y)
+       (async-seq (doasync nil))   ()
+       (async-seq (doasync [nil])) [nil]))
+
+(defn- count-seq [count]
+  (async-seq
+    (future*
+     (Thread/sleep 5)
+     (when (> count 0)
+       (cons count (count-seq (dec count)))))))
+
+(deftest async-seq-with-real-async-stuff-happening
+  (let [res (atom [])]
+    @(doasync (count-seq 3)
+       (fn [[v & more]]
+         (when v
+           (swap! res #(conj % v))
+           (recur* more))))
+
+    ;; Check the result
+    (is (= [3 2 1] @res))))
+
+;; ==== channeling
+
 (deftest channeling-creates-deferred-seq
   (let [ret (channeling [ch] (put ch "Hello"))]
     (is (seq ret))
@@ -303,3 +347,6 @@
     (put ch :goodbye)
     (put-last ch :later)
     (is (= [:hello :goodbye :later] @res))))
+
+;; ==== map*
+

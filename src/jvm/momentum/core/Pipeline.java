@@ -184,10 +184,13 @@ public final class Pipeline extends AFn implements Receivable, IDeref, IBlocking
       Receivable r = (Receivable) v;
       r.receive(new FirstStage(head, this));
     }
-    else {
+    else if (head != null) {
       // The state has successfully been advanced, so we are free to put the
       // value into the first stage.
       head.put(v);
+    }
+    else {
+      success(v);
     }
 
     return true;
