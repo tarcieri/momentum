@@ -140,7 +140,7 @@ public final class Pipeline extends AFn implements Receivable, IDeref, IBlocking
   /*
    * The deferred value that will be realized upon completion of the pipeline
    */
-  final Deferred result;
+  final AsyncVal result;
 
   /*
    * List of callbacks to catch various exceptions
@@ -167,7 +167,7 @@ public final class Pipeline extends AFn implements Receivable, IDeref, IBlocking
 
     head   = curr;
     cs     = new AtomicReference<Stage>();
-    result = new Deferred();
+    result = new AsyncVal();
 
     this.catchers  = catchers;
     this.finalizer = finalizer;

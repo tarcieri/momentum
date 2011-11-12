@@ -8,6 +8,16 @@ import java.util.LinkedList;
 
 public final class DeferredSeq extends ASeq implements Receivable {
 
+  class Zomg extends Async<LinkedList> {
+    public void success(Object o) {
+      realizeSuccess((LinkedList) o);
+    }
+
+    public void error(Exception e) {
+      realizeError(e);
+    }
+  }
+
   /*
    * Channel that populates the seq
    */
@@ -39,9 +49,9 @@ public final class DeferredSeq extends ASeq implements Receivable {
   final LinkedList<Receiver> receivers;
 
   /*
-   * Deferred value representing the moment that the head of this seq is read.
+   * Async value representing the moment that the head of this seq is read.
    */
-  final Deferred read;
+  final AsyncVal read;
 
   /*
    * The next link in the chain
@@ -51,7 +61,7 @@ public final class DeferredSeq extends ASeq implements Receivable {
 
   DeferredSeq(Channel ch) {
     chan = ch;
-    read = new Deferred();
+    read = new AsyncVal();
 
     receivers = new LinkedList<Receiver>();
   }

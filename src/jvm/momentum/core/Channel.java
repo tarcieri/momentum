@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public final class Channel extends AFn implements Seqable, IPending {
 
-  static final Deferred channelClosed = Deferred.aborted(new RuntimeException("Channel closed"));
+  static final AsyncVal channelClosed = AsyncVal.aborted(new RuntimeException("Channel closed"));
 
   /*
    * Whether or not the sequences are aloud to block waiting be realized

@@ -20,7 +20,7 @@
                        (fn [_] (reset! res :fail)))))
     (is (nil? @res))))
 
-;; ==== Deferred values
+;; ==== Async values
 
 (deftest successfully-realizing-a-deferred-value
   (let [dval (deferred)

@@ -4,16 +4,16 @@ import clojure.lang.IDeref;
 import clojure.lang.IBlockingDeref;
 import java.util.LinkedList;
 
-public final class Deferred extends Async<Object> implements IDeref, IBlockingDeref {
+public final class AsyncVal extends Async<Object> implements IDeref, IBlockingDeref {
 
-  public static Deferred aborted(Exception e) {
-    Deferred ret = new Deferred();
+  public static AsyncVal aborted(Exception e) {
+    AsyncVal ret = new AsyncVal();
     ret.abort(e);
     return ret;
   }
 
-  public static Deferred realized(Object v) {
-    Deferred ret = new Deferred();
+  public static AsyncVal realized(Object v) {
+    AsyncVal ret = new AsyncVal();
     ret.put(v);
     return ret;
   }

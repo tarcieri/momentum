@@ -2,8 +2,8 @@
   (:import
    [momentum.core
     AsyncSeq
+    AsyncVal
     Channel
-    Deferred
     DeferredSeq
     Pipeline
     Pipeline$Catcher
@@ -16,7 +16,7 @@
   (receive   [_ success error]))
 
 (extend-protocol DeferredValue
-  Deferred
+  AsyncVal
   (received? [val]
     (.isRealized val))
   (received [val]
@@ -75,7 +75,7 @@
   (put   [ch val] (.put ch val))
   (abort [ch err] (.abort ch err))
 
-  Deferred
+  AsyncVal
   (put [dval val]   (.put dval val))
   (abort [dval err] (.abort dval err))
 
@@ -85,7 +85,7 @@
 
 (defn deferred
   []
-  (Deferred.))
+  (AsyncVal.))
 
 (defn channel
   []
@@ -121,6 +121,10 @@
 (defn recur*
   ([]    (Pipeline$Recur. nil))
   ([val] (Pipeline$Recur. val)))
+
+(defn join
+  [& args]
+  )
 
 ;; ==== Async macro
 
