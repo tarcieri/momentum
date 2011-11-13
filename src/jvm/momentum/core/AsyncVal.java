@@ -1,8 +1,7 @@
 package momentum.core;
 
-import clojure.lang.IDeref;
-import clojure.lang.IBlockingDeref;
-import java.util.LinkedList;
+import clojure.lang.*;
+import java.util.*;
 
 public final class AsyncVal extends Async<Object> implements IDeref, IBlockingDeref {
 
@@ -35,24 +34,16 @@ public final class AsyncVal extends Async<Object> implements IDeref, IBlockingDe
   }
 
   public Object deref(long ms, Object timeoutValue) {
-    if (!isRealized()) {
-
-      if (ms == 0) {
-        return timeoutValue;
+    // Attempt to wait for the async value to become realized
+    if (block(ms)) {
+      if (err != null) {
+        throw Util.runtimeException(err);
       }
-
-      block(ms);
-
-      if (!isRealized()) {
-        return timeoutValue;
+      else {
+        return val;
       }
     }
 
-    if (err != null) {
-      throw new RuntimeException(err);
-    }
-    else {
-      return val;
-    }
+    return timeoutValue;
   }
 }

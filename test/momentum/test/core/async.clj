@@ -1,7 +1,10 @@
 (ns momentum.test.core.async
   (:use
    clojure.test
-   momentum.core))
+   momentum.core)
+  (:import
+   [momentum.core
+    TimeoutException]))
 
 (defn- deferred-inc
   [i]
@@ -10,6 +13,13 @@
       (Thread/sleep 10)
       (put d (inc i)))
     d))
+
+(defn- async-dec-seq [i]
+  (async-seq
+    (future*
+     (Thread/sleep 5)
+     (when (> i 0)
+       (cons i (async-dec-seq (dec i)))))))
 
 (deftest simple-do-async
   (let [res (atom nil)]
@@ -237,6 +247,15 @@
                       (recur* nxt))
                     (inc val))))))))
 
+;; ==== join
+
+;; (deftest simple-async-join
+;;   (let [res (atom nil)]
+;;     (doasync (join 1 2 3)
+;;       (fn [a b c]
+;;         (reset! res [a b c])))
+;;     (is (= [1 2 3] @res))))
+
 ;; ==== async-seq
 
 (deftest async-seq-basics
@@ -261,16 +280,9 @@
        (async-seq (doasync nil))   ()
        (async-seq (doasync [nil])) [nil]))
 
-(defn- count-seq [count]
-  (async-seq
-    (future*
-     (Thread/sleep 5)
-     (when (> count 0)
-       (cons count (count-seq (dec count)))))))
-
 (deftest async-seq-with-real-async-stuff-happening
   (let [res (atom [])]
-    @(doasync (count-seq 3)
+    @(doasync (async-dec-seq 3)
        (fn [[v & more]]
          (when v
            (swap! res #(conj % v))
@@ -297,6 +309,13 @@
           Exception #"BOOM"
           @(doasync seq)))))
 
+(deftest blocking-async-seq-timeouts
+  (let [my-seq (blocking-async-seq 10 (future* (Thread/sleep 50)))]
+    (is (thrown? TimeoutException (first my-seq))))
+
+  (let [my-seq (async-seq (future* (Thread/sleep 50)))]
+    (is (thrown-with-msg? RuntimeException #"realized" (first my-seq)))))
+
 ;; ==== doseq*
 
 (deftest simple-synchronous-doseq
@@ -311,8 +330,11 @@
       (swap! res #(conj % val)))
     (put ch :hello)
     (put ch :goodbye)
-    (put-last ch :later)
+    (put ch :later)
+    (close ch)
     (is (= [:hello :goodbye :later] @res))))
 
 ;; ==== map*
 
+;; (deftest mapping-async-seq
+;;   (is true))

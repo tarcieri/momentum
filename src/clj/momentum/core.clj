@@ -1,7 +1,8 @@
 (ns momentum.core
   (:require
-   momentum.core.buffer
-   momentum.core.deferred))
+   [momentum.core.buffer]
+   [momentum.core.channel :as channel]
+   [momentum.core.deferred]))
 
 ;; ==== Buffer helpers
 (def buffer?             momentum.core.buffer/buffer?)
@@ -46,15 +47,15 @@
 ;; ==== Async goodness
 (def abort               momentum.core.deferred/abort)
 (def recur*              momentum.core.deferred/recur*)
-(def blocking-channel    momentum.core.deferred/blocking-channel)
-(def channel             momentum.core.deferred/channel)
-(def close               momentum.core.deferred/close)
+(def join                momentum.core.deferred/join)
 (def deferred            momentum.core.deferred/deferred)
-(def enqueue             momentum.core.deferred/enqueue)
 (def pipeline            momentum.core.deferred/pipeline)
 (def put                 momentum.core.deferred/put)
-(def put-last            momentum.core.deferred/put-last)
 (def receive             momentum.core.deferred/receive)
+(def channel             channel/channel)
+(def blocking-channel    channel/blocking-channel)
+(def close               channel/close)
+(def enqueue             channel/enqueue)
 
 (defmacro doasync
   [& args]
@@ -64,15 +65,19 @@
   [& body]
   `(momentum.core.deferred/async-seq (fn [] ~@body)))
 
+(defmacro blocking-async-seq
+  [ms & body]
+  `(momentum.core.deferred/async-seq ~ms (fn [] ~@body)))
+
 (defmacro doseq*
   [seq-exprs & body]
   (assert (vector? seq-exprs) "a vector for its binding")
   (assert (even? (count seq-exprs)) "an even number of forms in binding vector")
   (let [[binding seq] seq-exprs]
     `(doasync ~seq
-       (fn [[~binding & more#]]
-         ~@body
-         (when more#
+       (fn [s#]
+         (when-let [[~binding & more#] s#]
+           ~@body
            (recur* more#))))))
 
 (defmacro future*

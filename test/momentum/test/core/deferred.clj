@@ -1,7 +1,7 @@
 (ns momentum.test.core.deferred
   (:use
    clojure.test
-   momentum.core.deferred))
+   momentum.core))
 
 ;; ==== Regular objects
 
@@ -162,15 +162,6 @@
       (is (= :hello head))
       (is (not (realized? tail))))))
 
-(deftest observing-an-element-materializes-the-deferred-value
-  (let [ch (channel)
-        dv (enqueue ch :hello)]
-    (is (not (realized? dv)))
-    (receive (seq ch) identity identity)
-    (is (not (realized? dv)))
-    (receive (seq ch) (fn [[first]]) identity)
-    (is (realized? dv))))
-
 (deftest registering-callbacks-on-deferred-seq
   (let [ch  (channel)
         res (atom nil)]
@@ -242,15 +233,6 @@
      (seq ch)
      (fn [[val more]] (reset! res [val more]))
      identity)
-    (is (= [:hello nil] @res)))
-
-  (let [ch  (channel)
-        res (atom nil)]
-    (put-last ch :hello)
-    (receive
-     (seq ch)
-     (fn [[val more]] (reset! res [val more]))
-     identity)
     (is (= [:hello nil] @res))))
 
 (deftest observing-an-unrealized-non-blocking-deferred-seq
@@ -264,7 +246,8 @@
       (Thread/sleep 10)
       (put ch :hello)
       (Thread/sleep 10)
-      (put-last ch :goodbye))
+      (put ch :goodbye)
+      (close ch))
     (is (= (seq ch) [:hello :goodbye]))))
 
 (deftest aborting-blocking-channel
@@ -274,6 +257,7 @@
       (put ch :hello)
       (Thread/sleep 10)
       (abort ch (Exception. "BOOM")))
+
     (is (thrown-with-msg? Exception #"BOOM"
           (vec (seq ch))))))
 
@@ -281,11 +265,12 @@
   (let [ch (blocking-channel)]
     (ch :hello)
     (close ch)
-    (is (= [:hello nil] (seq ch)))))
+    (is (= [:hello] (seq ch)))))
 
 (deftest putting-value-into-closed-channel
   (let [ch (channel)]
     (close ch)
-    (let [d (put ch :hello)]
-      (is (realized? d))
-      (is (thrown-with-msg? RuntimeException #"Channel closed" @d)))))
+    (is (not (put ch :hello)))))
+
+;; TODO:
+;; * Add tests for AsyncSeq List interface implementation

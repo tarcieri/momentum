@@ -3,7 +3,6 @@
    [momentum.core
     AsyncSeq
     AsyncVal
-    Channel
     DeferredSeq
     Pipeline
     Pipeline$Catcher
@@ -28,7 +27,7 @@
          (success [_ val] (success val))
          (error   [_ err] (error err))))))
 
-  DeferredSeq
+  AsyncSeq
   (received? [seq]
     (.isRealized seq))
   (received [seq]
@@ -71,10 +70,6 @@
   (abort [_ err]))
 
 (extend-protocol DeferredRealizer
-  Channel
-  (put   [ch val] (.put ch val))
-  (abort [ch err] (.abort ch err))
-
   AsyncVal
   (put [dval val]   (.put dval val))
   (abort [dval err] (.abort dval err))
@@ -86,31 +81,6 @@
 (defn deferred
   []
   (AsyncVal.))
-
-(defn channel
-  []
-  (Channel.))
-
-(defn blocking-channel
-  ([]   (Channel. -1))
-  ([ms] (Channel. ms)))
-
-(defn enqueue
-  ([_])
-  ([ch & vs]
-     (loop [[v & vs] vs]
-       (let [ret (.put ch v)]
-         (if vs
-           (recur vs)
-           ret)))))
-
-(defn close
-  [ch]
-  (.close ch))
-
-(defn put-last
-  [ch v]
-  (doto ch (.putLast v)))
 
 ;; ==== Pipeline stuff
 
@@ -169,8 +139,8 @@
        (put ~seed))))
 
 (defn async-seq
-  [f]
-  (AsyncSeq. f))
+  ([f]    (AsyncSeq. f))
+  ([ms f] (AsyncSeq. f ms)))
 
 (defn batch
   "Returns a deferred value that is realized with the given collection

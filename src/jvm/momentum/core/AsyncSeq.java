@@ -1,19 +1,14 @@
 package momentum.core;
 
-import clojure.lang.Cons;
-import clojure.lang.IFn;
-import clojure.lang.IPersistentCollection;
-import clojure.lang.IPersistentMap;
-import clojure.lang.ISeq;
-import clojure.lang.Obj;
-import clojure.lang.PersistentList;
-import clojure.lang.RT;
-import clojure.lang.Sequential;
-import clojure.lang.Util;
-import java.util.List;
-import java.util.LinkedList;
+import clojure.lang.*;
+import java.util.*;
 
-public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Receiver {
+public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, List, Receiver {
+
+  /*
+   * The max time the async seq can block
+   */
+  final long timeout;
 
   /*
    * Function that will realize the sequence
@@ -21,7 +16,21 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Rec
   IFn fn;
 
   public AsyncSeq(IFn fn) {
+    this(fn, 0);
+  }
+
+  public AsyncSeq(IFn fn, long timeout) {
     this.fn = fn;
+    this.timeout = timeout;
+  }
+
+  public AsyncSeq(Receivable r) {
+    this(r, 0);
+  }
+
+  public AsyncSeq(Receivable r, long timeout) {
+    this.timeout = timeout;
+    r.receive(this);
   }
 
   /*
@@ -95,7 +104,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Rec
   }
 
   void ensureSuccess() {
-    if (isRealized()) {
+    if (block(timeout)) {
       if (err != null) {
         throw Util.runtimeException(err);
       }
@@ -103,13 +112,25 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Rec
       return;
     }
 
-    throw new RuntimeException("Async seq has not been realized yet");
+    if (timeout == 0) {
+      throw new RuntimeException("Async seq has not been realized yet");
+    }
+
+    throw new TimeoutException("Waiting for the async seq timed out");
   }
 
   /*
    * ISeq API
    */
   public ISeq seq() {
+    if (block(timeout)) {
+      if (err != null) {
+        throw Util.runtimeException(err);
+      }
+
+      return RT.seq(val);
+    }
+
     return this;
   }
 
@@ -144,11 +165,17 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Rec
   }
 
   public ISeq cons(Object o) {
-    return new Cons(o, this);
+    return new Cons(o, seq());
   }
 
   public int count() {
-    throw new UnsupportedOperationException();
+    int c = 0;
+
+	  for (ISeq s = seq(); s != null; s = s.next()) {
+      ++c;
+    }
+
+    return c;
   }
 
   public IPersistentCollection empty() {
@@ -168,6 +195,146 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Rec
     else {
       return (o instanceof Sequential || o instanceof List) && RT.seq(o) == null;
     }
+  }
+
+  /*
+   * java.util.Collection API
+   */
+
+  public Object[] toArray() {
+  	return RT.seqToArray(seq());
+  }
+
+  public boolean add(Object o) {
+  	throw new UnsupportedOperationException();
+  }
+
+  public boolean remove(Object o) {
+  	throw new UnsupportedOperationException();
+  }
+
+  public boolean addAll(Collection c) {
+  	throw new UnsupportedOperationException();
+  }
+
+  public void clear() {
+  	throw new UnsupportedOperationException();
+  }
+
+  public boolean retainAll(Collection c) {
+  	throw new UnsupportedOperationException();
+  }
+
+  public boolean removeAll(Collection c) {
+  	throw new UnsupportedOperationException();
+  }
+
+  public boolean containsAll(Collection c) {
+  	for (Object o : c) {
+  		if (!contains(o)) {
+  			return false;
+      }
+  	}
+
+  	return true;
+  }
+
+  public Object[] toArray(Object[] a) {
+  	if (a.length >= count()) {
+  		ISeq s = seq();
+
+  		for (int i = 0; s != null; ++i, s = s.next()) {
+  			a[i] = s.first();
+  		}
+
+  		if (a.length > count()) {
+  			a[count()] = null;
+      }
+
+  		return a;
+  	}
+  	else {
+  		return toArray();
+    }
+  }
+
+  public int size() {
+  	return count();
+  }
+
+  public boolean isEmpty() {
+  	return seq() == null;
+  }
+
+  public boolean contains(Object o) {
+  	for (ISeq s = seq(); s != null; s = s.next()) {
+  		if (Util.equiv(s.first(), o)) {
+  			return true;
+      }
+  	}
+
+  	return false;
+  }
+
+  public Iterator iterator() {
+  	return new SeqIterator(seq());
+  }
+
+  /*
+   * java.util.List API
+   */
+
+  @SuppressWarnings("unchecked")
+  List reify() {
+    return new ArrayList<Object>(this);
+  }
+
+  public List subList(int fromIndex, int toIndex) {
+  	return reify().subList(fromIndex, toIndex);
+  }
+
+  public Object set(int index, Object element) {
+  	throw new UnsupportedOperationException();
+  }
+
+  public Object remove(int index) {
+  	throw new UnsupportedOperationException();
+  }
+
+  public int indexOf(Object o) {
+  	ISeq s = seq();
+
+  	for (int i = 0; s != null; s = s.next(), i++) {
+  		if (Util.equiv(s.first(), o)) {
+  			return i;
+      }
+    }
+
+  	return -1;
+  }
+
+  public int lastIndexOf(Object o) {
+  	return reify().lastIndexOf(o);
+  }
+
+  public ListIterator listIterator() {
+  	return reify().listIterator();
+  }
+
+  public ListIterator listIterator(int index) {
+  	return reify().listIterator(index);
+  }
+
+  public Object get(int index) {
+  	return RT.nth(this, index);
+  }
+
+  public void add(int index, Object element) {
+  	throw new UnsupportedOperationException();
+  }
+
+  public boolean addAll(int index, Collection c) {
+  	throw new UnsupportedOperationException();
   }
 
 }

@@ -119,8 +119,24 @@ public class Async<T> extends AFn implements Receivable {
     return isRealized() && err != null;
   }
 
-  protected void block(long ms) {
+  /*
+   * Block for the Async object to become realized for a maximum given time in
+   * ms;
+   */
+  protected boolean block(long ms) {
+    if (isRealized()) {
+      return true;
+    }
+
+    if (ms == 0) {
+      return false;
+    }
+
     synchronized (this) {
+      if (isRealized) {
+        return true;
+      }
+
       isBlocked = true;
 
       try {
@@ -134,6 +150,8 @@ public class Async<T> extends AFn implements Receivable {
       catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
+
+      return isRealized;
     }
   }
 
