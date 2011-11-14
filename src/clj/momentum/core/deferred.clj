@@ -3,7 +3,6 @@
    [momentum.core
     AsyncSeq
     AsyncVal
-    DeferredSeq
     Pipeline
     Pipeline$Catcher
     Pipeline$Recur
