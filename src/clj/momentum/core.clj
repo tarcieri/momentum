@@ -63,7 +63,7 @@
 
 (defmacro async-seq
   [& body]
-  `(momentum.core.deferred/async-seq (fn [this#] ~@body)))
+  `(momentum.core.deferred/async-seq (fn [] ~@body)))
 
 (defmacro doseq*
   [seq-exprs & body]

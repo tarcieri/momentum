@@ -32,7 +32,7 @@
 (defn- channel-seq
   [ch]
   (async-seq
-    (fn [_]
+    (fn []
       (doasync (.poll (.transfer ch))
         (fn [v]
           (when-not (= ::close-channel v)

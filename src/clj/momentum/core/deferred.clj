@@ -122,7 +122,7 @@
 (defn map*
   [f coll]
   (async-seq
-    (fn [_]
+    (fn []
       (doasync coll
         (fn [[v & more]]
           (cons v (map* f more)))))))
