@@ -2,7 +2,7 @@ package momentum.http;
 
 import java.util.LinkedList;
 import java.util.List;
-import momentum.core.Buffer;
+import momentum.buffer.Buffer;
 import clojure.lang.IFn;
 
 // TODO: Maybe abstract away the framing logic

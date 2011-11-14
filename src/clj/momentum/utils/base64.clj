@@ -1,8 +1,8 @@
 (ns momentum.utils.base64
   (:use
-   momentum.core.buffer)
+   momentum.core)
   (:import
-   momentum.core.Buffer
+   momentum.buffer.Buffer
    momentum.utils.Base64))
 
 (defprotocol IBase64

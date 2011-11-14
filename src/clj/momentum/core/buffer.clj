@@ -1,6 +1,6 @@
 (ns momentum.core.buffer
   (:import
-   [momentum.core
+   [momentum.buffer
     Buffer]
    [java.nio
     ByteBuffer]

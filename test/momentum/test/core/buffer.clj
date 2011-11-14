@@ -1,7 +1,7 @@
 (ns momentum.test.core.buffer
   (:use
    clojure.test
-   momentum.core.buffer)
+   momentum.core)
   (:import
    [java.nio
     BufferOverflowException
@@ -14,7 +14,7 @@
    [org.jboss.netty.buffer
     ChannelBuffer
     ChannelBuffers]
-   [momentum.core
+   [momentum.buffer
     Buffer]))
 
 ;; ==== HELPERS

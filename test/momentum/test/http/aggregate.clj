@@ -1,7 +1,7 @@
 (ns momentum.test.http.aggregate
   (:use
    clojure.test
-   momentum.core.buffer
+   momentum.core
    momentum.http.test)
   (:require
    [momentum.http.aggregate :as aggregate]))

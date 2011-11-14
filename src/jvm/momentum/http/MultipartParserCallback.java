@@ -1,6 +1,6 @@
 package momentum.http;
 
-import momentum.core.Buffer;
+import momentum.buffer.Buffer;
 
 public interface MultipartParserCallback {
     // Return an object that will contain the HTTP message's headers

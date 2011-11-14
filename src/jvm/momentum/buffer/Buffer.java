@@ -1,4 +1,4 @@
-package momentum.core;
+package momentum.buffer;
 
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;

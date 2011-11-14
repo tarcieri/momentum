@@ -2,7 +2,7 @@
 // line 1 "src/rl/momentum/http/MultipartParser.rl"
 package momentum.http;
 
-import momentum.core.Buffer;
+import momentum.buffer.Buffer;
 
 public final class MultipartParser {
 

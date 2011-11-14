@@ -1,7 +1,7 @@
 package momentum.http;
 
 import java.io.UnsupportedEncodingException;
-import momentum.core.Buffer;
+import momentum.buffer.Buffer;
 
 public final class WsFrame {
 

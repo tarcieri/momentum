@@ -1,8 +1,8 @@
 (ns momentum.utils.digest
   (:use
-   momentum.core.buffer)
+   momentum.core)
   (:import
-   momentum.core.Buffer
+   momentum.buffer.Buffer
    java.nio.ByteBuffer
    java.security.MessageDigest))
 

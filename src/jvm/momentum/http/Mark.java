@@ -1,6 +1,6 @@
 package momentum.http;
 
-import momentum.core.Buffer;
+import momentum.buffer.Buffer;
 
 // A helper class that can be used to mark points of interest in
 // the buffers that are being parsed. Whenever a point of interest

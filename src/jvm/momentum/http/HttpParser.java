@@ -6,7 +6,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Queue;
 import clojure.lang.AFn;
-import momentum.core.Buffer;
+import momentum.buffer.Buffer;
 
 /**
  * TODO:

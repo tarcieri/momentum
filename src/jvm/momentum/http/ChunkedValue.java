@@ -1,6 +1,6 @@
 package momentum.http;
 
-import momentum.core.Buffer;
+import momentum.buffer.Buffer;
 
 public class ChunkedValue {
     private   int  bridgeCount;

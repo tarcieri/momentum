@@ -1,4 +1,4 @@
-package momentum.core;
+package momentum.buffer;
 
 import java.nio.ByteBuffer;
 import org.jboss.netty.buffer.ChannelBuffer;

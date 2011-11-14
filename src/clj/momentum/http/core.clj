@@ -5,8 +5,6 @@
    [clojure.string       :as str]
    [momentum.http.parser :as parser])
   (:import
-   [momentum.core
-    Buffer]
    [java.io
     IOException]))
 

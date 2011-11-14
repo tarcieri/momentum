@@ -1,7 +1,7 @@
 package momentum.utils;
 
 import java.io.UnsupportedEncodingException;
-import momentum.core.Buffer;
+import momentum.buffer.Buffer;
 
 public class Hex {
 
