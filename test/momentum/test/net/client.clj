@@ -41,7 +41,8 @@
    (fn [dn _]
      (fn [evt val]
        (enqueue ch2 [evt val])
-       (apply dn (first (seq ch3)))))
+       (let [msg (first (seq ch3))]
+         (apply dn msg))))
    {:host "localhost" :port 4040})
 
   (is (next-msgs

@@ -46,6 +46,7 @@
 
 ;; ==== Async goodness
 (def abort               momentum.core.deferred/abort)
+(def batch               momentum.core.deferred/batch)
 (def recur*              momentum.core.deferred/recur*)
 (def join                momentum.core.deferred/join)
 (def deferred            momentum.core.deferred/deferred)
@@ -63,11 +64,11 @@
 
 (defmacro async-seq
   [& body]
-  `(momentum.core.deferred/async-seq (fn [] ~@body)))
+  `(momentum.core.deferred/async-seq (fn [this#] ~@body)))
 
 (defmacro blocking-async-seq
   [ms & body]
-  `(momentum.core.deferred/async-seq ~ms (fn [] ~@body)))
+  `(momentum.core.deferred/async-seq ~ms (fn [this#] ~@body)))
 
 (defmacro doseq*
   [seq-exprs & body]

@@ -31,11 +31,10 @@
 (defn- channel-seq
   [ch]
   (async-seq (.ms ch)
-    (fn []
+    (fn [_]
       (doasync (.poll (.transfer ch))
         (fn [v]
-          (if (= ::close-channel v)
-            (reset! (.head ch) nil)
+          (when-not (= ::close-channel v)
             (let [nxt (channel-seq ch)]
               (reset! (.head ch) nxt)
               (cons v nxt))))))))

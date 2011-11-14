@@ -146,13 +146,18 @@
   "Returns a deferred value that is realized with the given collection
   when all (or n if supplied) elements of the collection have been
   realized."
-  ([coll]   (throw (Exception. "Not implemented")))
-  ([n coll] (throw (Exception. "Not implemented"))))
+  [coll]
+  (doasync coll
+    (fn [x]
+      (if x
+        (recur* (next x))
+        coll))))
+;; ([n coll] (throw (Exception. "Not implemented - requires (join ...)")))
 
 (defn map*
   [f coll]
   (async-seq
-    (fn []
+    (fn [_]
       (doasync coll
         (fn [[v & more]]
           (cons v (map* f more)))))))

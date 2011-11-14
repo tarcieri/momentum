@@ -191,9 +191,9 @@
   (when seq
     (lazy-seq
      (try
-       (let [[v & more] seq]
-         (cons (normalize v) (timeoutable more)))
-       (catch TimeoutException err ["reading the channel timed out" nil])))))
+       (cons (normalize (first seq)) (timeoutable (next seq)))
+       (catch TimeoutException err
+         ["reading the channel timed out" nil])))))
 
 (defn assert-no-msgs-for
   [f msg chs]

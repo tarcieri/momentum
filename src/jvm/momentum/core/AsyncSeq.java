@@ -57,7 +57,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
     }
 
     try {
-      ret = fn.invoke();
+      ret = fn.invoke(this);
     }
     catch (Exception e) {
       // Abort the seq
@@ -123,7 +123,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
    * ISeq API
    */
   public ISeq seq() {
-    if (block(timeout)) {
+    if (isRealized) {
       if (err != null) {
         throw Util.runtimeException(err);
       }

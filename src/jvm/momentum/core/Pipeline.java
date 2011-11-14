@@ -174,23 +174,28 @@ public final class Pipeline extends AFn implements Receivable, IDeref, IBlocking
   }
 
   public boolean put(final Object v) {
-    // Step one is to set the current state to the first stage. The expected
-    // current state is null.
-    if (!cs.compareAndSet(null, head)) {
-      return false;
-    }
-
     if (v instanceof Receivable) {
-      Receivable r = (Receivable) v;
-      r.receive(new FirstStage(head, this));
+      Stage first = new Stage(null, head, this);
+
+      // First make sure that the pipeline state is correct
+      if (!cs.compareAndSet(null, first)) {
+        return false;
+      }
+
+      ((Receivable) v).receive(first);
     }
     else if (head != null) {
+      // First make sure that the pipeline state is correct
+      if (!cs.compareAndSet(null, head)) {
+        return false;
+      }
+
       // The state has successfully been advanced, so we are free to put the
       // value into the first stage.
       head.put(v);
     }
     else {
-      success(v);
+      return success(v);
     }
 
     return true;
@@ -228,11 +233,11 @@ public final class Pipeline extends AFn implements Receivable, IDeref, IBlocking
     return result.deref(ms, timeoutValue);
   }
 
-  void success(Object val) {
+  boolean success(Object val) {
     final Stage curr = cs.getAndSet(FINAL);
 
     if (curr == FINAL) {
-      return;
+      return false;
     }
 
     try {
@@ -245,6 +250,8 @@ public final class Pipeline extends AFn implements Receivable, IDeref, IBlocking
     catch (Exception err) {
       result.abort(err);
     }
+
+    return true;
   }
 
   boolean error(Exception err) {

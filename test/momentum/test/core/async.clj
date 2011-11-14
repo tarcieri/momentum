@@ -21,6 +21,15 @@
      (when (> i 0)
        (cons i (async-dec-seq (dec i)))))))
 
+(deftest doasync-with-no-stages
+  (are [x y] (= x y)
+       1   @(doasync 1)
+       [1] @(doasync [1])
+       nil @(doasync nil)
+       1   @(doasync (future* (Thread/sleep 10) 1))
+       [1] @(doasync (future* (Thread/sleep 10) [1]))
+       nil @(doasync (future* (Thread/sleep 10) nil))))
+
 (deftest simple-do-async
   (let [res (atom nil)]
     (receive
@@ -266,9 +275,13 @@
 
   (are [x y] (= x y)
        (async-seq nil)   ()
-       (async-seq [nil]) [nil]))
+       (async-seq [nil]) [nil])
 
-(deftest async-seq-is-just-like-lazy-seq-by-default
+  ;; Unrealized async-seq
+  (let [my-seq (async-seq (deferred))]
+    (is (identical? my-seq (seq my-seq)))))
+
+(deftest async-seq-with-seq-return-just-like-lazy-seq
   (let [observed? (atom nil)
         my-seq (async-seq (compare-and-set! observed? nil :yep) [:hello])]
     (is (nil? @observed?))
@@ -280,7 +293,7 @@
        (async-seq (doasync nil))   ()
        (async-seq (doasync [nil])) [nil]))
 
-(deftest async-seq-with-real-async-stuff-happening
+(deftest async-seq-with-simple-async-pipeline
   (let [res (atom [])]
     @(doasync (async-dec-seq 3)
        (fn [[v & more]]
@@ -315,6 +328,20 @@
 
   (let [my-seq (async-seq (future* (Thread/sleep 50)))]
     (is (thrown-with-msg? RuntimeException #"realized" (first my-seq)))))
+
+;; ==== batch
+
+(deftest batching-regular-seqs
+  (are [x] (= [3 2 1] @(batch x))
+       (list 3 2 1)
+       [3 2 1]
+       (lazy-seq (cons 3 (lazy-seq [2 1])))))
+
+(deftest batching-async-seqs
+  (are [x] (= [3 2 1] @(batch x))
+       (async-dec-seq 3)
+       (cons 3 (async-dec-seq 2))
+       (lazy-seq (cons 3 (async-dec-seq 2)))))
 
 ;; ==== doseq*
 
