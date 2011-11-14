@@ -9,13 +9,10 @@
     Receiver]))
 
 (defprotocol DeferredValue
-  (received? [_])
   (receive   [_ success error]))
 
 (extend-protocol DeferredValue
   AsyncVal
-  (received? [val]
-    (.isRealized val))
   (receive [val success error]
     (doto val
       (.receive
@@ -24,8 +21,6 @@
          (error   [_ err] (error err))))))
 
   AsyncSeq
-  (received? [seq]
-    (.isRealized seq))
   (receive [seq success error]
     (doto seq
       (.receive
@@ -34,8 +29,6 @@
          (error   [_ err] (error err))))))
 
   Pipeline
-  (received? [pipeline]
-    (.isRealized pipeline))
   (receive [val success error]
     (doto val
       (.receive
@@ -44,13 +37,11 @@
          (error   [_ err] (error err))))))
 
   Object
-  (received? [o] true)
   (receive [o success _]
     (success o)
     o)
 
   nil
-  (received? [_] true)
   (receive [_ success _]
     (success nil)
     nil))
