@@ -6,30 +6,15 @@ import java.util.*;
 public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, List, Receiver {
 
   /*
-   * The max time the async seq can block
-   */
-  final long timeout;
-
-  /*
    * Function that will realize the sequence
    */
   IFn fn;
 
   public AsyncSeq(IFn fn) {
-    this(fn, 0);
-  }
-
-  public AsyncSeq(IFn fn, long timeout) {
     this.fn = fn;
-    this.timeout = timeout;
   }
 
   public AsyncSeq(Receivable r) {
-    this(r, 0);
-  }
-
-  public AsyncSeq(Receivable r, long timeout) {
-    this.timeout = timeout;
     r.receive(this);
   }
 
@@ -104,7 +89,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
   }
 
   void ensureSuccess() {
-    if (block(timeout)) {
+    if (isRealized()) {
       if (err != null) {
         throw Util.runtimeException(err);
       }
@@ -112,11 +97,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
       return;
     }
 
-    if (timeout == 0) {
-      throw new RuntimeException("Async seq has not been realized yet");
-    }
-
-    throw new TimeoutException("Waiting for the async seq timed out");
+    throw new RuntimeException("Async seq has not been realized yet");
   }
 
   /*

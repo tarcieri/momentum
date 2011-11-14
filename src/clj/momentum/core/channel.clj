@@ -1,5 +1,6 @@
 (ns momentum.core.channel
   (:use
+   momentum.core.buffer
    momentum.core.deferred)
   (:import
    [momentum.async
@@ -7,7 +8,7 @@
 
 (declare channel-seq)
 
-(deftype Channel [transfer open? head ms]
+(deftype Channel [transfer open? head]
   clojure.lang.Seqable
   (seq [_]
     @head)
@@ -24,13 +25,13 @@
   (invoke [this v]
     (put this v))
 
-  clojure.lang.IPending
-  (isRealized [this]
-    (not @(.open? this))))
+  clojure.lang.Counted
+  (count [this]
+    (.count (.transfer this))))
 
 (defn- channel-seq
   [ch]
-  (async-seq (.ms ch)
+  (async-seq
     (fn [_]
       (doasync (.poll (.transfer ch))
         (fn [v]
@@ -39,19 +40,11 @@
               (reset! (.head ch) nxt)
               (cons v nxt))))))))
 
-(defn- mk-channel
-  [ms]
-  (let [ch (Channel. (AsyncTransfer. nil) (atom true) (atom nil) ms)]
-    (reset! (.head ch) (channel-seq ch))
-    ch))
-
 (defn channel
   []
-  (mk-channel 0))
-
-(defn blocking-channel
-  ([]   (mk-channel -1))
-  ([ms] (mk-channel ms)))
+  (let [ch (Channel. (AsyncTransfer. nil) (atom true) (atom nil))]
+    (reset! (.head ch) (channel-seq ch))
+    ch))
 
 (defn enqueue
   ([_])

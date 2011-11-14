@@ -1,6 +1,7 @@
 package momentum.async;
 
-import java.util.LinkedList;
+import clojure.lang.*;
+import java.util.*;
 
 /*
  * AsyncTransfer is a simple abstraction that is intended to assist with
@@ -11,7 +12,7 @@ import java.util.LinkedList;
  *
  * TODO: Unsuckify everything
  */
-public class AsyncTransfer {
+public class AsyncTransfer implements Counted {
 
   /*
    * Whether the transfer has a default value or not.

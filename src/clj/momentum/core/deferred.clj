@@ -138,8 +138,7 @@
        (put ~seed))))
 
 (defn async-seq
-  ([f]    (AsyncSeq. f))
-  ([ms f] (AsyncSeq. f ms)))
+  ([f] (AsyncSeq. f)))
 
 (defn batch
   "Returns a deferred value that is realized with the given collection

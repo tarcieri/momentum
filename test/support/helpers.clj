@@ -61,8 +61,7 @@
 
       :else
       `(deftest ~name
-         (binding [ch1 (blocking-channel 2000) ch2 (blocking-channel 2000)
-                   ch3 (blocking-channel 2000) ch4 (blocking-channel 2000)]
+         (binding [ch1 (channel) ch2 (channel) ch3 (channel) ch4 (channel)]
            (let [~bindings [ch1 ch2 ch3 ch4]]
              (with-core-test-context
                ~(str name)
@@ -186,19 +185,22 @@
 
 ;; === Matchers
 
-(defn- timeoutable
+(defn- blocking
   [seq]
   (when seq
     (lazy-seq
-     (try
-       (cons (normalize (first seq)) (timeoutable (next seq)))
-       (catch TimeoutException err
-         ["reading the channel timed out" nil])))))
+     (let [seq (deref seq 2000 ::timeout)]
+       (cond
+        (= ::timeout seq)
+        (list ::timeout)
+
+        seq
+        (cons (normalize (first seq)) (blocking (next seq))))))))
 
 (defn assert-no-msgs-for
   [f msg chs]
   (Thread/sleep 50)
-  (let [received (into {} (filter (fn [[_ ch]] (realized? ch)) chs))]
+  (let [received (into {} (filter (fn [[_ ch]] (not= 0 (count ch))) chs))]
     (f {:type     (if (empty? received) :pass :fail)
         :message  msg
         :expected []
@@ -210,7 +212,7 @@
     (throw (IllegalArgumentException. "Requires even number of messages")))
 
   (let [expected (partition 2 expected)
-        actual   (take (count expected) (timeoutable (seq ch)))
+        actual   (take (count expected) (blocking (seq ch)))
         pass?    (every? identity (map #(match-values (vec %1) %2) expected actual))]
     (f {:type     (if pass? :pass :fail)
         :message  msg

@@ -31,7 +31,7 @@
     (is (responded? [200 {"content-length" "5"} "Hello"]))))
 
 (deftest simple-websocket-exchange
-  (let [ch (blocking-channel 100)]
+  (let [ch (channel)]
     (with-ws-app
       (fn [dn _]
         (defstream
@@ -68,7 +68,7 @@
           :ubyte 0x28 0x26 0xa2 0x8f 0x0f))
 
         (is (= (list [:message "Hello"])
-               (take 1 (seq ch))))
+               (take 1 @(seq ch))))
 
         (is (received? :message (buffer :ubyte (bit-or 0x80 1) 5 "roger")))
 
@@ -80,7 +80,7 @@
           :ubyte 0x03 0xe9 0x67 0x2a 0x6e 0x64))
 
         (is (= (list [:close :normal])
-               (take 1 (seq ch))))
+               (take 1 @(seq ch))))
 
         (is (received?
              :message

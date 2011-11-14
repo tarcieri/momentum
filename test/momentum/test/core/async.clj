@@ -322,13 +322,6 @@
           Exception #"BOOM"
           @(doasync seq)))))
 
-(deftest blocking-async-seq-timeouts
-  (let [my-seq (blocking-async-seq 10 (future* (Thread/sleep 50)))]
-    (is (thrown? TimeoutException (first my-seq))))
-
-  (let [my-seq (async-seq (future* (Thread/sleep 50)))]
-    (is (thrown-with-msg? RuntimeException #"realized" (first my-seq)))))
-
 ;; ==== batch
 
 (deftest batching-regular-seqs

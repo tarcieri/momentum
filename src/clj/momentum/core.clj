@@ -54,7 +54,6 @@
 (def put                 momentum.core.deferred/put)
 (def receive             momentum.core.deferred/receive)
 (def channel             channel/channel)
-(def blocking-channel    channel/blocking-channel)
 (def close               channel/close)
 (def enqueue             channel/enqueue)
 
@@ -65,10 +64,6 @@
 (defmacro async-seq
   [& body]
   `(momentum.core.deferred/async-seq (fn [this#] ~@body)))
-
-(defmacro blocking-async-seq
-  [ms & body]
-  `(momentum.core.deferred/async-seq ~ms (fn [this#] ~@body)))
 
 (defmacro doseq*
   [seq-exprs & body]

@@ -240,33 +240,6 @@
     (is (thrown? Exception (first (seq ch))))
     (is (thrown? Exception (next (seq ch))))))
 
-;; (deftest realizing-blocking-channel
-;;   (let [ch (blocking-channel)]
-;;     (future
-;;       (Thread/sleep 10)
-;;       (put ch :hello)
-;;       (Thread/sleep 10)
-;;       (put ch :goodbye)
-;;       (close ch))
-;;     (is (= (seq ch) [:hello :goodbye]))))
-
-(deftest aborting-blocking-channel
-  (let [ch (blocking-channel)]
-    (future
-      (Thread/sleep 10)
-      (put ch :hello)
-      (Thread/sleep 10)
-      (abort ch (Exception. "BOOM")))
-
-    (is (thrown-with-msg? Exception #"BOOM"
-          (vec (seq ch))))))
-
-;; (deftest invoking-channel-puts-value
-;;   (let [ch (blocking-channel)]
-;;     (ch :hello)
-;;     (close ch)
-;;     (is (= [:hello] (seq ch)))))
-
 (deftest putting-value-into-closed-channel
   (let [ch (channel)]
     (close ch)
