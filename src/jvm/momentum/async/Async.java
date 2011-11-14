@@ -1,9 +1,9 @@
 package momentum.async;
 
-import clojure.lang.AFn;
+import clojure.lang.*;
 import java.util.LinkedList;
 
-public class Async<T> extends AFn implements Receivable {
+public class Async<T> extends AFn implements Receivable, IDeref, IBlockingDeref {
 
   /*
    * Whether or not the async object is realized
@@ -30,7 +30,7 @@ public class Async<T> extends AFn implements Receivable {
    */
   final LinkedList<Receiver> receivers = new LinkedList<Receiver>();
 
-  protected boolean realizeSuccess(T v) {
+  final protected boolean realizeSuccess(T v) {
     synchronized (this) {
       if (isRealized) {
         return false;
@@ -53,7 +53,7 @@ public class Async<T> extends AFn implements Receivable {
     return true;
   }
 
-  protected boolean realizeError(Exception e) {
+  final protected boolean realizeError(Exception e) {
     // The synchronization block is required to ensure that there is no race
     // condition between invoking pending callbacks and registering new ones as
     // pending.
@@ -120,10 +120,31 @@ public class Async<T> extends AFn implements Receivable {
   }
 
   /*
+   * I(Blocking)Deref API
+   */
+  final public Object deref() {
+    return deref(-1, null);
+  }
+
+  final public Object deref(long ms, Object timeoutValue) {
+    // Wait for the value to become realized
+    if (block(ms)) {
+      if (err != null) {
+        throw Util.runtimeException(err);
+      }
+      else {
+        return val;
+      }
+    }
+
+    return timeoutValue;
+  }
+
+  /*
    * Block for the Async object to become realized for a maximum given time in
    * ms;
    */
-  protected boolean block(long ms) {
+  final protected boolean block(long ms) {
     if (isRealized()) {
       return true;
     }
@@ -155,14 +176,14 @@ public class Async<T> extends AFn implements Receivable {
     }
   }
 
-  void deliverAll(boolean success) {
+  final void deliverAll(boolean success) {
     Receiver r;
     while ((r = receivers.poll()) != null) {
       deliver(r, success);
     }
   }
 
-  void deliver(Receiver r, boolean success) {
+  final void deliver(Receiver r, boolean success) {
     try {
       if (success) {
         r.success(val);

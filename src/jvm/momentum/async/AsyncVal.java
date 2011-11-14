@@ -29,21 +29,4 @@ public final class AsyncVal extends Async<Object> implements IDeref, IBlockingDe
     return realizeError(e);
   }
 
-  public Object deref() {
-    return deref(-1, null);
-  }
-
-  public Object deref(long ms, Object timeoutValue) {
-    // Attempt to wait for the async value to become realized
-    if (block(ms)) {
-      if (err != null) {
-        throw Util.runtimeException(err);
-      }
-      else {
-        return val;
-      }
-    }
-
-    return timeoutValue;
-  }
 }
