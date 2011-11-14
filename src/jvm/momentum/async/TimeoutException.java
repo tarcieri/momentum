@@ -1,4 +1,4 @@
-package momentum.core;
+package momentum.async;
 
 public class TimeoutException extends RuntimeException {
   public TimeoutException() {

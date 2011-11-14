@@ -2,7 +2,7 @@
   (:use
    momentum.core.deferred)
   (:import
-   [momentum.core
+   [momentum.async
     AsyncTransfer]))
 
 (declare channel-seq)

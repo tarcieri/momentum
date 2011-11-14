@@ -1,6 +1,6 @@
 (ns momentum.core.deferred
   (:import
-   [momentum.core
+   [momentum.async
     AsyncSeq
     AsyncVal
     Pipeline

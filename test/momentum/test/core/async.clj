@@ -3,7 +3,7 @@
    clojure.test
    momentum.core)
   (:import
-   [momentum.core
+   [momentum.async
     TimeoutException]))
 
 (defn- deferred-inc

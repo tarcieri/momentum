@@ -1,4 +1,4 @@
-package momentum.core;
+package momentum.async;
 
 import clojure.lang.AFn;
 import java.util.LinkedList;

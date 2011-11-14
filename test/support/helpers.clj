@@ -6,7 +6,7 @@
   (:require
    [momentum.net.server :as server])
   (:import
-   [momentum.core
+   [momentum.async
     TimeoutException]
    [org.jboss.netty.buffer
     ChannelBuffer]
