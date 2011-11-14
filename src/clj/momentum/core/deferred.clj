@@ -10,15 +10,12 @@
 
 (defprotocol DeferredValue
   (received? [_])
-  (received  [_])
   (receive   [_ success error]))
 
 (extend-protocol DeferredValue
   AsyncVal
   (received? [val]
     (.isRealized val))
-  (received [val]
-    (deref val 0 nil))
   (receive [val success error]
     (doto val
       (.receive
@@ -29,8 +26,6 @@
   AsyncSeq
   (received? [seq]
     (.isRealized seq))
-  (received [seq]
-    seq)
   (receive [seq success error]
     (doto seq
       (.receive
@@ -41,8 +36,6 @@
   Pipeline
   (received? [pipeline]
     (.isRealized pipeline))
-  (received [pipeline]
-    (deref pipeline 0 nil))
   (receive [val success error]
     (doto val
       (.receive
@@ -52,14 +45,12 @@
 
   Object
   (received? [o] true)
-  (received  [o] o)
   (receive [o success _]
     (success o)
     o)
 
   nil
   (received? [_] true)
-  (received  [_])
   (receive [_ success _]
     (success nil)
     nil))
