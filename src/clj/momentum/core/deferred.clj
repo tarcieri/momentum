@@ -1,6 +1,7 @@
 (ns momentum.core.deferred
   (:import
    [momentum.async
+    Async
     AsyncSeq
     AsyncVal
     Pipeline
@@ -12,23 +13,7 @@
   (receive   [_ success error]))
 
 (extend-protocol DeferredValue
-  AsyncVal
-  (receive [val success error]
-    (doto val
-      (.receive
-       (reify Receiver
-         (success [_ val] (success val))
-         (error   [_ err] (error err))))))
-
-  AsyncSeq
-  (receive [seq success error]
-    (doto seq
-      (.receive
-       (reify Receiver
-         (success [_ val] (success val))
-         (error   [_ err] (error err))))))
-
-  Pipeline
+  Async
   (receive [val success error]
     (doto val
       (.receive

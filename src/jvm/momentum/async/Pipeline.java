@@ -8,8 +8,11 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
-public final class Pipeline extends AFn implements Receivable, IDeref, IBlockingDeref {
+public final class Pipeline extends Async<Object> {
 
+  /*
+   * Represents a catch clause in doasync
+   */
   public static class Catcher {
     final Class klass;
     final IFn callback;
@@ -28,6 +31,9 @@ public final class Pipeline extends AFn implements Receivable, IDeref, IBlocking
     }
   }
 
+  /*
+   * Indicates that a stage should recur once the return value is realized
+   */
   public static class Recur {
     final Object val;
 
@@ -40,6 +46,9 @@ public final class Pipeline extends AFn implements Receivable, IDeref, IBlocking
     }
   }
 
+  /*
+   * A stage in the pipeline
+   */
   final static class Stage implements Receiver {
 
     final IFn fn;
@@ -107,40 +116,13 @@ public final class Pipeline extends AFn implements Receivable, IDeref, IBlocking
     }
   }
 
-  final static class FirstStage implements Receiver {
-
-    final Stage next;
-
-    final Pipeline pipeline;
-
-    FirstStage(Stage next, Pipeline pipeline) {
-      this.next     = next;
-      this.pipeline = pipeline;
-    }
-
-    public void success(Object val) {
-      if (pipeline.cs.get() == next) {
-        next.put(val);
-      }
-    }
-
-    public void error(Exception err) {
-      pipeline.error(err);
-    }
-  }
-
-  // Just a little hack
+  // Just a little harmless hack
   static final Stage FINAL = new Stage(null, null, null);
 
   /*
    * The first stage in the pipeline
    */
   final Stage head;
-
-  /*
-   * The deferred value that will be realized upon completion of the pipeline
-   */
-  final AsyncVal result;
 
   /*
    * List of callbacks to catch various exceptions
@@ -155,7 +137,7 @@ public final class Pipeline extends AFn implements Receivable, IDeref, IBlocking
   /*
    * The current state of the pipeline
    */
-  final AtomicReference<Stage> cs;
+  final AtomicReference<Stage> cs = new AtomicReference<Stage>();
 
   public Pipeline(List<IFn> stages, List<Catcher> catchers, IFn finalizer) {
     Iterator<IFn> i = stages.iterator();
@@ -165,9 +147,7 @@ public final class Pipeline extends AFn implements Receivable, IDeref, IBlocking
       curr = new Stage(i.next(), curr, this);
     }
 
-    head   = curr;
-    cs     = new AtomicReference<Stage>();
-    result = new AsyncVal();
+    head = curr;
 
     this.catchers  = catchers;
     this.finalizer = finalizer;
@@ -201,36 +181,12 @@ public final class Pipeline extends AFn implements Receivable, IDeref, IBlocking
     return true;
   }
 
-  public Object invoke(Object v) {
-    return put(v);
-  }
-
   public boolean abort(Exception e) {
     return error(e);
   }
 
-  public boolean isRealized() {
-    return result.isRealized();
-  }
-
-  public boolean isSuccessful() {
-    return result.isSuccessful();
-  }
-
-  public boolean isAborted() {
-    return result.isAborted();
-  }
-
-  public void receive(Receiver r) {
-    result.receive(r);
-  }
-
-  public Object deref() {
-    return result.deref();
-  }
-
-  public Object deref(long ms, Object timeoutValue) {
-    return result.deref(ms, timeoutValue);
+  public Object invoke(Object v) {
+    return put(v);
   }
 
   boolean success(Object val) {
@@ -245,10 +201,10 @@ public final class Pipeline extends AFn implements Receivable, IDeref, IBlocking
         finalizer.invoke();
       }
 
-      result.put(val);
+      realizeSuccess(val);
     }
     catch (Exception err) {
-      result.abort(err);
+      realizeError(err);
     }
 
     return true;
@@ -299,10 +255,10 @@ public final class Pipeline extends AFn implements Receivable, IDeref, IBlocking
     }
 
     if (caught) {
-      result.put(val);
+      realizeSuccess(val);
     }
     else {
-      result.abort(err);
+      realizeError(err);
     }
 
     return true;
