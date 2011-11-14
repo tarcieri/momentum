@@ -68,7 +68,12 @@ public final class Pipeline extends Async<Object> {
     void put(Object val) {
       try {
         while (true) {
-          val = fn.invoke(val);
+          if (val instanceof JoinedArgs) {
+            val = fn.applyTo(((JoinedArgs) val).seq());
+          }
+          else {
+            val = fn.invoke(val);
+          }
 
           if (val instanceof Recur) {
             recur = true;

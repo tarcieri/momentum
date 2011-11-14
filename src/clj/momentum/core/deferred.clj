@@ -4,6 +4,7 @@
     Async
     AsyncSeq
     AsyncVal
+    Join
     Pipeline
     Pipeline$Catcher
     Pipeline$Recur
@@ -60,7 +61,7 @@
 
 (defn join
   [& args]
-  )
+  (Join. args))
 
 ;; ==== Async macro
 

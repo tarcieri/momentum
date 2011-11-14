@@ -21,6 +21,12 @@
      (when (> i 0)
        (cons i (async-dec-seq (dec i)))))))
 
+(defn- defer
+  [v]
+  (future*
+   (Thread/sleep 10)
+   v))
+
 (deftest doasync-with-no-stages
   (are [x y] (= x y)
        1   @(doasync 1)
@@ -258,12 +264,17 @@
 
 ;; ==== join
 
-;; (deftest simple-async-join
-;;   (let [res (atom nil)]
-;;     (doasync (join 1 2 3)
-;;       (fn [a b c]
-;;         (reset! res [a b c])))
-;;     (is (= [1 2 3] @res))))
+(deftest synchronous-joins
+  (is (= [1 2 3]
+         @(doasync (join 1 2 3)
+            (fn [a b c]
+              [a b c])))))
+
+(deftest async-joins
+  (is (= [1 2 3]
+         @(doasync (join (defer 1) (defer 2) (defer 3))
+            (fn [a b c]
+              [a b c])))))
 
 ;; ==== async-seq
 
