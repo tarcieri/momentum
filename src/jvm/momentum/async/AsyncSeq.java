@@ -14,8 +14,8 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
     this.fn = fn;
   }
 
-  public AsyncSeq(Receivable r) {
-    r.receive(this);
+  public AsyncSeq(Async a) {
+    a.receive(this);
   }
 
   /*
@@ -52,10 +52,10 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
       return true;
     }
 
-    if (ret instanceof Receivable) {
+    if (ret instanceof Async) {
       // Register the current async sequence as the receiver for the returned
       // async value
-      ((Receivable) ret).receive(this);
+      ((Async) ret).receive(this);
 
       // The volatile isRealized variable must be read in order to determine if
       // the sequence was realized since registering the reciever

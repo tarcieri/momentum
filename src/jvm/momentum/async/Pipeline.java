@@ -66,6 +66,8 @@ public final class Pipeline extends Async<Object> {
     }
 
     void put(Object val) {
+      Async v;
+
       try {
         while (true) {
           if (val instanceof JoinedArgs) {
@@ -80,9 +82,16 @@ public final class Pipeline extends Async<Object> {
             val = ((Recur) val).val();
           }
 
-          if (val instanceof Receivable) {
-            ((Receivable) val).receive(this);
-            return;
+          if (val instanceof Async) {
+            v = (Async) val;
+
+            if (recur && v.isRealized()) {
+              val = v.val;
+            }
+            else {
+              v.receive(this);
+              return;
+            }
           }
           else if (!recur) {
             success(val);
@@ -159,7 +168,7 @@ public final class Pipeline extends Async<Object> {
   }
 
   public boolean put(final Object v) {
-    if (v instanceof Receivable) {
+    if (v instanceof Async) {
       Stage first = new Stage(null, head, this);
 
       // First make sure that the pipeline state is correct
@@ -167,7 +176,7 @@ public final class Pipeline extends Async<Object> {
         return false;
       }
 
-      ((Receivable) v).receive(first);
+      ((Async) v).receive(first);
     }
     else if (head != null) {
       // First make sure that the pipeline state is correct

@@ -112,13 +112,15 @@
   "Returns a deferred value that is realized with the given collection
   when all (or n if supplied) elements of the collection have been
   realized."
-  [coll]
-  (doasync coll
-    (fn [x]
-      (if x
-        (recur* (next x))
-        coll))))
-;; ([n coll] (throw (Exception. "Not implemented - requires (join ...)")))
+  ([coll] (batch Integer/MAX_VALUE coll))
+  ([n coll]
+     (if (= 0 n)
+       coll
+       (doasync (join (dec n) coll)
+         (fn [n realized]
+           (if (and realized (< 0 n))
+             (recur* (join (dec n) (next realized)))
+             coll))))))
 
 (defn map*
   [f coll]

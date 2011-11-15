@@ -46,9 +46,9 @@ public class Join extends Async<JoinedArgs> {
     while (i.hasNext()) {
       o = i.next();
 
-      if (o instanceof Receivable) {
+      if (o instanceof Async) {
         ++delta;
-        ((Receivable) o).receive(new IndexedReceiver(idx));
+        ((Async) o).receive(new IndexedReceiver(idx));
       }
 
       ++idx;

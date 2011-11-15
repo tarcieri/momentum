@@ -3,7 +3,7 @@ package momentum.async;
 import clojure.lang.*;
 import java.util.LinkedList;
 
-public class Async<T> extends AFn implements Receivable, IDeref, IBlockingDeref {
+public class Async<T> extends AFn implements IPending, IDeref, IBlockingDeref {
 
   /*
    * Whether or not the async object is realized

@@ -262,6 +262,14 @@
                       (recur* nxt))
                     (inc val))))))))
 
+(deftest async-recursion-is-tail-recursive-for-sync-values
+  (is (= :done
+         @(doasync (repeat 100 "a")
+            (fn [[v & more]]
+              (if more
+                (recur* more)
+                :done))))))
+
 ;; ==== join
 
 (deftest synchronous-joins
