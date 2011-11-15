@@ -77,11 +77,11 @@
            (recur* more#))))))
 
 (defmacro future*
-  [& stages]
+  [& body]
   `(let [d# (deferred)]
      (future
        (try
-         (put d# (do ~@stages))
+         (put d# (do ~@body))
          (catch Exception e#
            (abort d# e#))))
      d#))

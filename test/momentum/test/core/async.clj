@@ -267,14 +267,33 @@
 (deftest synchronous-joins
   (is (= [1 2 3]
          @(doasync (join 1 2 3)
-            (fn [a b c]
-              [a b c])))))
+            (fn [& args] args))))
+
+  (is (= [1]
+         @(doasync (join 1)
+            (fn [& args] args))))
+
+  (is (= [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20]
+         @(doasync (join 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20)
+            (fn [& args] args)))))
 
 (deftest async-joins
   (is (= [1 2 3]
          @(doasync (join (defer 1) (defer 2) (defer 3))
-            (fn [a b c]
-              [a b c])))))
+            (fn [& args] args))))
+
+  (is (= [1]
+         @(doasync (join (defer 1))
+            (fn [& args] args)))))
+
+(deftest handling-async-errors
+  (let [res (atom nil)]
+    (is (thrown-with-msg? Exception #"BOOM"
+          @(doasync
+             (join
+              (future* (throw (RuntimeException. "BOOM")))
+              (future* (Thread/sleep 40) (reset! res :done))))))
+    (is (nil? @res))))
 
 ;; ==== async-seq
 
