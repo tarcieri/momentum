@@ -1,13 +1,23 @@
 package momentum.async;
 
+import static java.lang.System.*;
+
+import clojure.lang.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /*
  * Unbounded async transfer queue based on Doug Lea's code. Some of the details
  * have been tweaked to optimize for Momentum's use case.
+ *
+ * The basic strategy is the same as LinkedTransferQueue, however the extra
+ * feature of being able to close the queue which means that any further calls
+ * to read will return a future containing the default value passed to the
+ * class when initialized.
+ *
  */
-final public class AsyncTransferQueue {
+final public class AsyncTransferQueue implements Counted {
 
   static final class Node {
 
@@ -102,14 +112,24 @@ final public class AsyncTransferQueue {
   static final Node CLOSED = new Node();
 
   /*
+   * An estimate of the total number of values in the queue
+   */
+  final AtomicInteger count = new AtomicInteger();
+
+  /*
    * Reference to the head of the transfer queue
    */
-  final AtomicReference<Node> head;
+  final AtomicReference<Node> head = new AtomicReference<Node>();
 
   /*
    * Reference to the tail of the transfer queue
    */
-  final AtomicReference<Node> tail;
+  final AtomicReference<Node> tail = new AtomicReference<Node>();
+
+  /*
+   * Reference to the current state
+   */
+  final AtomicBoolean cs = new AtomicBoolean(true);
 
   /*
    * The object to fulfill all the requests with if the transfer queue is
@@ -123,9 +143,6 @@ final public class AsyncTransferQueue {
   Exception err;
 
   public AsyncTransferQueue(Object defaultVal) {
-    this.head = new AtomicReference<Node>();
-    this.tail = new AtomicReference<Node>();
-
     this.defaultVal = defaultVal;
   }
 
@@ -152,72 +169,111 @@ final public class AsyncTransferQueue {
   public AsyncVal take() {
     AsyncVal request = new AsyncVal();
 
-    transfer(null, request);
+    try {
+      if (!transfer(null, request)) {
+        if (err == null) {
+          request.put(defaultVal);
+        }
+        else {
+          request.abort(err);
+        }
+      }
+    }
+    catch (Exception e) {
+      e.printStackTrace();
+    }
 
     return request;
+  }
+
+  public int count() {
+    return count.get();
+  }
+
+  private void updateCount(boolean haveData) {
+    if (haveData) {
+      count.incrementAndGet();
+    }
+    else {
+      count.decrementAndGet();
+    }
   }
 
   private boolean transfer(Object o, AsyncVal request) {
     boolean haveData = request == null;
 
-    Node s = null, h, curr, n;
+    Node s = null, matched;
 
-    retry:
     while (true) {
-
-      curr = h = head.get();
-
-      // Find the first unmatched node
-      while (curr != null) {
-
-        if (!curr.isMatched()) {
-          // If the node types are the same, then we can't match a transfer, so
-          // break out of the loop and start attempting to append to the queue.
-          if (haveData == curr.isData()) {
-            break;
-          }
-
-          // Try to match the node
-          if (curr.tryMatch()) {
-
-            // If the head node and the current node are not the same, then
-            // head slack has passed its threshold and an attempt to move the
-            // head ref forward can be made.
-            if (curr != h && head.compareAndSet(h, (curr = curr.next()))) {
-              while (h != curr) {
-                h = h.gasNext(h);
-              }
-            }
-
-            // The node has been obtained and can now can be realized.
-            curr.realize(o, request);
-
-            return true;
-          }
-        }
-
-        curr = curr.next();
+      // First attempt to match an existing node
+      if (null != (matched = tryMatch(haveData))) {
+        matched.realize(o, request);
+        return true;
       }
 
       if (s == null) {
         s = new Node(o, request);
       }
 
-      if (tryAppend(s, haveData)) {
+      // If no node was matched, attempt to append the data to the end of the
+      // queue
+      if (tryAppend(s, haveData, tail.get(), false)) {
+        updateCount(haveData);
         return true;
       }
       // If the append fails, either the append lost a race condition with an
-      // append of a differen type or the queue was closed. In the case of a
+      // append of a different type or the queue was closed. In the case of a
       // race condition, restart the entire process. In the case of the queue
       // being closed, just return.
-      else if (head.get() == CLOSED) {
+      else if (tail.get() == CLOSED) {
         return false;
       }
     }
   }
 
-  private boolean tryAppend(Node s, boolean haveData) {
-    Node t = tail.get(), curr = t, next;
+  private Node tryMatch(boolean haveData) {
+    Node curr = head.get(), h = curr;
+
+    // Find the first unmatched node
+    while (curr != null) {
+      if (!curr.isMatched()) {
+        // If the node types are the same, then we can't match a transfer, so
+        // break out of the loop and start attempting to append to the queue.
+        if (haveData == curr.isData()) {
+          return null;
+        }
+
+        // Try to match the node
+        if (curr.tryMatch()) {
+
+          // If the head node and the current node are not the same, then
+          // head slack has passed its threshold and an attempt to move the
+          // head ref forward can be made.
+          if (curr != h && head.compareAndSet(h, curr.next())) {
+            // Unlink all the nodes prior to curr
+            while (h != curr) {
+              h = h.gasNext(h);
+            }
+
+            // Unlink curr
+            curr.gasNext(curr);
+          }
+
+          updateCount(haveData);
+
+          return curr;
+        }
+      }
+
+      curr = curr.next();
+    }
+
+    // Will never get here, but the java compiler needs a return
+    return null;
+  }
+
+  private boolean tryAppend(Node s, boolean haveData, Node t, boolean closing) {
+    Node curr = t, next;
 
     while (true) {
 
@@ -234,7 +290,7 @@ final public class AsyncTransferQueue {
       }
       // If the node types do not match, then this thread lost the race, gotta
       // restart from scratch.
-      else if (curr.isData() != haveData) {
+      else if (curr.isData() != haveData && !curr.isMatched() && !closing) {
         return false;
       }
       // If the current node is not last, keep traversing.
@@ -254,13 +310,7 @@ final public class AsyncTransferQueue {
       }
       // If the node is the CLOSED placeholder, then the queue has been closed.
       else if (curr == CLOSED) {
-        // If the head ref is closed as well, then the queue is fully closed.
-        curr = head.get();
-
-        if (curr == CLOSED) {
-          s.realize(defaultVal, err);
-          return false;
-        }
+        return false;
       }
       // The current node is the end of the queue, so the new node can be CASed
       // in.
@@ -275,7 +325,7 @@ final public class AsyncTransferQueue {
         // slack has passed 2. So, an attempt to update the tail ref is made.
         // Failed CASs are ignored since it means that the tail ref has already
         // been updated to a closer point.
-        if (t != curr) {
+        if (t != curr && !closing) {
           tail.compareAndSet(t, s);
         }
 
@@ -285,30 +335,22 @@ final public class AsyncTransferQueue {
   }
 
   boolean doClose(Exception e) {
-    Node curr, n;
+    Node curr;
 
     // Spin until the tail ref can be CASed to closed, if the existing value of
     // tail is already closed, then just fail.
-    do {
-      if (CLOSED == (curr = tail.get())) {
-        return false;
-      }
-    } while (!tail.compareAndSet(curr, CLOSED));
+    if (!cs.compareAndSet(true, false)) {
+      return false;
+    }
 
     err = e;
 
-    // Hard set head to be closed, this creates a happens-before relation with
-    // the err ref above. No other threads access err until head is updated.
-    curr = head.getAndSet(CLOSED);
+    if (!tryAppend(CLOSED, false, tail.getAndSet(CLOSED), true)) {
+      throw new RuntimeError("Something went very wrong");
+    }
 
-    while (curr != null) {
-      n = curr.gasNext(curr);
-
-      if (curr.tryMatch()) {
-        curr.realize(defaultVal, err);
-      }
-
-      curr = n;
+    while (null != (curr = tryMatch(true))) {
+      curr.realize(defaultVal, err);
     }
 
     return true;
