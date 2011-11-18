@@ -49,7 +49,7 @@
 (def batch               momentum.core.deferred/batch)
 (def recur*              momentum.core.deferred/recur*)
 (def join                momentum.core.deferred/join)
-(def deferred            momentum.core.deferred/deferred)
+(def async-val           momentum.core.deferred/async-val)
 (def pipeline            momentum.core.deferred/pipeline)
 (def put                 momentum.core.deferred/put)
 (def receive             momentum.core.deferred/receive)
@@ -78,10 +78,10 @@
 
 (defmacro future*
   [& body]
-  `(let [d# (deferred)]
+  `(let [val# (async-val)]
      (future
        (try
-         (put d# (do ~@body))
+         (put val# (do ~@body))
          (catch Exception e#
-           (abort d# e#))))
-     d#))
+           (abort val# e#))))
+     val#))

@@ -45,7 +45,7 @@
   (put   [pipeline val] (.put pipeline val))
   (abort [pipeline err] (.abort pipeline err)))
 
-(defn deferred
+(defn async-val
   []
   (AsyncVal.))
 
@@ -109,7 +109,7 @@
   ([f] (AsyncSeq. f)))
 
 (defn batch
-  "Returns a deferred value that is realized with the given collection
+  "Returns an async value that is realized with the given collection
   when all (or n if supplied) elements of the collection have been
   realized."
   ([coll] (batch Integer/MAX_VALUE coll))

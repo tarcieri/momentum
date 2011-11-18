@@ -53,10 +53,10 @@
 
 ;; ==== Futures
 
-(defn ch-future-as-deferred
+(defn ch-future-as-async-val
   [future]
   (when future
-    (let [d (deferred)]
+    (let [d (async-val)]
       (.addListener
        future
        (reify ChannelFutureListener
@@ -64,10 +64,10 @@
            (put d (.isSuccess future)))))
       d)))
 
-(defn ch-group-future-as-deferred
+(defn ch-group-future-as-async-val
   [future]
   (when future
-    (let [d (deferred)]
+    (let [d (async-val)]
       (.addListener
        future
        (reify ChannelGroupFutureListener
@@ -152,7 +152,7 @@
 (defn- close-channel
   [current-state]
   (let [ch (.ch current-state)]
-    (doasync (ch-future-as-deferred (.last-write current-state))
+    (doasync (ch-future-as-async-val (.last-write current-state))
       (fn [_]
         (when (.isOpen ch)
           ;; Because there could be a race condition, we still need to

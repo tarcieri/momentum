@@ -9,13 +9,13 @@
 ;; TODO:
 ;; * async-seq fn throws, what happens?
 
-(defn- deferred-inc
+(defn- async-inc
   [i]
-  (let [d (deferred)]
+  (let [val (async-val)]
     (future
       (Thread/sleep 10)
-      (put d (inc i)))
-    d))
+      (put val (inc i)))
+    val))
 
 (defn- async-dec-seq [i]
   (async-seq
@@ -48,24 +48,24 @@
      identity)
     (is (= 3 @res))))
 
-(deftest successful-pipeline-seeded-with-deferred-value
-  (let [res  (atom nil)
-        dval (deferred)]
+(deftest successful-pipeline-seeded-with-async-value
+  (let [res (atom nil)
+        val (async-val)]
     (receive
-     (doasync dval
+     (doasync val
        inc inc)
      #(compare-and-set! res nil %)
      #(reset! res %))
-    (put dval 1)
+    (put val 1)
     (is (= 3 @res))))
 
-(deftest successful-pipeline-with-deferred-values-at-each-stage
-  (is (= 3 @(doasync 1 deferred-inc deferred-inc))))
+(deftest successful-pipeline-with-async-values-at-each-stage
+  (is (= 3 @(doasync 1 async-inc async-inc))))
 
-(deftest aborting-seed-deferred-value-aborts-pipeline
+(deftest aborting-seed-async-value-aborts-pipeline
   (let [res (atom nil)
         err (Exception.)
-        val (deferred)]
+        val (async-val)]
     (receive
      (doasync val inc inc)
      #(reset! res %)
@@ -104,25 +104,25 @@
     (is (= 2 @res))))
 
 (deftest successful-blocking-pipeline-with-catch
-  (let [d (deferred)]
+  (let [val (async-val)]
     (future
       (Thread/sleep 10)
-      (put d 1))
+      (put val 1))
     (is (= 2
-           @(doasync d inc
+           @(doasync val inc
               (catch Exception e :fail))))))
 
 (deftest catching-aborted-pipeline-succeeds-with-value
-  (let [res  (atom nil)
-        dval (deferred)]
+  (let [res (atom nil)
+        val (async-val)]
     (receive
-     (doasync dval
+     (doasync val
        identity
        (catch Exception _ :hello))
      #(compare-and-set! res nil %)
-     #(reset! dval %))
+     #(reset! val %))
 
-    (abort dval (Exception.))
+    (abort val (Exception.))
     (is (= :hello @res))))
 
 (deftest catching-exception-thrown-during-stage-succeeds-with-value
@@ -178,10 +178,10 @@
 (deftest aborting-in-progress
   (is (thrown-with-msg?
         Exception #"BOOM"
-        (let [d (deferred)]
+        (let [val (async-val)]
           @(doasync 1 inc
              (finally (throw (Exception. "BOOM"))))
-          (abort d (Exception. "BAM"))))))
+          (abort val (Exception. "BAM"))))))
 
 ;; ==== Aborting pipelines in progress
 
@@ -250,15 +250,15 @@
      #(reset! res %))
     (is (= 5 @res))))
 
-(deftest simple-async-recursion-with-deferred-values
-  (let [val (deferred)]
+(deftest simple-async-recursion-with-async-values
+  (let [val (async-val)]
     (future
       (Thread/sleep 10)
       (put val 1))
     (is (= 5 @(doasync val
                 (fn [val]
                   (if (< val 4)
-                    (let [nxt (deferred)]
+                    (let [nxt (async-val)]
                       (future
                         (Thread/sleep 10)
                         (put nxt (inc val)))
@@ -319,7 +319,7 @@
        (async-seq [nil]) [nil])
 
   ;; Unrealized async-seq
-  (let [my-seq (async-seq (deferred))]
+  (let [my-seq (async-seq (async-val))]
     (is (identical? my-seq (seq my-seq)))))
 
 (deftest async-seq-with-seq-return-just-like-lazy-seq

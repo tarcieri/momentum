@@ -266,7 +266,7 @@
 (defn- request*
   [method uri hdrs request-body]
   (let [hdrs (merge {:http-version [1 1] :request-method method} (uri-map uri) hdrs)
-        resp (deferred)]
+        resp (async-val)]
     (connect
      (fn [dn _]
        (let [ch (channel)]

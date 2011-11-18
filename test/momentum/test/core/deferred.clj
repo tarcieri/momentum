@@ -22,8 +22,8 @@
 
 ;; ==== Async values
 
-(deftest successfully-realizing-a-deferred-value
-  (let [dval (deferred)
+(deftest successfully-realizing-a-async-value
+  (let [dval (async-val)
         res  (atom nil)]
     (is (= dval (receive dval
                          #(compare-and-set! res nil %)
@@ -32,7 +32,7 @@
     (is (= true (put dval :hello)))
     (is (= :hello @res)))
 
-  (let [dval (deferred)
+  (let [dval (async-val)
         res  (atom nil)]
 
     (is (= true (put dval :hello)))
@@ -42,14 +42,14 @@
      (fn [_] (reset! res :fail)))
     (is (= :hello @res))))
 
-(deftest realizing-deferred-value-by-invoking-it
-  (let [dval (deferred)
+(deftest realizing-async-value-by-invoking-it
+  (let [dval (async-val)
         res  (atom nil)]
     (dval :hello)
     (is (= :hello @dval))))
 
-(deftest aborting-deferred-values
-  (let [dval (deferred)
+(deftest aborting-async-values
+  (let [dval (async-val)
         err  (Exception.)
         res  (atom nil)]
     (receive dval
@@ -58,7 +58,7 @@
     (abort dval err)
     (is (= err @res)))
 
-  (let [dval (deferred)
+  (let [dval (async-val)
         err  (Exception.)
         res  (atom nil)]
     (abort dval err)
@@ -68,7 +68,7 @@
     (is (= err @res))))
 
 (deftest registering-multiple-receive-callbacks
-  (let [dval (deferred)
+  (let [dval (async-val)
         res  (atom [])]
     (dotimes [_ 2]
       (receive dval (fn [v] (swap! res #(conj % v))) identity))
@@ -76,47 +76,47 @@
     (is (= @res [:hello :hello]))))
 
 (deftest registering-multiple-receive-callbacks-after-completion
-  (let [dval (deferred)
+  (let [dval (async-val)
         res  (atom nil)]
     (receive dval identity identity)
     (put dval :hello)
     (receive dval #(reset! res %) identity)
     (is (= @res :hello))))
 
-(deftest dereferencing-realized-deferred-value
-  (let [dval (deferred)]
+(deftest dereferencing-realized-async-value
+  (let [dval (async-val)]
     (put dval :hello)
     (is (= :hello @dval))))
 
-(deftest dereferencing-pending-deferred-values
-  (let [dval (deferred)]
+(deftest dereferencing-pending-async-values
+  (let [dval (async-val)]
     (future
       (Thread/sleep 50)
       (put dval :hello))
     (is (= :hello @dval @dval)))
 
-  (let [dval (deferred)]
+  (let [dval (async-val)]
     (future
       (Thread/sleep 50)
       (put dval :hello))
     (receive dval identity identity)
     (is (= :hello @dval @dval))))
 
-(deftest dereferencing-aborted-deferred-value
-  (let [dval (deferred)]
+(deftest dereferencing-aborted-async-value
+  (let [dval (async-val)]
     (abort dval (Exception. "BOOM"))
     (is (thrown-with-msg? Exception #"BOOM" @dval))
     (is (thrown-with-msg? Exception #"BOOM" @dval))))
 
-(deftest dereferencing-pending-deferred-values-that-get-aborted
-  (let [dval (deferred)]
+(deftest dereferencing-pending-async-values-that-get-aborted
+  (let [dval (async-val)]
     (future
       (Thread/sleep 50)
       (abort dval (Exception. "BOOM")))
     (is (thrown-with-msg? Exception #"BOOM" @dval))
     (is (thrown-with-msg? Exception #"BOOM" @dval)))
 
-  (let [dval (deferred)]
+  (let [dval (async-val)]
     (future
       (Thread/sleep 50)
       (abort dval (Exception. "BOOM")))
@@ -125,22 +125,22 @@
     (is (thrown-with-msg? Exception #"BOOM" @dval))))
 
 (deftest putting-into-realized-deferred-value-returns-false
-  (let [dval (deferred)]
+  (let [dval (async-val)]
     (is (= true  (put dval :hello)))
     (is (= false (put dval :fail)))
     (is (= :hello @dval)))
 
-  (let [dval (deferred)]
+  (let [dval (async-val)]
     (is (= true  (abort dval (Exception. "BOOM"))))
     (is (= false (put dval :fail)))
     (is (thrown-with-msg? Exception #"BOOM" @dval)))
 
-  (let [dval (deferred)]
+  (let [dval (async-val)]
     (put dval :hello)
     (is (= false (abort dval (Exception. "BOOM"))))
     (is (= :hello @dval)))
 
-  (let [dval (deferred)]
+  (let [dval (async-val)]
     (abort dval (Exception. "BOOM"))
     (is (= false (abort dval (Exception. "BAM"))))
     (is (thrown-with-msg? Exception #"BOOM" @dval))))

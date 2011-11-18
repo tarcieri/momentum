@@ -67,7 +67,7 @@
 
   (do-release [client]
     (doasync
-      (ch-group-future-as-deferred (.. client channel-group close))
+      (ch-group-future-as-async-val (.. client channel-group close))
       (fn [_]
         (.releaseExternalResources (.bootstrap client)))))
 
