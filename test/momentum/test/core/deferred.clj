@@ -183,31 +183,27 @@
   (let [ch  (channel)
         err (Exception.)
         res (atom nil)]
-    (abort ch err)
-    (receive (seq ch)
-             (fn [_] (reset! res :fail))
-             #(compare-and-set! res nil %)))
+    (abort ch (Exception. "BOOM"))
+    (is (thrown-with-msg? Exception #"BOOM"
+          @(seq ch))))
 
   (let [ch  (channel)
         err (Exception.)
         res (atom nil)]
-    (receive
-     (seq ch)
-     (fn [[val & more]]
-       (reset! res val)
-       (receive
-        more
-        (fn [_] (reset! res :fail))
-        (fn [e] (compare-and-set! res :hello e))))
-     identity)
+
+    (doasync (seq ch)
+      (fn [[v & more]]
+        (reset! res v)
+        more)
+      (fn [_] (reset! res :fail))
+      (catch Exception e
+        (compare-and-set! res :hello e)))
 
     (is (nil? @res))
     (put ch :hello)
     (is (= :hello @res))
     (abort ch err)
-    (is (= err @res))
-    ;; (is (nil? (seq ch)))
-    ))
+    (is (= err @res))))
 
 (deftest queuing-up-elements
   (let [ch  (channel)
@@ -244,6 +240,3 @@
   (let [ch (channel)]
     (close ch)
     (is (not (put ch :hello)))))
-
-;; TODO:
-;; * Add tests for AsyncSeq List interface implementation
