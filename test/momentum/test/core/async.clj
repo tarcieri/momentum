@@ -6,6 +6,9 @@
    [momentum.async
     TimeoutException]))
 
+;; TODO:
+;; * async-seq fn throws, what happens?
+
 (defn- deferred-inc
   [i]
   (let [d (deferred)]
@@ -359,6 +362,13 @@
     (is (thrown-with-msg?
           Exception #"BOOM"
           @(doasync seq)))))
+
+(deftest async-seq-throwing-in-fn
+  (let [res (atom nil)]
+    (is (thrown-with-msg? Exception #"BOOM"
+          @(doasync (async-seq (throw (Exception. "BOOM")))
+             (fn [v] (reset! res v)))))
+    (is (nil? @res))))
 
 ;; ==== batch
 
