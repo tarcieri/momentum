@@ -232,7 +232,7 @@ final public class AsyncTransferQueue implements Counted {
   }
 
   private Node tryMatch(boolean haveData) {
-    Node curr = head.get(), h = curr;
+    Node curr = head.get(), h = curr, next;
 
     // Find the first unmatched node
     while (curr != null) {
@@ -265,7 +265,11 @@ final public class AsyncTransferQueue implements Counted {
         }
       }
 
-      curr = curr.next();
+      // Move the ref forward, but first check to make sure that the current
+      // node hasn't been unlinked. If the node has been unlinked, use the head
+      // ref.
+      next = curr.next();
+      curr = (curr != next) ? next : head.get();
     }
 
     // Will never get here, but the java compiler needs a return
@@ -346,7 +350,7 @@ final public class AsyncTransferQueue implements Counted {
     err = e;
 
     if (!tryAppend(CLOSED, false, tail.getAndSet(CLOSED), true)) {
-      throw new RuntimeError("Something went very wrong");
+      throw new RuntimeException("Something went very wrong");
     }
 
     while (null != (curr = tryMatch(true))) {

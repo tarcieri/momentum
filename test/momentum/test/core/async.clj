@@ -4,6 +4,7 @@
    momentum.core)
   (:import
    [momentum.async
+    AsyncTransferQueue
     TimeoutException]))
 
 ;; TODO:
@@ -406,3 +407,29 @@
 
 ;; (deftest mapping-async-seq
 ;;   (is true))
+
+;; ==== AsyncTransferQueue
+
+(defn- incrementing
+  ([]  (incrementing 0))
+  ([i] (lazy-seq (cons i (incrementing (inc i))))))
+
+(deftest concurrently-accessing-transfer-queue
+  (dotimes [_ 5]
+    (let [q1 (AsyncTransferQueue. -1)
+          q2 (AsyncTransferQueue. -1)
+          vs (doall (repeatedly 750 #(.take q2)))]
+
+      (dotimes [i 15]
+        (future
+          (dotimes [j 50]
+            (Thread/sleep 0 200000)
+            (.put q1 (+ (* i 50) j))))
+
+        (future
+          (dotimes [j 50]
+            (doasync (.take q1)
+              #(.put q2 %)))))
+
+      (is (= (take 750 (incrementing))
+             (sort (map #(deref % 10 -1) vs)))))))
