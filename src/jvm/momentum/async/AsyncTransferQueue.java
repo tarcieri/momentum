@@ -129,17 +129,8 @@ final public class AsyncTransferQueue implements Counted {
     return request;
   }
 
-  public int count() {
+  public synchronized int count() {
     return count;
-  }
-
-  private void updateCount(boolean haveData) {
-    if (haveData) {
-      ++count;
-    }
-    else {
-      --count;
-    }
   }
 
   private boolean transfer(Object o, AsyncVal request) {
@@ -221,5 +212,14 @@ final public class AsyncTransferQueue implements Counted {
     }
 
     return true;
+  }
+
+  private void updateCount(boolean haveData) {
+    if (haveData) {
+      ++count;
+    }
+    else {
+      --count;
+    }
   }
 }
