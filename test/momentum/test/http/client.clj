@@ -550,21 +550,28 @@
        ch1
        :request [#(includes-hdrs {:path-info "/"} %) nil])))
 
-;; (defcoretest handling-chunked-response-bodies
-;;   [ch1]
-;;   (server/start
-;;    (fn [dn _]
-;;      (fn [evt val]
-;;        (when (= :request evt)
-;;          (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
-;;          (dn :body (buffer "Hello"))
-;;          (dn :body (buffer "World"))
-;;          (dn :body (buffer "these are"))
-;;          (dn :body (buffer "chunks"))
-;;          (dn :body nil)))))
+(defcoretest handling-chunked-response-bodies
+  [ch1]
+  (server/start
+   (fn [dn _]
+     (fn [evt val]
+       (when (= :request evt)
+         (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
+         (dn :body (buffer "Hello"))
+         (dn :body (buffer "World"))
+         (dn :body (buffer "these are"))
+         (dn :body (buffer "chunks"))
+         (dn :body nil)))))
 
-;;   (let [[status hdrs body] @(GET "http://localhost:4040/")]
-;;     (is (= 200 status))
-;;     (is (= (hdrs "transfer-encoding") "chunked"))))
+  (let [[status hdrs body] @(GET "http://localhost:4040/")]
+    (is (= 200 status))
+    (is (= (hdrs "transfer-encoding") "chunked"))
+    (is (seq? body))
+    (is (= ["Hello" "World" "these are" "chunks"]
+           @(doasync (join body [])
+              (fn [[chunk & more :as chunks] aggregated]
+                (if chunks
+                  (recur* (join more (conj aggregated (to-string chunk))))
+                  aggregated)))))))
 
 ;; Sending request w/ content-length and invalid body length

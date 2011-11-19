@@ -269,22 +269,34 @@
         resp (async-val)]
     (connect
      (fn [dn _]
-       (let [ch (channel)]
-        (fn [evt val]
-          (cond
-           (= :open evt)
-           (dn :request [hdrs nil])
+       ;; A channel that is able to buffer 5 events before it invokes
+       ;; the downstream fn with a pause.
+       (let [ch (channel dn 5)]
+         (fn [evt val]
+           (cond
+            (= :open evt)
+            (dn :request [hdrs nil])
 
-           (= :response evt)
-           (resp val)
+            (= :response evt)
+            (let [[status hdrs body] val]
+              ;; TODO: Handle upgrades
+              (if (= :chunked body)
+                (resp [status hdrs (seq ch)])
+                (resp val)))
 
-           (= :abort evt)
-           (abort resp val)
+            (= :body evt)
+            (if val
+              (put ch val)
+              (close ch))
 
-           :else
-           1 ;; (println "LULZ WTF: " [evt val])
-           )
-          )))
+            (= :abort evt)
+            (abort resp val)
+
+            :else
+            (when-not (#{:done} evt)
+              (println "Unhandled event " [evt val]))
+            )
+           )))
      (select-keys hdrs [:host :port]))
     resp)
   )
