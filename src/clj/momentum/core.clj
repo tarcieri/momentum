@@ -35,10 +35,6 @@
 (def write-uint          momentum.core.buffer/write-uint)
 (def write-long          momentum.core.buffer/write-long)
 
-;; The protocols
-(def DeferredValue    momentum.core.deferred/DeferredValue)
-(def DeferredRealizer momentum.core.deferred/DeferredRealizer)
-
 ;; Map the macros
 (defmacro buffer
   [& args]

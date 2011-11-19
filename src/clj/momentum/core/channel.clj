@@ -16,6 +16,7 @@
   DeferredRealizer
   (put [this val]
     (.put (.transfer this) val))
+
   (abort [this err]
     (.abort (.transfer this) err))
 

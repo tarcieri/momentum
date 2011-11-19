@@ -169,18 +169,13 @@ final public class AsyncTransferQueue implements Counted {
   public AsyncVal take() {
     AsyncVal request = new AsyncVal();
 
-    try {
-      if (!transfer(null, request)) {
-        if (err == null) {
-          request.put(defaultVal);
-        }
-        else {
-          request.abort(err);
-        }
+    if (!transfer(null, request)) {
+      if (err == null) {
+        request.put(defaultVal);
       }
-    }
-    catch (Exception e) {
-      e.printStackTrace();
+      else {
+        request.abort(err);
+      }
     }
 
     return request;
@@ -208,6 +203,7 @@ final public class AsyncTransferQueue implements Counted {
       // First attempt to match an existing node
       if (null != (matched = tryMatch(haveData))) {
         matched.realize(o, request);
+        updateCount(haveData);
         return true;
       }
 
@@ -259,8 +255,6 @@ final public class AsyncTransferQueue implements Counted {
             curr.gasNext(curr);
           }
 
-          updateCount(haveData);
-
           return curr;
         }
       }
@@ -269,7 +263,7 @@ final public class AsyncTransferQueue implements Counted {
       // node hasn't been unlinked. If the node has been unlinked, use the head
       // ref.
       next = curr.next();
-      curr = (curr != next) ? next : head.get();
+      curr = (curr != next) ? next : (h = head.get());
     }
 
     // Will never get here, but the java compiler needs a return

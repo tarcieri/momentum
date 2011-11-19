@@ -189,13 +189,13 @@
   [seq]
   (when seq
     (lazy-seq
-     (let [seq (deref seq 2000 ::timeout)]
+     (let [s (deref seq 2000 ::timeout)]
        (cond
-        (= ::timeout seq)
+        (= ::timeout s)
         (list ::timeout)
 
-        seq
-        (cons (normalize (first seq)) (blocking (next seq))))))))
+        s
+        (cons (normalize (first s)) (blocking (next s))))))))
 
 (defn assert-no-msgs-for
   [f msg chs]
