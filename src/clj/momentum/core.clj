@@ -53,6 +53,7 @@
 (def channel             channel/channel)
 (def close               channel/close)
 (def enqueue             channel/enqueue)
+(def sink                channel/sink)
 
 (defmacro doasync
   [& args]

@@ -97,3 +97,51 @@
 (defn close
   [ch]
   (.close (.transfer ch)))
+
+(defn- sink-seq
+  [coll evts]
+  (async-seq
+    (fn []
+      (doasync (first* (select {:coll coll :evts evts}))
+        (fn [[k v]]
+          (when v
+            (cond
+             (= :coll k)
+             (cons (first v) (sink-seq (next v) evts))
+
+             (= :pause (first v))
+             (doasync (next v)
+               (fn [[evt & more]]
+                 (if (= :pause evt)
+                   (recur* more)
+                   (sink-seq coll more))))
+
+             :else
+             (sink-seq coll (next v)))))))))
+
+;; TODO: Don't hardcode this to :body events
+(defn sink
+  "Writes the contents of the collection to a downstream
+  function. Returns a function that accepts :pause, :resume,
+  and :abort events"
+  [dn coll]
+  (let [ch (channel)]
+    (doasync (sink-seq coll (seq ch))
+      (fn [coll]
+        (if-let [[el & more] coll]
+          (do
+            (dn :body el)
+            (recur* more))
+          (dn :body nil)))
+      ;; Handle exceptions by sending them downstream
+      (catch Exception e
+        (dn :abort e)))
+
+    ;; Return an upstream function that allows sending pause / resume
+    ;; events to the sink
+    (fn [evt val]
+      (when-not (#{:pause :resume :abort} evt)
+        (throw (IllegalArgumentException. (format "Invalid events: %s" evt))))
+      (if (= :abort evt)
+        (abort ch val)
+        (put ch evt)))))

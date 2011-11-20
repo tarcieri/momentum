@@ -118,6 +118,15 @@
 (defn async-seq
   ([f] (AsyncSeq. f)))
 
+(defn async-seq?
+  [o]
+  (instance? AsyncSeq o))
+
+(defn first*
+  [async-seq]
+  (doasync async-seq
+    #(first %)))
+
 (defn batch
   "Returns an async value that is realized with the given collection
   when all (or n if supplied) elements of the collection have been
@@ -148,6 +157,10 @@
         (doasync (first vals)
           #(cons % (select-seq (next vals))))))))
 
+(defn- map-entry
+  [k v]
+  (clojure.lang.MapEntry. k v))
+
 (defn- watch-coll
   [coll head]
   (let [entry? (map? coll)]
@@ -156,7 +169,7 @@
         (fn [v]
           (when-let [async-val (atomic-pop! head)]
             (if entry?
-              (put async-val (clojure.lang.MapEntry. (key el) v))
+              (put async-val (map-entry (key el) v))
               (put async-val v))))
         (catch Exception e
           (when-let [async-val (atomic-pop! head)]
@@ -169,3 +182,15 @@
   (let [results (take (count coll) (async-vals))]
     (watch-coll coll (atom results))
     (select-seq results)))
+
+(defn splice
+  [map]
+  "Returns an async seq that consists of map entries of the values of
+  all of the seqs passed in as they materialize and the key
+  referencing the seq."
+  (async-seq
+    (doasync (first* (select map))
+      (fn [[k seq]]
+        (if-let [[v & more] seq]
+          (cons (map-entry k v) (splice (assoc map k more)))
+          (splice (dissoc map k)))))))

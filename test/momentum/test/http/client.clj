@@ -574,4 +574,56 @@
                   (recur* (join more (conj aggregated (to-string chunk))))
                   aggregated)))))))
 
+(defcoretest handling-request-bodies
+  [ch1]
+  (start-hello-world-app ch1)
+
+  (GET "http://localhost:4040/" {"content-length" "5"} "Hello")
+
+  (is (next-msgs
+       ch1
+       :request [#(includes-hdrs {"content-length" "5"} %) "Hello"]
+       :done    nil))
+
+  (GET "http://localhost:4040/"
+    {"transfer-encoding" "chunked"}
+    ["Hello" "world" "these" "are" "some" "chunks"])
+
+  (is (next-msgs
+       ch1
+       :request [#(includes-hdrs {"transfer-encoding" "chunked"} %) :chunked]
+       :body    "Hello"
+       :body    "world"
+       :body    "these"
+       :body    "are"
+       :body    "some"
+       :body    "chunks"
+       :body    nil
+       :done    nil))
+
+  (let [ch (channel)]
+    (future
+      (doseq [chunk ["Hello" "world" "these" "are" "some" "chunks"]]
+        (Thread/sleep 10)
+        (put ch chunk))
+      (close ch))
+
+    (GET "http://localhost:4040/"
+      {"transfer-encoding" "chunked"}
+      (seq ch))
+
+    (is (next-msgs
+         ch1
+         :request [#(includes-hdrs {"transfer-encoding" "chunked"} %) :chunked]
+         :body    "Hello"
+         :body    "world"
+         :body    "these"
+         :body    "are"
+         :body    "some"
+         :body    "chunks"
+         :body    nil
+         :done    nil))))
+
+;; Test pause / resume w/ AsyncVal API
+
 ;; Sending request w/ content-length and invalid body length

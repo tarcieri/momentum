@@ -266,7 +266,8 @@
 (defn- request*
   [method uri hdrs request-body]
   (let [hdrs (merge {:http-version [1 1] :request-method method} (uri-map uri) hdrs)
-        resp (async-val)]
+        resp (async-val)
+        up   (atom nil)]
     (connect
      (fn [dn _]
        ;; A channel that is able to buffer 5 events before it invokes
@@ -275,7 +276,17 @@
          (fn [evt val]
            (cond
             (= :open evt)
-            (dn :request [hdrs nil])
+            (cond
+             (keyword? request-body)
+             (throw (IllegalArgumentException. (format "Invalid body: %s" request-body)))
+
+             (coll? request-body)
+             (do
+               (dn :request [hdrs :chunked])
+               (reset! up (sink dn request-body)))
+
+             :else
+             (dn :request [hdrs (buffer request-body)]))
 
             (= :response evt)
             (let [[status hdrs body] val]
@@ -290,13 +301,15 @@
               (close ch))
 
             (= :abort evt)
-            (abort resp val)
+            (do
+              (.printStackTrace val)
+              (abort resp val))
 
             :else
             (when-not (#{:done} evt)
-              (println "Unhandled event " [evt val]))
-            )
-           )))
+              (println "Unhandled event " [evt val]))))))
+
+     ;; Extract the connection options
      (select-keys hdrs [:host :port]))
     resp)
   )
