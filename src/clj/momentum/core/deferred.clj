@@ -1,4 +1,6 @@
 (ns momentum.core.deferred
+  (:use
+   momentum.core.atomic)
   (:import
    [momentum.async
     Async
@@ -55,13 +57,16 @@
   [stages catchers finalizer]
   (Pipeline. (reverse stages) catchers finalizer))
 
-(defn recur*
-  ([]    (Pipeline$Recur. nil))
-  ([val] (Pipeline$Recur. val)))
-
 (defn join
   [& args]
   (Join. args))
+
+(defn recur*
+  ([]                (Pipeline$Recur. nil))
+  ([v1]              (Pipeline$Recur. v1))
+  ([v1 v2]           (Pipeline$Recur. (join v1 v2)))
+  ([v1 v2 v3]        (Pipeline$Recur. (join v1 v2 v3)))
+  ([v1 v2 v3 & args] (Pipeline$Recur. (apply join v1 v2 v3 args))))
 
 ;; ==== Async macro
 
@@ -105,6 +110,11 @@
     `(doto (pipeline [~@stages] [~@(map to-catcher catches)] ~(to-finally finally))
        (put ~seed))))
 
+(defn- async-vals
+  "A lazy sequence of async-vals"
+  []
+  (lazy-seq (cons (async-val) (async-vals))))
+
 (defn async-seq
   ([f] (AsyncSeq. f)))
 
@@ -129,3 +139,33 @@
       (doasync coll
         (fn [[v & more]]
           (cons v (map* f more)))))))
+
+(defn- select-seq
+  [vals]
+  (when (seq vals)
+    (async-seq
+      (fn []
+        (doasync (first vals)
+          #(cons % (select-seq (next vals))))))))
+
+(defn- watch-coll
+  [coll head]
+  (let [entry? (map? coll)]
+    (doseq [el coll]
+      (doasync (if entry? (val el) el)
+        (fn [v]
+          (when-let [async-val (atomic-pop! head)]
+            (if entry?
+              (put async-val (clojure.lang.MapEntry. (key el) v))
+              (put async-val v))))
+        (catch Exception e
+          (when-let [async-val (atomic-pop! head)]
+            (abort async-val e)))))))
+
+(defn select
+  "Returns an async seq representing the values of the passed
+  collection in the order that they are materialized."
+  [coll]
+  (let [results (take (count coll) (async-vals))]
+    (watch-coll coll (atom results))
+    (select-seq results)))

@@ -274,39 +274,6 @@
                 (recur* more)
                 :done))))))
 
-;; ==== join
-
-(deftest synchronous-joins
-  (is (= [1 2 3]
-         @(doasync (join 1 2 3)
-            (fn [& args] args))))
-
-  (is (= [1]
-         @(doasync (join 1)
-            (fn [& args] args))))
-
-  (is (= [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20]
-         @(doasync (join 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20)
-            (fn [& args] args)))))
-
-(deftest async-joins
-  (is (= [1 2 3]
-         @(doasync (join (defer 1) (defer 2) (defer 3))
-            (fn [& args] args))))
-
-  (is (= [1]
-         @(doasync (join (defer 1))
-            (fn [& args] args)))))
-
-(deftest handling-async-errors
-  (let [res (atom nil)]
-    (is (thrown-with-msg? Exception #"BOOM"
-          @(doasync
-             (join
-              (future* (throw (RuntimeException. "BOOM")))
-              (future* (Thread/sleep 40) (reset! res :done))))))
-    (is (nil? @res))))
-
 ;; ==== async-seq
 
 (deftest async-seq-basics
@@ -370,6 +337,121 @@
           @(doasync (async-seq (throw (Exception. "BOOM")))
              (fn [v] (reset! res v)))))
     (is (nil? @res))))
+
+;; ==== join
+
+(deftest synchronous-joins
+  (is (= [1 2 3]
+         @(doasync (join 1 2 3)
+            (fn [& args] args))))
+
+  (is (= [1]
+         @(doasync (join 1)
+            (fn [& args] args))))
+
+  (is (= [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20]
+         @(doasync (join 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20)
+            (fn [& args] args)))))
+
+(deftest async-joins
+  (is (= [1 2 3]
+         @(doasync (join (defer 1) (defer 2) (defer 3))
+            (fn [& args] args))))
+
+  (is (= [1]
+         @(doasync (join (defer 1))
+            (fn [& args] args)))))
+
+(deftest handling-async-errors
+  (let [res (atom nil)]
+    (is (thrown-with-msg? Exception #"BOOM"
+          @(doasync
+             (join
+              (future* (throw (RuntimeException. "BOOM")))
+              (future* (Thread/sleep 40) (reset! res :done))))))
+    (is (nil? @res))))
+
+;; ==== select
+
+(deftest synchronous-selects
+  (are [x] (= (seq x)
+              @(doasync (join (select x) [])
+                 (fn [vals aggregated]
+                   (if-let [[v & more] vals]
+                     (recur* more (conj aggregated v))
+                     (seq aggregated)))))
+
+       [1]
+       [1 2 3 4 5]
+       [1 2 3 4 5 6 7 8 9 10]
+       nil
+       []
+       {}
+       {:foo 1 :bar 2}))
+
+(deftest asynchronous-selects
+  (let [val1 (async-val)
+        val2 (async-val)]
+
+    (future
+      (Thread/sleep 10)
+      (put val2 :hello)
+      (Thread/sleep 10)
+      (put val1 :world))
+
+    (is (= [:hello :world]
+           @(doasync (join (select [val1 val2]) [])
+              (fn [vs agg]
+                (if-let [[v & more] vs]
+                  (recur* more (conj agg v))
+                  agg))))))
+
+  (let [val1 (async-val)
+        val2 (async-val)]
+
+    (future
+      (Thread/sleep 10)
+      (put val2 :hello)
+      (Thread/sleep 10)
+      (put val1 :world))
+
+    (is (= [[:second :hello] [:first :world]]
+           @(doasync (join (select {:first val1 :second val2}) [])
+              (fn [vs agg]
+                (if-let [[v & more] vs]
+                  (recur* more (conj agg v))
+                  agg)))))))
+
+(deftest handling-async-select-errors
+  (let [val1 (async-val)
+        val2 (async-val)
+        res  (atom nil)]
+
+    (future
+      (Thread/sleep 10)
+      (abort val2 (Exception. "BOOM")))
+
+    (is (thrown-with-msg? Exception #"BOOM"
+          @(doasync (select [val1 val2])
+             (fn [_]
+               (reset! res :fail)))))
+
+    (is (nil? @res)))
+
+  (let [val1 (async-val)
+        val2 (async-val)
+        res  (atom nil)]
+
+    (future
+      (Thread/sleep 10)
+      (abort val2 (Exception. "BOOM")))
+
+    (is (thrown-with-msg? Exception #"BOOM"
+          @(doasync (select {:first val1 :second val2})
+             (fn [_]
+               (reset! res :fail)))))
+
+    (is (nil? @res)))  )
 
 ;; ==== batch
 

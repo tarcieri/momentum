@@ -45,6 +45,7 @@
 (def batch               momentum.core.deferred/batch)
 (def recur*              momentum.core.deferred/recur*)
 (def join                momentum.core.deferred/join)
+(def select              momentum.core.deferred/select)
 (def async-val           momentum.core.deferred/async-val)
 (def pipeline            momentum.core.deferred/pipeline)
 (def put                 momentum.core.deferred/put)
