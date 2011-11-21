@@ -534,13 +534,13 @@
        ch1
        :request [#(includes-hdrs {:path-info "/bar"} %) nil])))
 
-(defcoretest deferred-request-errors-abort-response
+(defcoretest errors-abort-response-with-async-val-api
   nil
 
   (is (thrown-with-msg? Exception #"Connection refused"
         @(GET "http://localhost:4040"))))
 
-(defcoretest various-deferred-request-invocations
+(defcoretest simple-cases-with-async-val-api
   [ch1]
   (start-hello-world-app ch1)
 
@@ -550,7 +550,7 @@
        ch1
        :request [#(includes-hdrs {:path-info "/"} %) nil])))
 
-(defcoretest handling-chunked-response-bodies
+(defcoretest handling-chunked-response-bodies-with-async-val-api
   [ch1]
   (server/start
    (fn [dn _]
@@ -574,7 +574,7 @@
                   (recur* (join more (conj aggregated (to-string chunk))))
                   aggregated)))))))
 
-(defcoretest handling-request-bodies
+(defcoretest handling-request-bodies-with-async-val-api
   [ch1]
   (start-hello-world-app ch1)
 
@@ -624,6 +624,51 @@
          :body    nil
          :done    nil))))
 
-;; Test pause / resume w/ AsyncVal API
+(defn- blocking
+  ([coll] (blocking coll -1))
+  ([coll ms]
+     (lazy-seq
+      ;; Block until realized
+      (when (deref coll ms nil)
+        (cons (first coll) (blocking (next coll)))))))
 
+(defcoretest pause-resume-with-async-val-api
+  [ch1 ch2 ch3]
+  ;; Scumbag server
+  (server/start
+   (fn [dn _]
+     (doasync (seq ch3)
+       (fn [[args]]
+         (apply dn args)))
+     (fn [evt val]
+       (when (= :request evt)
+         (dn :pause nil))
+
+       (when (= :body evt)
+         (if val
+           (enqueue ch1 val)
+           (do
+             (close ch1)
+             (dn :response [200 {"content-length" "5"} (buffer "Hello")]))))))
+   {:timeout 30 :keepalive 30})
+
+  (future
+    (dotimes [_ 5]
+      (Thread/sleep 700)
+      (dotimes [_ 10000]
+        (put ch2 (buffer "HAMMER TIME!"))))
+    (close ch2)
+
+    (ch3 [:resume nil]))
+
+  (POST "http://localhost:4040/" {"transfer-encoding" "chunked"} (seq ch2))
+
+  (let [actual (buffer (blocking (seq ch1)))
+        times  (* 5 10000)
+        length (* times 12)]
+
+    (is (= (remaining actual) length))
+    (is (= actual (buffer (repeatedly times #(buffer "HAMMER TIME!")))))))
+
+;; Test pause / resume w/ AsyncVal API
 ;; Sending request w/ content-length and invalid body length

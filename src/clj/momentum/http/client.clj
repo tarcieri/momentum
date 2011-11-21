@@ -300,9 +300,14 @@
               (put ch val)
               (close ch))
 
+            (#{:pause :resume} evt)
+            (when-let [upstream @up]
+              (upstream evt val))
+
             (= :abort evt)
             (do
-              (.printStackTrace val)
+              ;; (println "======== CLIENT")
+              ;; (.printStackTrace val)
               (abort resp val))
 
             :else
