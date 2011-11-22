@@ -14,28 +14,6 @@
    [java.io
     Writer]))
 
-(defprotocol DeferredValue
-  (receive   [_ success error]))
-
-(extend-protocol DeferredValue
-  Async
-  (receive [val success error]
-    (doto val
-      (.receive
-       (reify Receiver
-         (success [_ val] (success val))
-         (error   [_ err] (error err))))))
-
-  Object
-  (receive [o success _]
-    (success o)
-    o)
-
-  nil
-  (receive [_ success _]
-    (success nil)
-    nil))
-
 (defprotocol DeferredRealizer
   (put [_ v])
   (abort [_ err]))
