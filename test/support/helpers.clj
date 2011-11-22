@@ -189,7 +189,7 @@
   [seq]
   (when seq
     (lazy-seq
-     (let [s (deref seq 2000 ::timeout)]
+     (let [s (if (async-seq? seq) (deref seq 2000 ::timeout) seq)]
        (cond
         (= ::timeout s)
         (list ::timeout)

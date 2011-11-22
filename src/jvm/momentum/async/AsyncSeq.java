@@ -22,7 +22,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
    * Evaluate the body of the async seq only once. If the return value is an
    * async value of some kind, then register a callback on it.
    */
-  public boolean isRealized() {
+  public boolean observe() {
     if (isRealized) {
       return true;
     }
@@ -89,7 +89,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
   }
 
   void ensureSuccess() {
-    if (isRealized()) {
+    if (observe()) {
       if (err != null) {
         throw Util.runtimeException(err);
       }
@@ -104,7 +104,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
    * ISeq API
    */
   public ISeq seq() {
-    if (isRealized) {
+    if (isRealized()) {
       if (err != null) {
         throw Util.runtimeException(err);
       }

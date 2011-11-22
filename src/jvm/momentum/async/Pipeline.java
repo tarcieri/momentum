@@ -85,7 +85,7 @@ public final class Pipeline extends Async<Object> {
           if (val instanceof Async) {
             v = (Async) val;
 
-            if (recur && v.isRealized()) {
+            if (recur && v.observe()) {
               val = v.val;
             }
             else {

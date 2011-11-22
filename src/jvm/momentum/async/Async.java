@@ -92,7 +92,7 @@ public class Async<T> extends AFn implements IPending, IDeref, IBlockingDeref {
     // the volatile boolean field is checked. The reason why the method is
     // called the first time around is because isRealized() is a hook point
     // that is overridden in AsyncSeq (and possibly other subclasses).
-    if (!isRealized()) {
+    if (!observe()) {
       synchronized (this) {
         // Check to make sure that the object still is not realized now that a
         // lock has been established, also a lighter check is done than the
@@ -107,16 +107,20 @@ public class Async<T> extends AFn implements IPending, IDeref, IBlockingDeref {
     deliver(r, err == null);
   }
 
-  public boolean isRealized() {
+  boolean observe() {
+    return isRealized;
+  }
+
+  final public boolean isRealized() {
     return isRealized;
   }
 
   final public boolean isSuccessful() {
-    return isRealized() && err == null;
+    return isRealized && err == null;
   }
 
   final public boolean isAborted() {
-    return isRealized() && err != null;
+    return isRealized && err != null;
   }
 
   /*
@@ -145,7 +149,7 @@ public class Async<T> extends AFn implements IPending, IDeref, IBlockingDeref {
    * ms;
    */
   final protected boolean block(long ms) {
-    if (isRealized()) {
+    if (observe()) {
       return true;
     }
 

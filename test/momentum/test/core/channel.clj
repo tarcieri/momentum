@@ -13,8 +13,9 @@
       (is (identical? tail (seq tail)))
 
       (close ch)
-      (is (realized? tail))
+      (deref tail 0 nil)
       (is (nil? (seq tail)))
+      (is (realized? tail))
       (is (nil? @(doasync tail)))))
 
   (let [ch (channel)]
@@ -25,6 +26,7 @@
       (is (identical? tail (seq tail)))
 
       (close ch)
+      (deref tail 0 nil)
       (is (realized? tail))
       (is (nil? (seq tail)))
       (is (nil? @(doasync tail)))))
