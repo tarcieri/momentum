@@ -1,6 +1,5 @@
 (ns momentum.core.channel
   (:use
-   momentum.core.buffer
    momentum.core.deferred)
   (:import
    [momentum.async
