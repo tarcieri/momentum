@@ -5,7 +5,8 @@
                  [org.jboss.netty/netty "3.2.4.Final"]]
 
   :dev-dependencies [[swank-clojure "1.3.4-SNAPSHOT" :exclusions [org.clojure/clojure]]
-                     [robert/hooke  "1.1.2"]]
+                     [robert/hooke  "1.1.2"]
+                     [lein-clojars  "0.7.0"]]
 
   :source-path      "src/clj"
   :java-source-path "src/jvm"
