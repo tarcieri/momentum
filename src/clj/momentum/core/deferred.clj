@@ -10,22 +10,18 @@
     Pipeline
     Pipeline$Catcher
     Pipeline$Recur
+    Realizer
     Receiver]
    [java.io
     Writer]))
 
-(defprotocol DeferredRealizer
-  (put [_ v])
-  (abort [_ err]))
+(defn put
+  [^Realizer realizer val]
+  (.put realizer val))
 
-(extend-protocol DeferredRealizer
-  AsyncVal
-  (put [dval val]   (.put dval val))
-  (abort [dval err] (.abort dval err))
-
-  Pipeline
-  (put   [pipeline val] (.put pipeline val))
-  (abort [pipeline err] (.abort pipeline err)))
+(defn abort
+  [^Realizer realizer err]
+  (.abort realizer err))
 
 (defn async-val
   []

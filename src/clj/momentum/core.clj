@@ -52,7 +52,6 @@
 (def async-seq?          momentum.core.deferred/async-seq?)
 (def pipeline            momentum.core.deferred/pipeline)
 (def put                 momentum.core.deferred/put)
-(def receive             momentum.core.deferred/receive)
 (def success?            momentum.core.deferred/success?)
 (def channel             channel/channel)
 (def close               channel/close)

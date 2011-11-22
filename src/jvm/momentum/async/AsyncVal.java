@@ -3,7 +3,7 @@ package momentum.async;
 import clojure.lang.*;
 import java.util.*;
 
-public final class AsyncVal extends Async<Object> implements IDeref, IBlockingDeref {
+public final class AsyncVal extends Async<Object> implements Realizer, IDeref, IBlockingDeref {
 
   public static AsyncVal aborted(Exception e) {
     AsyncVal ret = new AsyncVal();

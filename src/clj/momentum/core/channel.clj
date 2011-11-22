@@ -3,7 +3,8 @@
    momentum.core.deferred)
   (:import
    [momentum.async
-    AsyncTransferQueue]))
+    AsyncTransferQueue
+    Realizer]))
 
 (declare
  channel-seq
@@ -14,7 +15,7 @@
   (seq [_]
     @head)
 
-  DeferredRealizer
+  Realizer
   (put [this val]
     (let [ret (.put (.transfer this) val)]
       (when (.f this)
