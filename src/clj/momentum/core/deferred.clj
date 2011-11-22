@@ -10,7 +10,9 @@
     Pipeline
     Pipeline$Catcher
     Pipeline$Recur
-    Receiver]))
+    Receiver]
+   [java.io
+    Writer]))
 
 (defprotocol DeferredValue
   (receive   [_ success error]))
@@ -194,3 +196,7 @@
         (if-let [[v & more] seq]
           (cons (map-entry k v) (splice (assoc map k more)))
           (splice (dissoc map k)))))))
+
+(defmethod print-method AsyncSeq
+  [seq ^Writer w]
+  (.write w (str seq)))
