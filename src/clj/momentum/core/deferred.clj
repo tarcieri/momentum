@@ -53,6 +53,14 @@
   []
   (AsyncVal.))
 
+(defn success?
+  [^Async val]
+  (.isSuccessful val))
+
+(defn aborted?
+  [^Async val]
+  (.isAborted val))
+
 ;; ==== Pipeline stuff
 
 (defn pipeline

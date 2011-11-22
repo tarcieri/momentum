@@ -617,3 +617,23 @@
 
       (is (= (take 750 (incrementing))
              (sort (map #(deref % 50 -1) vs)))))))
+
+;; ==== Various helpers
+
+(deftest async-success?-aborted?-realized?
+  (let [val (async-val)]
+    (is (not (realized? val)))
+    (is (not (success? val)))
+    (is (not (aborted? val)))
+
+    (put val :hello)
+    (is (realized? val))
+    (is (success? val))
+    (is (not (aborted? val))))
+
+  (let [val (async-val)]
+    (abort val BOOM)
+    (is (realized? val))
+    (is (not (success? val)))
+    (is (aborted? val))))
+

@@ -42,6 +42,7 @@
 
 ;; ==== Async goodness
 (def abort               momentum.core.deferred/abort)
+(def aborted?            momentum.core.deferred/aborted?)
 (def batch               momentum.core.deferred/batch)
 (def recur*              momentum.core.deferred/recur*)
 (def join                momentum.core.deferred/join)
@@ -51,6 +52,7 @@
 (def pipeline            momentum.core.deferred/pipeline)
 (def put                 momentum.core.deferred/put)
 (def receive             momentum.core.deferred/receive)
+(def success?            momentum.core.deferred/success?)
 (def channel             channel/channel)
 (def close               channel/close)
 (def enqueue             channel/enqueue)
