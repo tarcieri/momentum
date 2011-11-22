@@ -20,43 +20,31 @@
  write)
 
 (defprotocol Conversion
-  (^{:private true} estimate [_])
   (^{:private true} to-buffer [_]))
 
 (extend-protocol Conversion
   (class (byte-array 0))
-  (estimate  [bytes] (count bytes))
   (to-buffer [bytes] (Buffer/wrap bytes))
 
   Buffer
-  (estimate  [buf] (.remaining buf))
   (to-buffer [buf] buf)
 
   ByteBuffer
-  (estimate  [buf] (.remaining buf))
   (to-buffer [buf] (Buffer/wrap buf))
 
   ChannelBuffer
-  (estimate  [buf] (.readableBytes buf))
   (to-buffer [buf] (Buffer/wrap buf))
 
   Collection
-  (estimate  [coll]
-    (/ (* (count coll)
-          (+ (estimate (first coll))
-             (estimate (last coll)))) 2))
   (to-buffer [coll] (Buffer/wrap coll))
 
   String
-  (estimate  [str] (* 2 (.length str)))
   (to-buffer [str] (Buffer/wrap str))
 
   Number
-  (estimate  [n] n)
   (to-buffer [n] (Buffer/allocate n))
 
   nil
-  (estimate  [_] 0)
   (to-buffer [_] nil))
 
 (defprotocol Manipulation
