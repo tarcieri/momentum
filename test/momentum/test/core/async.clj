@@ -5,10 +5,11 @@
   (:import
    [momentum.async
     AsyncTransferQueue
-    TimeoutException]))
+    TimeoutException]
+   [java.io
+    IOException]))
 
-;; TODO:
-;; * async-seq fn throws, what happens?
+;; ==== Helpers
 
 (defn- async-inc
   [i]
@@ -25,156 +26,183 @@
      (when (> i 0)
        (cons i (async-dec-seq (dec i)))))))
 
-(defn- defer
-  [v]
-  (future*
-   (Thread/sleep 10)
-   v))
+(defmacro defer
+  [& body]
+  `(future*
+    (Thread/sleep 10)
+    ~@body))
+
+(def BOOM (RuntimeException. "BOOM"))
+
+(defn- boom
+  [& args]
+  (throw BOOM))
+
+(defn- defer-boom
+  [& args]
+  (defer (boom)))
+
+(defn- compare-and-inc
+  [expected]
+  (fn [v]
+    (if (= expected v)
+      (inc v)
+      v)))
+
+;; ==== doasync
+
+(defn- async-compare-and-inc
+  [expected]
+  (fn [v]
+    (if (= expected v)
+      (defer (inc v))
+      v)))
 
 (deftest doasync-with-no-stages
-  (are [x y] (= x y)
-       1   @(doasync 1)
-       [1] @(doasync [1])
-       nil @(doasync nil)
-       1   @(doasync (future* (Thread/sleep 10) 1))
-       [1] @(doasync (future* (Thread/sleep 10) [1]))
-       nil @(doasync (future* (Thread/sleep 10) nil))))
+  (are [x y] (= x @y)
+       1   (doasync 1)
+       [1] (doasync [1])
+       nil (doasync nil)
+       1   (doasync (defer 1))
+       [1] (doasync (defer [1]))
+       nil (doasync (defer nil))))
 
-(deftest simple-do-async
-  (let [res (atom nil)]
-    (receive
-     (doasync 1
-       inc inc)
-     #(reset! res %)
-     identity)
-    (is (= 3 @res))))
+(deftest doasync-succeeding
+  (let [q    (atom [])
+        fail (fn [] (swap! q #(conj % :fail)))]
 
-(deftest successful-pipeline-seeded-with-async-value
-  (let [res (atom nil)
-        val (async-val)]
-    (receive
-     (doasync val
-       inc inc)
-     #(compare-and-set! res nil %)
-     #(reset! res %))
-    (put val 1)
-    (is (= 3 @res))))
+    (are [x] (= 3 @x)
 
-(deftest successful-pipeline-with-async-values-at-each-stage
-  (is (= 3 @(doasync 1 async-inc async-inc))))
+         (doasync 1
+           (compare-and-inc 1)
+           (compare-and-inc 2))
 
-(deftest aborting-seed-async-value-aborts-pipeline
-  (let [res (atom nil)
-        err (Exception.)
-        val (async-val)]
-    (receive
-     (doasync val inc inc)
-     #(reset! res %)
-     #(compare-and-set! res nil %))
-    (abort val err)
-    (is (= err @res))))
+         (doasync (defer 1)
+           (compare-and-inc 1)
+           (compare-and-inc 2))
 
-(deftest thrown-exception-in-stage-aborts-pipeline
-  (let [res (atom nil)
-        err (Exception.)]
-    (receive
-     (doasync 1 (fn [_] (throw err)) inc)
-     #(reset! res %)
-     #(compare-and-set! res nil %))
-    (is (= err @res))
+         (doasync 1
+           (async-compare-and-inc 1)
+           (compare-and-inc 2))
 
-    (reset! res nil)
+         (doasync 1
+           (async-compare-and-inc 1)
+           (async-compare-and-inc 2))
 
-    (receive
-     (doasync 1 inc (fn [_] (throw err)))
-     #(reset! res %)
-     #(compare-and-set! res nil %))
-    (is (= err @res))))
+         (doasync (defer 1)
+           (async-compare-and-inc 1)
+           (async-compare-and-inc 2))
+
+         (doasync 3
+           (catch Exception e (fail)))
+
+         (doasync 3
+           (catch RuntimeException e (fail))
+           (catch Exception e (fail)))
+
+         (doasync 3
+           (finally (swap! q #(conj % :1))))
+
+         (doasync 3
+           (catch Exception e (fail))
+           (finally (swap! q #(conj % :2))))
+
+         (doasync 3
+           (catch Exception e (fail))
+           (catch RuntimeException e (fail))
+           (finally (swap! q #(conj % :3))))
+
+         (doasync 2 inc
+           (catch Exception e (fail))))
+
+    (is (= [:1 :2 :3] @q))))
+
+(deftest doasync-aborting
+  (let [q    (atom [])
+        push (fn [v] (swap! q #(conj % v)))
+        fail #(push :fail)]
+
+    (are [x] (thrown-with-msg? Exception #"BOOM" @x)
+
+         (doasync (defer-boom))
+         (doasync (defer-boom) fail)
+         (doasync 1 boom)
+         (doasync 1 boom fail)
+         (doasync (defer 1) boom)
+         (doasync (defer 1) boom fail)
+         (doasync 1 defer-boom)
+         (doasync 1 defer-boom fail)
+         (doasync (defer 1) defer-boom)
+         (doasync (defer 1) defer-boom fail)
+
+         (doasync (defer-boom)
+           (finally (push :1)))
+
+         (doasync (defer-boom)
+           (catch IOException e))
+
+         (doasync (defer-boom)
+           (catch IOException e)
+           (finally (push :2)))
+
+         (doasync 1
+           (finally (boom)))
+
+         (doasync (defer (throw (Exception. "BLURP")))
+           (catch Exception e (boom)))
+
+         (doasync (defer (throw (Exception. "BLURP")))
+           (finally (boom))))
+
+    (is (= [:1 :2] @q))))
+
+(deftest doasync-catching-exceptions
+  (let [q    (atom [])
+        fail (fn [] (swap! q #(conj % :fail)))]
+
+    (are [x] (= 3 @x)
+
+         (doasync (defer-boom)
+           (catch Exception e 3))
+
+         (doasync (defer-boom)
+           (catch IOException e (fail))
+           (catch Exception e 3))
+
+         (doasync (defer-boom)
+           (catch Exception e
+             (when (= BOOM e)
+               3))
+           (finally (swap! q #(conj % :1))))
+
+         (doasync 1 boom
+           (catch Exception e 3))
+
+         (doasync 1 boom
+           (catch Exception e 3)
+           (finally (swap! q #(conj % :2))))
+
+         (doasync 1 defer-boom
+           (catch Exception e 3))
+
+         (doasync 1 defer-boom
+           (catch Exception e 3)
+           (finally (swap! q #(conj % :3)))))
+
+    (is (= [:1 :2 :3] @q))))
+
+(deftest nesting-pipelines
+  (are [x] (= 3 @x)
+       (doasync (doasync 3))
+
+       (doasync (doasync 2 inc))
+
+       (doasync 1
+         #(doasync %
+            (compare-and-inc 1)
+            (compare-and-inc 2)))))
 
 ;; ==== Catching exceptions
-
-(deftest successful-pipeline-with-catch-statement
-  (let [res (atom nil)]
-    (receive
-     (doasync 1 inc
-       (catch Exception e
-         (reset! res e)))
-     #(compare-and-set! res nil %)
-     #(reset! res %))
-
-    (is (= 2 @res))))
-
-(deftest successful-blocking-pipeline-with-catch
-  (let [val (async-val)]
-    (future
-      (Thread/sleep 10)
-      (put val 1))
-    (is (= 2
-           @(doasync val inc
-              (catch Exception e :fail))))))
-
-(deftest catching-aborted-pipeline-succeeds-with-value
-  (let [res (atom nil)
-        val (async-val)]
-    (receive
-     (doasync val
-       identity
-       (catch Exception _ :hello))
-     #(compare-and-set! res nil %)
-     #(reset! val %))
-
-    (abort val (Exception.))
-    (is (= :hello @res))))
-
-(deftest catching-exception-thrown-during-stage-succeeds-with-value
-  (let [res (atom nil)]
-    (receive
-     (doasync 1
-       (fn [_] (throw (Exception.)))
-       (catch Exception e :hello))
-     #(reset! res %)
-     #(reset! res %))
-    (is (= :hello @res))))
-
-;; === Finally statements
-
-(deftest finally-statement-called-after-value-realized
-  (let [res (atom nil)]
-    (doasync 1
-      #(reset! res %)
-      (finally
-       (compare-and-set! res 1 :win)))
-    (is (= :win @res))))
-
-(deftest finally-statement-called-after-aborted
-  (let [res (atom nil)]
-    (doasync 1
-      (fn [_] (throw (Exception.)))
-      (finally
-       (compare-and-set! res nil :win)))
-    (is (= :win @res))))
-
-(deftest finally-statement-called-after-caught-exception
-  (let [res (atom nil)]
-    (doasync 1
-      (fn [_] (throw (Exception.)))
-      (catch Exception _)
-      (finally
-       (compare-and-set! res nil :win)))
-    (is (= :win @res))))
-
-(deftest throwing-in-finally
-  (is (thrown-with-msg?
-        Exception #"BOOM"
-        @(doasync 1 inc
-           (finally (throw (Exception. "BOOM")))))))
-
-(deftest throwing-in-finally-overrides-aborted-exception
-  (is (thrown-with-msg?
-        Exception #"BOOM"
-        @(doasync 1
-           (fn [_] (throw (Exception. "BAM")))
-           (finally (throw (Exception. "BOOM")))))))
 
 (deftest aborting-in-progress
   (is (thrown-with-msg?
