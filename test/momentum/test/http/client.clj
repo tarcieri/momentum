@@ -108,6 +108,23 @@
                        "connection"     "close"} "Hello"]
        :done nil)))
 
+(defcoretest blank-path-info
+  [ch1]
+  (start-hello-world-app ch1)
+
+  (connect
+   (fn [dn _]
+     (fn [evt val]
+       (when (= :open evt)
+         (dn :request [{:request-method "GET"
+                        :path-info      ""}]))))
+   {:host "localhost" :port 4040})
+
+  (is (next-msgs
+       ch1
+       :request [#(includes-hdrs {:path-info "/"} %) :dont-care]
+       :done    nil)))
+
 (defcoretest request-and-response-with-duplicated-headers
   [ch1 ch2]
   (server/start

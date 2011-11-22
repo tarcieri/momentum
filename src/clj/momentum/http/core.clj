@@ -204,9 +204,10 @@
 
 (defn- write-request-path
   [buf {path :path-info pfx :script-name qs :query-string}]
-  (write buf (or pfx "") path)
-  (when (seq qs)
-    (write buf QM qs)))
+  (let [full-path (str (or pfx "") path)]
+    (write buf (if (seq full-path) full-path "/"))
+    (when (seq qs)
+      (write buf QM qs))))
 
 (defn send-request
   [dn {version :http-version method :request-method :as hdrs} body]
