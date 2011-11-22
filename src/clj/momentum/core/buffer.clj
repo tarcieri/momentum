@@ -226,11 +226,12 @@
   [^Buffer buf]
   (.toChannelBuffer buf))
 
+(def EMPTY (buffer ""))
+
 (defn to-string
-  ([^Buffer buf]
-     (.toString buf "UTF-8"))
+  ([^Buffer buf] (to-string buf "UTF-8"))
   ([^Buffer buf ^String encoding]
-     (.toString buf encoding)))
+     (.toString (or buf EMPTY) encoding)))
 
 ;; TODO: Revisit the transfer helper
 (defn transfer!

@@ -1084,3 +1084,10 @@
 (deftest seqing-buffer-returns-list-containing-buffer
   (let [b (buffer "Hello")]
     (is (= (list b) (seq b)))))
+
+;; ==== to-string
+
+(deftest invoking-to-string
+  (are [a b] (= a (to-string b))
+       "" nil
+       "" ""))
