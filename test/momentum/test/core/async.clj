@@ -68,10 +68,14 @@
        nil (doasync (defer nil))))
 
 (deftest doasync-succeeding
-  (let [q    (atom [])
-        fail (fn [] (swap! q #(conj % :fail)))]
+  (let [share (defer 3)
+        q     (atom [])
+        fail  (fn [] (swap! q #(conj % :fail)))]
 
     (are [x] (= 3 @x)
+
+         (doasync share)
+         (doasync share)
 
          (doasync 1
            (compare-and-inc 1)
@@ -192,15 +196,30 @@
     (is (= [:1 :2 :3] @q))))
 
 (deftest nesting-pipelines
-  (are [x] (= 3 @x)
-       (doasync (doasync 3))
+  (let [share (defer 3)]
+    (are [x] (= 3 @x)
+         (doasync (join share share)
+           (fn [v1 v2]
+             (when (= 3 v1 v2)
+               3)))
 
-       (doasync (doasync 2 inc))
+         (doasync (doasync 3))
+         (doasync (doasync 2 inc))
+         (doasync (doasync 2 async-inc))
+         (doasync (doasync (defer 3)))
+         (doasync (doasync (defer 2) inc))
+         (doasync (doasync (defer 2) async-inc))
 
-       (doasync 1
-         #(doasync %
-            (compare-and-inc 1)
-            (compare-and-inc 2)))))
+         (doasync 1
+           #(doasync %
+              (compare-and-inc 1)
+              (compare-and-inc 2)))
+
+         ;; Aborted nested pipelines
+         (doasync (doasync (defer-boom))
+           (catch Exception e
+             (when (= BOOM e)
+               3))))))
 
 (deftest aborting-in-progress-pipeline-aborts-pending-asyncs
   (let [val (async-val)
@@ -223,6 +242,27 @@
 
     (Thread/sleep 50)
     (is (nil? @res))))
+
+(deftest double-realizing-async-val-returns-false
+  (let [val (async-val)]
+    (is (= true  (put val :hello)))
+    (is (= false (put val :fail)))
+    (is (= :hello @val)))
+
+  (let [val (async-val)]
+    (is (= true  (abort val BOOM)))
+    (is (= false (put val :fail)))
+    (is (thrown-with-msg? Exception #"BOOM" @val)))
+
+  (let [val (async-val)]
+    (put val :hello)
+    (is (= false (abort val BOOM)))
+    (is (= :hello @val)))
+
+  (let [val (async-val)]
+    (abort val BOOM)
+    (is (= false (abort val (Exception. "BAM"))))
+    (is (thrown-with-msg? Exception #"BOOM" @val))))
 
 ;; ==== recur*
 
@@ -310,6 +350,95 @@
           @(doasync (async-seq (throw (Exception. "BOOM")))
              (fn [v] (reset! res v)))))
     (is (nil? @res))))
+
+;; ==== channels
+
+(deftest using-channels
+  (let [ch (channel)
+        sq (seq ch)]
+    (put ch :hello)
+    (let [[head & tail] sq]
+      (is (= :hello head))
+      (is (not (realized? tail)))))
+
+  (let [ch (channel)]
+    (put ch :hello)
+    (let [[head & tail] (seq ch)]
+      (is (= :hello head))
+      (is (not (realized? tail)))))
+
+  (let [ch (channel)]
+    (future
+      (dotimes [i 3]
+        (Thread/sleep 10)
+        (put ch i))
+      (close ch))
+
+    (is (= [0 1 2]
+           (let [s (seq ch)]
+             @(doasync s
+                (fn [s] (when s (recur* (next s)))))
+             (vec s)))))
+
+  (let [ch (channel)]
+    (dotimes [i 3]
+      (put ch i))
+    (close ch)
+
+    (is (= [0 1 2]
+           (let [s (seq ch)]
+             @(doasync s
+                (fn [s] (when s (recur* (next s)))))
+             (vec s)))))
+
+  (let [ch (channel)]
+    (dotimes [i 3]
+      (put ch i))
+    (future
+      (Thread/sleep 30)
+      (close ch))
+
+    (is (= [0 1 2]
+           (let [s (seq ch)]
+             @(doasync s
+                (fn [s] (when s (recur* (next s)))))
+             (vec s))))))
+
+(deftest aborting-channels
+  (let [ch  (channel)
+        err (Exception.)
+        res (atom nil)]
+    (abort ch (Exception. "BOOM"))
+    (is (thrown-with-msg? Exception #"BOOM"
+          @(seq ch))))
+
+  (let [ch  (channel)
+        err (Exception.)
+        res (atom nil)]
+
+    (doasync (seq ch)
+      (fn [[v & more]]
+        (reset! res v)
+        more)
+      (fn [_] (reset! res :fail))
+      (catch Exception e
+        (compare-and-set! res :hello e)))
+
+    (is (nil? @res))
+    (put ch :hello)
+    (is (= :hello @res))
+    (abort ch err)
+    (is (= err @res))))
+
+(deftest observing-an-unrealized-non-blocking-deferred-seq
+  (let [ch (channel)]
+    (is (thrown? Exception (first (seq ch))))
+    (is (thrown? Exception (next (seq ch))))))
+
+(deftest putting-value-into-closed-channel
+  (let [ch (channel)]
+    (close ch)
+    (is (not (put ch :hello)))))
 
 ;; ==== join
 
