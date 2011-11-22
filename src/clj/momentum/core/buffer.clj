@@ -229,9 +229,9 @@
 (def EMPTY (buffer ""))
 
 (defn to-string
-  ([^Buffer buf] (to-string buf "UTF-8"))
-  ([^Buffer buf ^String encoding]
-     (.toString (or buf EMPTY) encoding)))
+  ([buf] (to-string buf "UTF-8"))
+  ([buf ^String encoding]
+     (.toString (if buf (buffer buf) EMPTY) encoding)))
 
 ;; TODO: Revisit the transfer helper
 (defn transfer!
