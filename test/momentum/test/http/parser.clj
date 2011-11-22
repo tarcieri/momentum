@@ -661,7 +661,7 @@
              (str "HTTP/1.1 200 OK\r\n"
                   "Connection: close\r\n\r\n"
                   "Foo Bar")
-             :response [200 {:http-version [1 1] "connection" "close"} nil]
+             :response [200 {:http-version [1 1] "connection" "close"} :chunked]
              :body     "Foo Bar"))
 
         ;; Handling 100 continue
@@ -672,6 +672,18 @@
                   "Hello")
              :response [100 {:http-version [1 1]} nil]
              :response [200 {:http-version [1 1] "content-length" "5"} "Hello"]))
+
+        ;; 302 responses should have a body, even if empty
+        (is (parsed
+             (str "HTTP/1.1 302 Found\r\n"
+                  "Transfer-Encoding: chunked\r\n\r\n")
+             :response [302 {:http-version [1 1] "transfer-encoding" "chunked"} :chunked]))
+
+        ;; Connection: close responses have a body.
+        (is (parsed
+             (str "HTTP/1.1 200 OK\r\n"
+                  "Connection: closed\r\n\r\n")
+             :response [200 {:http-version [1 1] "connection" "closed"} :chunked]))
 
         ;; 204 responses do not have a body
         (is (parsed

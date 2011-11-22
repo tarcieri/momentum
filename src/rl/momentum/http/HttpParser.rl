@@ -326,9 +326,7 @@ public final class HttpParser extends AFn {
         throw new HttpParserException("The message head is invalid");
       }
 
-      if (isRequest() || method != MTH_HEAD) {
-        flags |= IDENTITY_BODY;
-      }
+      flags |= IDENTITY_BODY;
 
       headerName  = null;
       headerValue = null;
@@ -340,9 +338,7 @@ public final class HttpParser extends AFn {
         throw new HttpParserException("The message head is invalid");
       }
 
-      if (isRequest() || method != MTH_HEAD) {
-        flags |= CHUNKED_BODY;
-      }
+      flags |= CHUNKED_BODY;
 
       headerName  = null;
       headerValue = null;
@@ -391,7 +387,7 @@ public final class HttpParser extends AFn {
       if (isUpgrade()) {
         fnext upgraded;
       }
-      else if (isRequest() || (status >= 200 && status != 204 && status != 304)){
+      else if (hasBody()) {
         if (isIdentityBody()) {
           int remaining = buf.limit() - fpc;
           int toRead;
@@ -431,7 +427,7 @@ public final class HttpParser extends AFn {
         else if (isChunkedBody()) {
           fnext chunked_body;
         }
-        else if (isResponse() && isConnectionClose()) {
+        else {
           fnext untracked_body;
         }
       }
@@ -718,8 +714,23 @@ public final class HttpParser extends AFn {
   }
 
   public boolean hasBody() {
-    return (isIdentityBody() || isChunkedBody()) &&
-      (isRequest() || (status >= 200 && status != 204 && status != 304));
+    // If parsing an HTTP request, whether the message has a body is simple.
+    if (isRequest()) {
+      return isIdentityBody() || isChunkedBody();
+    }
+    // If the response was requested via HEAD request, then there never is a
+    // body.
+    else if (method == MTH_HEAD) {
+      return false;
+    }
+    // Certain HTTP response status never have a body.
+    else if (status < 200 || status == 204 || status == 304) {
+      return false;
+    }
+    // Otherwise, there should always be a response
+    else {
+      return true;
+    }
   }
 
   public boolean isIdentityBody() {
@@ -732,10 +743,6 @@ public final class HttpParser extends AFn {
 
   public boolean isKeepAlive() {
     return ( flags & KEEP_ALIVE ) == KEEP_ALIVE;
-  }
-
-  public boolean isConnectionClose() {
-    return ( flags & CONN_CLOSE ) == CONN_CLOSE;
   }
 
   public boolean isUpgrade() {

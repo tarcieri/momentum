@@ -296,9 +296,6 @@
   (is (next-msgs ch1 :connect nil))
   (is (no-msgs ch1 ch2)))
 
-;; TODO: Netty strips some important headers during head requests,
-;; when the client is moved to the custom HTTP parser, this test is
-;; going to have to be fixed
 (defcoretest keepalive-head-requests-te-chunked
   [ch1 ch2]
   (tracking-connections
@@ -504,6 +501,9 @@
 ;; (defcoretest issuing-immediate-abort)
 ;; (defcoretest defaults-to-port-80
 ;; (defcoretest connecting-to-an-invalid-server)
+
+;; TODO:
+;; * Responses with no content-length, TE, or connection: closed
 
 ;; ==== Higher level of abstraction tests
 

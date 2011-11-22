@@ -155,7 +155,7 @@ public final class HttpParser extends AFn {
   }
 
   
-// line 568 "src/rl/momentum/http/HttpParser.rl"
+// line 564 "src/rl/momentum/http/HttpParser.rl"
 
 
   public static final long ALMOST_MAX_LONG     = Long.MAX_VALUE / 10;
@@ -2711,7 +2711,7 @@ static final int http_en_upgraded = 753;
 static final int http_en_main = 1;
 
 
-// line 584 "src/rl/momentum/http/HttpParser.rl"
+// line 580 "src/rl/momentum/http/HttpParser.rl"
 
   /*
   * Variable used by ragel to represent the current state of the
@@ -2829,7 +2829,7 @@ static final int http_en_main = 1;
 	cs = http_start;
 	}
 
-// line 696 "src/rl/momentum/http/HttpParser.rl"
+// line 692 "src/rl/momentum/http/HttpParser.rl"
 
     this.type        = type;
     this.callback    = callback;
@@ -2855,8 +2855,23 @@ static final int http_en_main = 1;
   }
 
   public boolean hasBody() {
-    return (isIdentityBody() || isChunkedBody()) &&
-      (isRequest() || (status >= 200 && status != 204 && status != 304));
+    // If parsing an HTTP request, whether the message has a body is simple.
+    if (isRequest()) {
+      return isIdentityBody() || isChunkedBody();
+    }
+    // If the response was requested via HEAD request, then there never is a
+    // body.
+    else if (method == MTH_HEAD) {
+      return false;
+    }
+    // Certain HTTP response status never have a body.
+    else if (status < 200 || status == 204 || status == 304) {
+      return false;
+    }
+    // Otherwise, there should always be a response
+    else {
+      return true;
+    }
   }
 
   public boolean isIdentityBody() {
@@ -2869,10 +2884,6 @@ static final int http_en_main = 1;
 
   public boolean isKeepAlive() {
     return ( flags & KEEP_ALIVE ) == KEEP_ALIVE;
-  }
-
-  public boolean isConnectionClose() {
-    return ( flags & CONN_CLOSE ) == CONN_CLOSE;
   }
 
   public boolean isUpgrade() {
@@ -2942,9 +2953,9 @@ static final int http_en_main = 1;
     try {
       parseLoop: {
         
-// line 808 "src/rl/momentum/http/HttpParser.rl"
+// line 815 "src/rl/momentum/http/HttpParser.rl"
         
-// line 2948 "src/jvm/momentum/http/HttpParser.java"
+// line 2959 "src/jvm/momentum/http/HttpParser.java"
 	{
 	int _klen;
 	int _trans = 0;
@@ -2987,7 +2998,7 @@ case 1:
 	case 0: {
 		_widec = 65536 + (( buf.get(p)) - 0);
 		if ( 
-// line 452 "src/rl/momentum/http/HttpParser.rl"
+// line 448 "src/rl/momentum/http/HttpParser.rl"
 
       contentLength > 0
      ) _widec += 65536;
@@ -3513,9 +3524,7 @@ case 1:
         throw new HttpParserException("The message head is invalid");
       }
 
-      if (isRequest() || method != MTH_HEAD) {
-        flags |= IDENTITY_BODY;
-      }
+      flags |= IDENTITY_BODY;
 
       headerName  = null;
       headerValue = null;
@@ -3523,15 +3532,13 @@ case 1:
     }
 	break;
 	case 99:
-// line 338 "src/rl/momentum/http/HttpParser.rl"
+// line 336 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (isIdentityBody()) {
         throw new HttpParserException("The message head is invalid");
       }
 
-      if (isRequest() || method != MTH_HEAD) {
-        flags |= CHUNKED_BODY;
-      }
+      flags |= CHUNKED_BODY;
 
       headerName  = null;
       headerValue = null;
@@ -3539,7 +3546,7 @@ case 1:
     }
 	break;
 	case 100:
-// line 352 "src/rl/momentum/http/HttpParser.rl"
+// line 348 "src/rl/momentum/http/HttpParser.rl"
 	{
       flags |= CONN_CLOSE;
 
@@ -3549,7 +3556,7 @@ case 1:
     }
 	break;
 	case 101:
-// line 360 "src/rl/momentum/http/HttpParser.rl"
+// line 356 "src/rl/momentum/http/HttpParser.rl"
 	{
       flags |= UPGRADE;
 
@@ -3559,7 +3566,7 @@ case 1:
     }
 	break;
 	case 102:
-// line 368 "src/rl/momentum/http/HttpParser.rl"
+// line 364 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (isHttp11()) {
         flags |= EXPECT_CONTINUE;
@@ -3571,7 +3578,7 @@ case 1:
     }
 	break;
 	case 103:
-// line 378 "src/rl/momentum/http/HttpParser.rl"
+// line 374 "src/rl/momentum/http/HttpParser.rl"
 	{
       reset();
 
@@ -3580,7 +3587,7 @@ case 1:
     }
 	break;
 	case 104:
-// line 385 "src/rl/momentum/http/HttpParser.rl"
+// line 381 "src/rl/momentum/http/HttpParser.rl"
 	{
       // Not parsing the HTTP message head anymore
       flags ^= PARSING_HEAD;
@@ -3590,7 +3597,7 @@ case 1:
       if (isUpgrade()) {
         cs = 753;
       }
-      else if (isRequest() || (status >= 200 && status != 204 && status != 304)){
+      else if (hasBody()) {
         if (isIdentityBody()) {
           int remaining = buf.limit() - p;
           int toRead;
@@ -3630,7 +3637,7 @@ case 1:
         else if (isChunkedBody()) {
           cs = 732;
         }
-        else if (isResponse() && isConnectionClose()) {
+        else {
           cs = 748;
         }
       }
@@ -3649,7 +3656,7 @@ case 1:
     }
 	break;
 	case 105:
-// line 456 "src/rl/momentum/http/HttpParser.rl"
+// line 452 "src/rl/momentum/http/HttpParser.rl"
 	{
       int toRead = min(contentLength, buf.limit() - p);
 
@@ -3691,7 +3698,7 @@ case 1:
     }
 	break;
 	case 106:
-// line 496 "src/rl/momentum/http/HttpParser.rl"
+// line 492 "src/rl/momentum/http/HttpParser.rl"
 	{
       int toRead = buf.limit() - p;
 
@@ -3702,7 +3709,7 @@ case 1:
     }
 	break;
 	case 107:
-// line 505 "src/rl/momentum/http/HttpParser.rl"
+// line 501 "src/rl/momentum/http/HttpParser.rl"
 	{
       int toRead = min(contentLength, buf.limit() - p);
 
@@ -3716,7 +3723,7 @@ case 1:
     }
 	break;
 	case 108:
-// line 517 "src/rl/momentum/http/HttpParser.rl"
+// line 513 "src/rl/momentum/http/HttpParser.rl"
 	{
       int remaining = buf.limit() - p;
 
@@ -3727,19 +3734,19 @@ case 1:
     }
 	break;
 	case 109:
-// line 526 "src/rl/momentum/http/HttpParser.rl"
+// line 522 "src/rl/momentum/http/HttpParser.rl"
 	{
       callback.body(this, null);
     }
 	break;
 	case 110:
-// line 530 "src/rl/momentum/http/HttpParser.rl"
+// line 526 "src/rl/momentum/http/HttpParser.rl"
 	{
       contentLength = 0;
     }
 	break;
 	case 111:
-// line 534 "src/rl/momentum/http/HttpParser.rl"
+// line 530 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (contentLength >= ALMOST_MAX_LONG_HEX) {
         throw new HttpParserException("The content-length is WAY too big");
@@ -3750,7 +3757,7 @@ case 1:
     }
 	break;
 	case 112:
-// line 543 "src/rl/momentum/http/HttpParser.rl"
+// line 539 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (true) {
         throw new HttpParserException("Invalid chunk size");
@@ -3758,7 +3765,7 @@ case 1:
     }
 	break;
 	case 114:
-// line 553 "src/rl/momentum/http/HttpParser.rl"
+// line 549 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (++hread > MAX_HEADER_SIZE) {
         throw new HttpParserException("The HTTP message head is too large");
@@ -3766,7 +3773,7 @@ case 1:
     }
 	break;
 	case 115:
-// line 559 "src/rl/momentum/http/HttpParser.rl"
+// line 555 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (true) {
         String msg = parseErrorMsg(buf, p);
@@ -3833,7 +3840,7 @@ case 1:
       }
   }
 	break;
-// line 3837 "src/jvm/momentum/http/HttpParser.java"
+// line 3844 "src/jvm/momentum/http/HttpParser.java"
 			}
 		}
 	}
@@ -3844,12 +3851,12 @@ case 2:
 	while ( _nacts-- > 0 ) {
 		switch ( _http_actions[_acts++] ) {
 	case 113:
-// line 549 "src/rl/momentum/http/HttpParser.rl"
+// line 545 "src/rl/momentum/http/HttpParser.rl"
 	{
       cs = 1;
     }
 	break;
-// line 3853 "src/jvm/momentum/http/HttpParser.java"
+// line 3860 "src/jvm/momentum/http/HttpParser.java"
 		}
 	}
 
@@ -3878,7 +3885,7 @@ case 4:
     }
 	break;
 	case 112:
-// line 543 "src/rl/momentum/http/HttpParser.rl"
+// line 539 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (true) {
         throw new HttpParserException("Invalid chunk size");
@@ -3886,7 +3893,7 @@ case 4:
     }
 	break;
 	case 115:
-// line 559 "src/rl/momentum/http/HttpParser.rl"
+// line 555 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (true) {
         String msg = parseErrorMsg(buf, p);
@@ -3894,7 +3901,7 @@ case 4:
       }
     }
 	break;
-// line 3898 "src/jvm/momentum/http/HttpParser.java"
+// line 3905 "src/jvm/momentum/http/HttpParser.java"
 		}
 	}
 	}
@@ -3904,7 +3911,7 @@ case 5:
 	break; }
 	}
 
-// line 809 "src/rl/momentum/http/HttpParser.rl"
+// line 816 "src/rl/momentum/http/HttpParser.rl"
       }
     }
     catch (RuntimeException e) {
