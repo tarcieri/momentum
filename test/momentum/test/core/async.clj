@@ -202,105 +202,50 @@
             (compare-and-inc 1)
             (compare-and-inc 2)))))
 
-;; ==== Catching exceptions
+(deftest aborting-in-progress-pipeline-aborts-pending-asyncs
+  (let [val (async-val)
+        res (atom nil)]
+    (abort
+     (doasync (defer 1)
+       (fn [_] (reset! res :fail)))
+     (Exception.))
 
-(deftest aborting-in-progress
-  (is (thrown-with-msg?
-        Exception #"BOOM"
-        (let [val (async-val)]
-          @(doasync 1 inc
-             (finally (throw (Exception. "BOOM"))))
-          (abort val (Exception. "BAM"))))))
+    (Thread/sleep 50)
+    (is (nil? @res)))
 
-;; ==== Aborting pipelines in progress
+  (let [val (async-val)
+        res (atom nil)]
+    (abort
+     (doasync 1
+       #(defer (inc %))
+       (fn [_] (reset! res :fail)))
+     (Exception.))
 
-(deftest aborting-a-pipeline-after-first-stage
-  (let [res (atom nil)
-        err (Exception. "BOOM")
-        pipeline
-        (doasync 1 inc
-          (fn [v]
-            (compare-and-set! res nil v)
-            (future*
-             (Thread/sleep 10)
-             (inc v))))]
-    (abort pipeline err)
-    (receive
-     pipeline
-     (fn [_] (reset! res :fail))
-     #(compare-and-set! res 2 %))
-    (is (= err @res))))
-
-(deftest aborting-a-pipeline-before-seed-is-realized
-  (let [res (atom nil) res2 (atom nil)
-        err (Exception. "BOOM")
-        pipeline
-        (doasync (future* (Thread/sleep 20) 1)
-          #(reset! res2 %))]
-    (abort pipeline err)
-    (receive
-     pipeline
-     (fn [v] (reset! res [v :fail]))
-     #(compare-and-set! res nil %))
-    (Thread/sleep 40)
-    (is (= err @res))
-    (is (nil? @res2))))
-
-(deftest aborting-a-pipeline-mid-stage
-  (let [res (atom nil) res2 (atom nil)
-        err (Exception. "BOOM")
-        pipeline
-        (doasync 1
-          (fn [v]
-            (future*
-             (Thread/sleep 10)
-             (inc v)))
-          #(reset! res2 %))]
-    (abort pipeline err)
-    (receive
-     pipeline
-     (fn [v] (reset! res [v :fail]))
-     #(compare-and-set! res nil %))
-    (Thread/sleep 40)
-    (is (= err @res))
-    (is (nil? @res2))))
+    (Thread/sleep 50)
+    (is (nil? @res))))
 
 ;; ==== recur*
 
 (deftest simple-async-recursion-with-primitives
-  (let [res (atom nil)]
-    (receive
-     (doasync 1
-       (fn [val]
-         (if (< val 4)
-           (recur* (inc val))
-           (inc val))))
-     #(compare-and-set! res nil %)
-     #(reset! res %))
-    (is (= 5 @res))))
+  (are [x] (= 5 @x)
+       (doasync 1
+         (fn [val]
+           (if (< val 5)
+             (recur* (inc val))
+             val)))
 
-(deftest simple-async-recursion-with-async-values
-  (let [val (async-val)]
-    (future
-      (Thread/sleep 10)
-      (put val 1))
-    (is (= 5 @(doasync val
-                (fn [val]
-                  (if (< val 4)
-                    (let [nxt (async-val)]
-                      (future
-                        (Thread/sleep 10)
-                        (put nxt (inc val)))
-                      (recur* nxt))
-                    (inc val))))))))
+       (doasync (defer 1)
+         (fn [val]
+           (if (< val 5)
+             (recur* (defer (inc val)))
+             val)))
 
-(deftest async-recursion-is-tail-recursive-for-sync-values
-  (is (= :done
-         @(doasync (repeat 100 "a")
-            (fn [[v & more]]
-              (if more
-                (recur* more)
-                :done))))))
+       ;; Tail recursive for sync values
+       (doasync 100000
+         (fn [v]
+           (if (> v 5)
+             (recur* (dec v))
+             v)))))
 
 ;; ==== async-seq
 
@@ -542,4 +487,4 @@
               #(.put q2 %)))))
 
       (is (= (take 750 (incrementing))
-             (sort (map #(deref % 10 -1) vs)))))))
+             (sort (map #(deref % 50 -1) vs)))))))
