@@ -132,7 +132,27 @@
   [o]
   (instance? AsyncSeq o))
 
+(defn- realize-coll
+  [coll ms]
+  (if (async-seq? coll)
+    (deref coll ms nil)
+    coll))
+
+(defn blocking
+  "Returns a lazy sequence consisting of the items in the passed
+  collection If the sequence is an async sequence, then the current
+  thread will wait at most ms milliseconds (or indefinitely if no
+  timeout value passed) for the async sequence to realize."
+  ([coll] (blocking coll -1))
+  ([coll ms]
+     (lazy-seq
+      (let [coll (realize-coll coll ms)]
+        (when coll
+          (cons (first coll) (blocking (next coll))))))))
+
 (defn first*
+  "Returns an async value representing the first item in the
+  collection once it becomes realized."
   [async-seq]
   (doasync async-seq
     #(first %)))

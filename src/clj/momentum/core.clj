@@ -44,6 +44,7 @@
 (def abort               momentum.core.deferred/abort)
 (def aborted?            momentum.core.deferred/aborted?)
 (def batch               momentum.core.deferred/batch)
+(def blocking            momentum.core.deferred/blocking)
 (def recur*              momentum.core.deferred/recur*)
 (def join                momentum.core.deferred/join)
 (def select              momentum.core.deferred/select)

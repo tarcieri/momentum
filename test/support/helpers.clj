@@ -185,17 +185,9 @@
 
 ;; === Matchers
 
-(defn- blocking
+(defn- blocking*
   [seq]
-  (when seq
-    (lazy-seq
-     (let [s (if (async-seq? seq) (deref seq 2000 ::timeout) seq)]
-       (cond
-        (= ::timeout s)
-        (list ::timeout)
-
-        s
-        (cons (normalize (first s)) (blocking (next s))))))))
+  (concat (map normalize (blocking seq)) [::timeout]))
 
 (defn assert-no-msgs-for
   [f msg chs]
@@ -212,7 +204,7 @@
     (throw (IllegalArgumentException. "Requires even number of messages")))
 
   (let [expected (partition 2 expected)
-        actual   (take (count expected) (blocking (seq ch)))
+        actual   (take (count expected) (blocking* (seq ch)))
         pass?    (every? identity (map #(match-values (vec %1) %2) expected actual))]
     (f {:type     (if pass? :pass :fail)
         :message  msg

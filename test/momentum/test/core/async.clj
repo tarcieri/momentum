@@ -351,6 +351,16 @@
              (fn [v] (reset! res v)))))
     (is (nil? @res))))
 
+(deftest blocking-async-seqs
+  (are [x] (= [3 2 1] x)
+       (blocking [3 2 1])
+       (blocking (async-dec-seq 3))
+       (blocking (cons 3 (async-dec-seq 2))))
+
+  (is (= []  (blocking nil)))
+  (is (= [1] (blocking [1])))
+  (is (= [1] (blocking (cons 1 (lazy-seq nil))))))
+
 ;; ==== channels
 
 (deftest using-channels

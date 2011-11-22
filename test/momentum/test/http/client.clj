@@ -641,14 +641,6 @@
          :body    nil
          :done    nil))))
 
-(defn- blocking
-  ([coll] (blocking coll -1))
-  ([coll ms]
-     (lazy-seq
-      ;; Block until realized
-      (when (deref coll ms nil)
-        (cons (first coll) (blocking (next coll)))))))
-
 (defcoretest pause-resume-with-async-val-api
   [ch1 ch2 ch3]
   ;; Scumbag server
