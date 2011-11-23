@@ -440,7 +440,7 @@
     (abort ch err)
     (is (= err @res))))
 
-(deftest observing-an-unrealized-non-blocking-deferred-seq
+(deftest observing-an-unrealized-non-blocking-async-seq
   (let [ch (channel)]
     (is (thrown? Exception (first (seq ch))))
     (is (thrown? Exception (next (seq ch))))))

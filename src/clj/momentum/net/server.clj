@@ -1,6 +1,6 @@
 (ns momentum.net.server
   (:use
-   momentum.core.deferred
+   momentum.core
    momentum.net.core
    momentum.utils.core)
   (:import

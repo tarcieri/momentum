@@ -1,7 +1,7 @@
 (ns momentum.core
   (:require
-   [momentum.core.buffer   :as buffer]
-   [momentum.core.deferred :as deferred]))
+   [momentum.core.buffer :as buffer]
+   [momentum.core.async  :as async]))
 
 ;; ==== Buffer helpers
 (def buffer?             buffer/buffer?)
@@ -40,30 +40,30 @@
   `(buffer/buffer ~@args))
 
 ;; ==== Async goodness
-(def abort               deferred/abort)
-(def aborted?            deferred/aborted?)
-(def batch               deferred/batch)
-(def blocking            deferred/blocking)
-(def recur*              deferred/recur*)
-(def join                deferred/join)
-(def select              deferred/select)
-(def async-val           deferred/async-val)
-(def async-seq?          deferred/async-seq?)
-(def pipeline            deferred/pipeline)
-(def put                 deferred/put)
-(def success?            deferred/success?)
-(def channel             deferred/channel)
-(def close               deferred/close)
-(def enqueue             deferred/enqueue)
-(def sink                deferred/sink)
+(def abort               async/abort)
+(def aborted?            async/aborted?)
+(def batch               async/batch)
+(def blocking            async/blocking)
+(def recur*              async/recur*)
+(def join                async/join)
+(def select              async/select)
+(def async-val           async/async-val)
+(def async-seq?          async/async-seq?)
+(def pipeline            async/pipeline)
+(def put                 async/put)
+(def success?            async/success?)
+(def channel             async/channel)
+(def close               async/close)
+(def enqueue             async/enqueue)
+(def sink                async/sink)
 
 (defmacro doasync
   [& args]
-  `(deferred/doasync ~@args))
+  `(async/doasync ~@args))
 
 (defmacro async-seq
   [& body]
-  `(deferred/async-seq (fn [] ~@body)))
+  `(async/async-seq (fn [] ~@body)))
 
 (defmacro doseq*
   [seq-exprs & body]

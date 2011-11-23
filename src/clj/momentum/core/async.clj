@@ -1,4 +1,4 @@
-(ns momentum.core.deferred
+(ns momentum.core.async
   (:use
    momentum.core.atomic)
   (:import
