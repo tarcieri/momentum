@@ -42,20 +42,20 @@
 ;; ==== Async goodness
 (def abort               async/abort)
 (def aborted?            async/aborted?)
-(def batch               async/batch)
-(def blocking            async/blocking)
-(def recur*              async/recur*)
-(def join                async/join)
-(def select              async/select)
 (def async-val           async/async-val)
 (def async-seq?          async/async-seq?)
-(def pipeline            async/pipeline)
-(def put                 async/put)
-(def success?            async/success?)
+(def batch               async/batch)
+(def blocking            async/blocking)
 (def channel             async/channel)
 (def close               async/close)
 (def enqueue             async/enqueue)
+(def join                async/join)
+(def pipeline            async/pipeline)
+(def put                 async/put)
+(def recur*              async/recur*)
+(def select              async/select)
 (def sink                async/sink)
+(def success?            async/success?)
 
 (defmacro doasync
   [& args]
