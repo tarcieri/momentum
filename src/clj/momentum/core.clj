@@ -1,89 +1,66 @@
-(ns momentum.core
+(ns ^{:author "Carl Lerche"}
+  momentum.core
+  (:use momentum.util.namespace)
   (:require
    [momentum.core.buffer :as buffer]
    [momentum.core.async  :as async]))
 
 ;; ==== Buffer helpers
-(def buffer?             buffer/buffer?)
-(def capacity            buffer/capacity)
-(def collapsed?          buffer/collapsed?)
-(def direct-buffer       buffer/direct-buffer)
-(def dynamic-buffer      buffer/dynamic-buffer)
-(def duplicate           buffer/duplicate)
-(def flip                buffer/flip)
-(def focus               buffer/focus)
-(def holds?              buffer/holds?)
-(def limit               buffer/limit)
-(def position            buffer/position)
-(def remaining           buffer/remaining)
-(def remaining?          buffer/remaining?)
-(def reset               buffer/reset)
-(def rewind              buffer/rewind)
-(def slice               buffer/slice)
-(def to-byte-array       buffer/to-byte-array)
-(def to-channel-buffer   buffer/to-channel-buffer)
-(def to-string           buffer/to-string)
-(def transfer!           buffer/transfer!)
-(def transfer            buffer/transfer)
-(def wrap                buffer/wrap)
-(def write-byte          buffer/write-byte)
-(def write-ubyte         buffer/write-ubyte)
-(def write-short         buffer/write-short)
-(def write-ushort        buffer/write-ushort)
-(def write-int           buffer/write-int)
-(def write-uint          buffer/write-uint)
-(def write-long          buffer/write-long)
-(def KB                  buffer/KB)
-(def MB                  buffer/MB)
 
-;; Map the macros
-(defmacro buffer
-  [& args]
-  `(buffer/buffer ~@args))
+(import-fn #'buffer/buffer?)
+(import-fn #'buffer/capacity)
+(import-fn #'buffer/collapsed?)
+(import-fn #'buffer/direct-buffer)
+(import-fn #'buffer/dynamic-buffer)
+(import-fn #'buffer/duplicate)
+(import-fn #'buffer/flip)
+(import-fn #'buffer/focus)
+(import-fn #'buffer/holds?)
+(import-fn #'buffer/limit)
+(import-fn #'buffer/position)
+(import-fn #'buffer/remaining)
+(import-fn #'buffer/remaining?)
+(import-fn #'buffer/reset)
+(import-fn #'buffer/rewind)
+(import-fn #'buffer/slice)
+(import-fn #'buffer/to-byte-array)
+(import-fn #'buffer/to-channel-buffer)
+(import-fn #'buffer/to-string)
+(import-fn #'buffer/transfer!)
+(import-fn #'buffer/transfer)
+(import-fn #'buffer/wrap)
+(import-fn #'buffer/write-byte)
+(import-fn #'buffer/write-ubyte)
+(import-fn #'buffer/write-short)
+(import-fn #'buffer/write-ushort)
+(import-fn #'buffer/write-int)
+(import-fn #'buffer/write-uint)
+(import-fn #'buffer/write-long)
+(import-fn #'buffer/KB)
+(import-fn #'buffer/MB)
+
+(import-macro #'buffer/buffer)
 
 ;; ==== Async goodness
-(def abort               async/abort)
-(def aborted?            async/aborted?)
-(def async-val           async/async-val)
-(def async-seq?          async/async-seq?)
-(def batch               async/batch)
-(def blocking            async/blocking)
-(def channel             async/channel)
-(def close               async/close)
-(def enqueue             async/enqueue)
-(def join                async/join)
-(def pipeline            async/pipeline)
-(def put                 async/put)
-(def recur*              async/recur*)
-(def select              async/select)
-(def sink                async/sink)
-(def success?            async/success?)
 
-(defmacro doasync
-  [& args]
-  `(async/doasync ~@args))
+(import-fn #'async/abort)
+(import-fn #'async/aborted?)
+(import-fn #'async/async-val)
+(import-fn #'async/async-seq?)
+(import-fn #'async/batch)
+(import-fn #'async/blocking)
+(import-fn #'async/channel)
+(import-fn #'async/close)
+(import-fn #'async/enqueue)
+(import-fn #'async/join)
+(import-fn #'async/pipeline)
+(import-fn #'async/put)
+(import-fn #'async/recur*)
+(import-fn #'async/select)
+(import-fn #'async/sink)
+(import-fn #'async/success?)
 
-(defmacro async-seq
-  [& body]
-  `(async/async-seq (fn [] ~@body)))
-
-(defmacro doseq*
-  [seq-exprs & body]
-  (assert (vector? seq-exprs) "a vector for its binding")
-  (assert (even? (count seq-exprs)) "an even number of forms in binding vector")
-  (let [[binding seq] seq-exprs]
-    `(doasync ~seq
-       (fn [s#]
-         (when-let [[~binding & more#] s#]
-           ~@body
-           (recur* more#))))))
-
-(defmacro future*
-  [& body]
-  `(let [val# (async-val)]
-     (future
-       (try
-         (put val# (do ~@body))
-         (catch Exception e#
-           (abort val# e#))))
-     val#))
+(import-macro #'async/doasync)
+(import-macro #'async/async-seq)
+(import-macro #'async/doseq*)
+(import-macro #'async/future*)

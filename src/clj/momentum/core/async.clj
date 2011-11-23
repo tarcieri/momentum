@@ -104,8 +104,9 @@
 
 ;; ==== Async seq ====
 
-(defn async-seq
-  ([f] (AsyncSeq. f)))
+(defmacro async-seq
+  [& body]
+  `(AsyncSeq. (fn [] ~@body)))
 
 (defn async-seq?
   [o]
@@ -153,18 +154,27 @@
 (defn map*
   [f coll]
   (async-seq
-    (fn []
-      (doasync coll
-        (fn [[v & more]]
-          (cons v (map* f more)))))))
+    (doasync coll
+      (fn [[v & more]]
+        (cons v (map* f more))))))
+
+(defmacro doseq*
+  [seq-exprs & body]
+  (assert (vector? seq-exprs) "a vector for its binding")
+  (assert (even? (count seq-exprs)) "an even number of forms in binding vector")
+  (let [[binding seq] seq-exprs]
+    `(doasync ~seq
+       (fn [s#]
+         (when-let [[~binding & more#] s#]
+           ~@body
+           (recur* more#))))))
 
 (defn- select-seq
   [vals]
   (when (seq vals)
     (async-seq
-      (fn []
-        (doasync (first vals)
-          #(cons % (select-seq (next vals))))))))
+      (doasync (first vals)
+        #(cons % (select-seq (next vals)))))))
 
 (defn- map-entry
   [k v]
@@ -203,6 +213,16 @@
         (if-let [[v & more] seq]
           (cons (map-entry k v) (splice (assoc map k more)))
           (splice (dissoc map k)))))))
+
+(defmacro future*
+  [& body]
+  `(let [val# (async-val)]
+     (future
+       (try
+         (put val# (do ~@body))
+         (catch Exception e#
+           (abort val# e#))))
+     val#))
 
 (defmethod print-method AsyncSeq
   [seq ^Writer w]
@@ -270,15 +290,14 @@
 (defn- channel-seq
   [ch]
   (async-seq
-    (fn []
-      (doasync (.take (.transfer ch))
-        (fn [v]
-          (when-not (= ::close-channel v)
-            (when (.f ch)
-              (toggle-availability ch))
-            (let [nxt (channel-seq ch)]
-              (reset! (.head ch) nxt)
-              (cons v nxt))))))))
+    (doasync (.take (.transfer ch))
+      (fn [v]
+        (when-not (= ::close-channel v)
+          (when (.f ch)
+            (toggle-availability ch))
+          (let [nxt (channel-seq ch)]
+            (reset! (.head ch) nxt)
+            (cons v nxt)))))))
 
 (defn channel
   ([]  (channel nil 0))
@@ -304,23 +323,22 @@
 (defn- sink-seq
   [coll evts]
   (async-seq
-    (fn []
-      (doasync (first* (select {:coll coll :evts evts}))
-        (fn [[k v]]
-          (when v
-            (cond
-             (= :coll k)
-             (cons (first v) (sink-seq (next v) evts))
+    (doasync (first* (select {:coll coll :evts evts}))
+      (fn [[k v]]
+        (when v
+          (cond
+           (= :coll k)
+           (cons (first v) (sink-seq (next v) evts))
 
-             (= :pause (first v))
-             (doasync (next v)
-               (fn [[evt & more]]
-                 (if (= :pause evt)
-                   (recur* more)
-                   (sink-seq coll more))))
+           (= :pause (first v))
+           (doasync (next v)
+             (fn [[evt & more]]
+               (if (= :pause evt)
+                 (recur* more)
+                 (sink-seq coll more))))
 
-             :else
-             (sink-seq coll (next v)))))))))
+           :else
+           (sink-seq coll (next v))))))))
 
 ;; TODO: Don't hardcode this to :body events
 (defn sink

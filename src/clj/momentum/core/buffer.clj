@@ -111,6 +111,7 @@
          (throw (Exception. (str "Unknown buffer type: " type)))))))
 
 (defmacro buffer
+  "Convert arguments to a buffer"
   ([] `(dynamic-buffer))
   ([int-or-buf] `(buffer* ~int-or-buf))
   ([int-or-buf & args]
