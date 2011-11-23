@@ -4,8 +4,7 @@
   (:use
    clojure.test
    momentum.core
-   momentum.http.test
-   momentum.utils.core)
+   momentum.http.test)
   (:require
    [momentum.utils.base64 :as base64]
    [momentum.utils.digest :as digest]

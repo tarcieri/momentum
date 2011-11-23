@@ -2,8 +2,7 @@
   (:use
    momentum.core
    momentum.core.atomic
-   momentum.net.message
-   momentum.utils.core)
+   momentum.net.message)
   (:import
    [org.jboss.netty.buffer
     ChannelBuffer

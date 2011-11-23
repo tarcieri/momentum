@@ -2,8 +2,7 @@
   (:use
    momentum.core
    momentum.core.timer
-   momentum.net.core
-   momentum.utils.core)
+   momentum.net.core)
   (:require
    [momentum.net.pool :as pool])
   (:import

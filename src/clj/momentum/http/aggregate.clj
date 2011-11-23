@@ -1,7 +1,5 @@
 (ns momentum.http.aggregate
-  (:use
-   momentum.core
-   momentum.utils.core))
+  (:use momentum.core))
 
 (def request-entity-too-large
   [413 {"content-length" "0"} nil])

@@ -2,8 +2,7 @@
   (:use
    momentum.core
    momentum.core.atomic
-   momentum.http.core
-   momentum.utils.core)
+   momentum.http.core)
   (:require
    [momentum.core.timer :as timer]
    [momentum.net.server :as net]))

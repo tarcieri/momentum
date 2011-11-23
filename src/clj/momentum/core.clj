@@ -33,6 +33,8 @@
 (def write-int           buffer/write-int)
 (def write-uint          buffer/write-uint)
 (def write-long          buffer/write-long)
+(def KB                  buffer/KB)
+(def MB                  buffer/MB)
 
 ;; Map the macros
 (defmacro buffer

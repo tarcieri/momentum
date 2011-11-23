@@ -1,8 +1,7 @@
 (ns momentum.net.server
   (:use
    momentum.core
-   momentum.net.core
-   momentum.utils.core)
+   momentum.net.core)
   (:import
    [org.jboss.netty.bootstrap
     Bootstrap
