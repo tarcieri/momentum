@@ -167,7 +167,9 @@
 ;; ==== Async value ====
 
 (defn async-val
-  "Returns a new unrealized asynchronous value."
+  "Returns a new unrealized asynchronous value. Dereferencing will
+  cause the current thread to block until the asynchronous value is
+  realized."
   []
   (AsyncVal.))
 
@@ -187,6 +189,11 @@
   (Join. args))
 
 (defn recur*
+  "Accepts an aribtrary number of arguments, passing them to
+  join. Once the joined asynchronous value is realized, the current
+  callback function will be reinvoked with the joined realized values
+  from the supplied arguments. Must be called from the tail position
+  of a doasync callback."
   ([]                (Pipeline$Recur. nil))
   ([v1]              (Pipeline$Recur. v1))
   ([v1 v2]           (Pipeline$Recur. (join v1 v2)))
@@ -280,7 +287,9 @@
     #(first %)))
 
 (defn batch
-  "Returns an async value that is realized with the given collection
+  "Alpha - subject to change
+
+  Returns an async value that is realized with the given collection
   when all (or n if supplied) elements of the collection have been
   realized."
   ([coll] (batch Integer/MAX_VALUE coll))
@@ -294,13 +303,23 @@
              coll))))))
 
 (defn map*
-  [f coll]
-  (async-seq
-    (doasync coll
-      (fn [[v & more]]
-        (cons v (map* f more))))))
+  "Returns an asynchronous sequence consisting of the result of recursively
+  applying f to the set of first items of each coll once they become
+  realized. Function f should accept the number of colls arguments."
+  ([f coll]
+     (async-seq
+       (doasync coll
+         (fn [[v & more]]
+           (cons v (map* f more))))))
+  ([f c1 & colls]
+     (throw (Exception. "Not implemented yet."))))
 
 (defmacro doseq*
+  "Repeatedly executes body (presumably for side-effects) with
+  bindings as they are realized and filtering as provided by
+  \"for\". Does not retain the head of the sequence. Returns an
+  asynchronous value that will be realized with nil once all of the
+  items have been handled."
   [seq-exprs & body]
   (assert (vector? seq-exprs) "a vector for its binding")
   (assert (even? (count seq-exprs)) "an even number of forms in binding vector")
@@ -357,6 +376,9 @@
           (splice (dissoc map k)))))))
 
 (defmacro future*
+  "Takes a body of expressions and invoke it in another
+  thread. Returns an asynchronous value that will be realized with the
+  result once the computation completes."
   [& body]
   `(let [val# (async-val)]
      (future
@@ -442,6 +464,8 @@
             (cons v nxt)))))))
 
 (defn channel
+  "Returns a new channel. Calling seq with a channel returns an
+  asynchronous sequence of the values that are put into the channel."
   ([]  (channel nil 0))
   ([f] (channel f 1))
   ([f capacity]
@@ -451,6 +475,7 @@
        ch)))
 
 (defn enqueue
+  "Put multiple values into a channel."
   ([_])
   ([ch & vs]
      (loop [vs vs cont? true]
@@ -459,6 +484,8 @@
            (recur more (put ch v)))))))
 
 (defn close
+  "Close a channel. Closing a channel causes any associated
+  asynchronous sequences to terminate."
   [ch]
   (.close (.transfer ch)))
 
