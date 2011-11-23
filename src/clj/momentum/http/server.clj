@@ -1,6 +1,7 @@
 (ns momentum.http.server
   (:use
-   momentum.core.buffer
+   momentum.core
+   momentum.core.atomic
    momentum.http.core
    momentum.utils.core)
   (:require
@@ -473,16 +474,18 @@
 (defn- encoder
   [dn]
   (let [chunked? (atom nil)]
-    (defstream
-      (response [[status hdrs body :as response]]
-        (reset! chunked? (= (hdrs "transfer-encoding") "chunked"))
-        (send-response dn status hdrs body))
+    (fn [evt val]
+      (cond
+       (= :response evt)
+       (let [[status hdrs body] val]
+         (reset! chunked? (= (hdrs "transfer-encoding") "chunked"))
+         (send-response dn status hdrs body))
 
-      (body [chunk]
-        (send-chunk dn @chunked? chunk))
+       (= :body evt)
+       (send-chunk dn @chunked? val)
 
-      (else [evt val]
-        (dn evt val)))))
+       :else
+       (dn evt val)))))
 
 (defn proto
   ([app] (proto app {}))

@@ -1,6 +1,7 @@
 (ns momentum.net.core
   (:use
    momentum.core
+   momentum.core.atomic
    momentum.net.message
    momentum.utils.core)
   (:import

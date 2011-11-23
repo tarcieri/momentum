@@ -1,6 +1,7 @@
 (ns momentum.http.client
   (:use
    momentum.core
+   momentum.core.atomic
    momentum.http.core
    momentum.utils.core)
   (:require

@@ -14,6 +14,21 @@
       (if (compare-and-set! atom val new-val)
         val (recur @atom)))))
 
+(defmacro swap-then!
+  "Invokes swap! with the first two arguments followed by invoking the
+  third argument passing the return value of swap!"
+  [atom swap-fn
+   then-fn]
+  `(let [res# (swap! ~atom ~swap-fn)]
+     (~then-fn res#)
+     res#))
+
+(defmacro swap-assoc!
+  "Atomically swaps the value of the atom by calling assoc on the old
+  value."
+  [atom & args]
+  `(swap! ~atom (fn [val#] (assoc val# ~@args))))
+
 (defn atomic-pop!
   "Atomically pop an element off of a stack. The stack should be
   represented as an atom that references a seq."

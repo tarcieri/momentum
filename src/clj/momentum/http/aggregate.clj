@@ -1,6 +1,6 @@
 (ns momentum.http.aggregate
   (:use
-   momentum.core.buffer
+   momentum.core
    momentum.utils.core))
 
 (def request-entity-too-large
@@ -38,38 +38,41 @@
   (if-not buffer?
     stream
     (let [msg (atom nil)]
-      (defstream
-        (request [[hdrs body :as request]]
-          (if (not= :chunked body)
-            (stream :request request)
-            (reset!
-             msg
-             (mk-initial-state
-              dn request-entity-too-large
-              #(stream :request [hdrs %])))))
+      (fn [evt val]
+        (cond
+         (= :request evt)
+         (let [[hdrs body] val]
+           (if (not= :chunked body)
+             (stream :request val)
+             (reset!
+              msg
+              (mk-initial-state
+               dn request-entity-too-large
+               #(stream :request [hdrs %])))))
 
-        (response [[status hdrs body :as response]]
-          (if (not= :chunked body)
-            (stream :response response)
-            (reset!
-             msg
-             (mk-initial-state
-              dn server-error
-              #(stream :response [status hdrs %])))))
+         (= :response evt)
+         (let [[status hdrs body] val]
+           (if (not= :chunked body)
+             (stream :response val)
+             (reset!
+              msg
+              (mk-initial-state
+               dn server-error
+               #(stream :response [status hdrs %])))))
 
-        (body [chunk]
-          (let [{success  :success-fn
-                 aborted? :aborted?
-                 queue    :queue
-                 :as       curr} @msg]
+         (= :body evt)
+         (let [{success  :success-fn
+                aborted? :aborted?
+                queue    :queue
+                :as       curr} @msg]
 
-            (when-not aborted?
-              (if chunk
-                (handle-chunk msg (buffer chunk) hard soft)
-                (success (buffer queue))))))
+           (when-not aborted?
+             (if val
+               (handle-chunk msg (buffer val) hard soft)
+               (success (buffer queue)))))
 
-        (else [evt val]
-          (stream evt val))))))
+         :else
+         (stream evt val))))))
 
 (def default-opts
   {:upstream   true

@@ -23,8 +23,8 @@
   (with-app
     (ws/proto
      (fn [dn _]
-       (defstream
-         (request [_]
+       (fn [evt val]
+         (when (= :request evt)
            (dn :response [200 {"content-length" "5"} (buffer "Hello")])))))
 
     (GET "/")
@@ -34,16 +34,21 @@
   (let [ch (channel)]
     (with-ws-app
       (fn [dn _]
-        (defstream
-          (request [hdrs body]
-            (dn :response [101 {} :upgraded]))
-          (abort [err]
-            (.printStackTrace err))
-          (message [msg]
-            (enqueue ch [:message msg])
-            (dn :message "roger"))
-          (close [val]
-            (enqueue ch [:close val]))))
+        (fn [evt val]
+          (cond
+           (= :request evt)
+           (dn :response [101 {} :upgraded])
+
+           (= :abort evt)
+           (.printStackTrace val)
+
+           (= :message evt)
+           (do
+             (enqueue ch [:message val])
+             (dn :message "roger"))
+
+           (= :close evt)
+           (enqueue ch [:close val]))))
 
       (let [ws-key (base64/encode (random/secure-random 16))
             expect (base64/encode (digest/sha1 (str ws-key ws/salt)))]
@@ -123,8 +128,8 @@
 (deftest closing-sockets-from-server
   (with-ws-app
     (fn [dn _]
-      (defstream
-        (request [_]
+      (fn [evt val]
+        (when (= :request evt)
           (dn :response [101 {} :upgraded])
           (dn :message "Hello")
           (dn :close 1000))))
