@@ -1,10 +1,12 @@
-(ns momentum.utils.digest
-  (:use
-   momentum.core)
+(ns momentum.util.digest
+  (:use momentum.core)
   (:import
-   momentum.buffer.Buffer
-   java.nio.ByteBuffer
-   java.security.MessageDigest))
+   [momentum.buffer
+    Buffer]
+   [java.nio
+    ByteBuffer]
+   [java.security
+    MessageDigest]))
 
 (defprotocol Digest
   (^{:private true} update-digest [val digest]))

@@ -1,9 +1,10 @@
-(ns momentum.utils.base64
-  (:use
-   momentum.core)
+(ns momentum.util.base64
+  (:use momentum.core)
   (:import
-   momentum.buffer.Buffer
-   momentum.utils.Base64))
+   [momentum.buffer
+    Buffer]
+   [momentum.util
+    Base64]))
 
 (defprotocol IBase64
   (^{:private true} encode64 [o chunked?])

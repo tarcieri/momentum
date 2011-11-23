@@ -1,6 +1,5 @@
-(ns momentum.utils.random
-  (:use
-   momentum.core.buffer)
+(ns momentum.util.random
+  (:use momentum.core)
   (:import
    [java.security
     SecureRandom]))

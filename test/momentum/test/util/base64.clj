@@ -1,8 +1,8 @@
-(ns momentum.test.utils.base64
+(ns momentum.test.util.base64
   (:use
    clojure.test
    momentum.core.buffer
-   momentum.utils.base64)
+   momentum.util.base64)
   (:import
    java.nio.ByteBuffer
    java.util.Arrays))

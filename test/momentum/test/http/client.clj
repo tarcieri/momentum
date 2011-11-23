@@ -3,22 +3,22 @@
    clojure.test
    support.helpers
    momentum.core
-   momentum.utils.helpers
    momentum.http.client)
   (:require
    [momentum.net.server  :as net]
    [momentum.http.server :as server]))
 
+(defn- connection-tracker
+  [app ch]
+  (fn [dn env]
+    (enqueue ch [:connect nil])
+    (app dn env)))
+
 (defn- tracking-connections
   [ch app]
   (net/start
-   (build-stack
-    (fn [app]
-      (fn [dn env]
-        (enqueue ch [:connect nil])
-        (app dn env)))
-    server/proto
-    app)))
+   (-> app server/proto
+       (connection-tracker ch))))
 
 (defn- start-conn-tracking-hello-world
   [ch]

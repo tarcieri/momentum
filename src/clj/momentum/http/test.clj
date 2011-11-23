@@ -3,11 +3,11 @@
    clojure.test
    momentum.core.buffer)
   (:require
-   [momentum.http.server  :as server]
-   [momentum.net.test     :as net]
-   [momentum.utils.base64 :as base64]
-   [momentum.utils.digest :as digest]
-   [momentum.utils.random :as random]))
+   [momentum.http.server :as server]
+   [momentum.net.test    :as net]
+   [momentum.util.base64 :as base64]
+   [momentum.util.digest :as digest]
+   [momentum.util.random :as random]))
 
 (defn- ws-hdrs
   [hdrs]

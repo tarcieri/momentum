@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package momentum.utils;
+package momentum.util;
 
 /**
  * Abstract superclass for Base-N encoders and decoders.

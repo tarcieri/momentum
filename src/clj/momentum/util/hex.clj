@@ -1,8 +1,7 @@
-(ns momentum.utils.hex
-  (:use
-   momentum.core.buffer)
+(ns momentum.util.hex
+  (:use momentum.core)
   (:import
-   [momentum.utils
+   [momentum.util
     Hex]))
 
 (defn encode

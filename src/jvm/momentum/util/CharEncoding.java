@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package momentum.utils;
+package momentum.util;
 
 /**
  * Character encoding names required of every implementation of the Java platform.

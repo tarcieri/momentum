@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package momentum.utils;
+package momentum.util;
 
 import java.io.UnsupportedEncodingException;
 

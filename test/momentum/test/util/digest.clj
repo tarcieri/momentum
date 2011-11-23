@@ -1,10 +1,10 @@
-(ns momentum.test.utils.digest
+(ns momentum.test.util.digest
   (:use
    clojure.test
    momentum.core.buffer
-   momentum.utils.digest)
+   momentum.util.digest)
   (:require
-   [momentum.utils.base64 :as base64])
+   [momentum.util.base64 :as base64])
   (:import
    java.util.Arrays))
 

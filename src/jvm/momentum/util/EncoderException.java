@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package momentum.utils;
+package momentum.util;
 
 /**
  * Thrown when there is a failure condition during the encoding process. This exception is thrown when an

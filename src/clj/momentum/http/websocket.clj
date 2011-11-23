@@ -3,8 +3,8 @@
    momentum.core
    momentum.core.atomic)
   (:require
-   [momentum.utils.base64 :as base64]
-   [momentum.utils.digest :as digest])
+   [momentum.util.base64 :as base64]
+   [momentum.util.digest :as digest])
   (:import
    [momentum.http
     WsFrame
