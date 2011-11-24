@@ -4,7 +4,7 @@
        asynchronous primitives and functions to operate on those
        primitives.
 
-       == Asynchronous values
+       ### Asynchronous values
 
        The core primitive is AsyncVal. This is basically just a
        future (except...), but the name future is already used in
@@ -35,16 +35,16 @@
        dereference an AsyncVal inside an event loop since doing so
        will freeze the entire system.
 
-       == doasync
+       ### doasync
 
        You register callbacks on an AsyncVal using the doasync
        macro. A full example might look something like:
 
-         (doasync (http/GET \"http://www.google.com\")
-           ;; Function invoked when the asynchronous value returned by
-           ;; http/GET is realized.
-           (fn [[status hdrs body]]
-             (println \"GOT: \" [status hdrs body])))
+           (doasync (http/GET \"http://www.google.com\")
+             ;; Function invoked when the asynchronous value returned by
+             ;; http/GET is realized.
+             (fn [[status hdrs body]]
+               (println \"GOT: \" [status hdrs body])))
 
        The doasync macro itself returns an AsyncVal representing the
        return value from the callback, making doasync composable.
@@ -53,12 +53,14 @@
        encounter a failure, the AsyncVal can be aborted with an
        exception representing the failure. doasync allows these
        asynchronous exceptions to be handled as well in a similar
-       fashion as clojure’s try / catch. For example:
+       fashion as clojure’s try / catch.
 
-         (doasync (http/GET \"http://www.some-invalid-host.com/\")
-           (fn [resp]) ;; Will not get invoked
-           (catch Exception e
-             (println \"Encountered an exception: \" e)))
+       For example:
+
+           (doasync (http/GET \"http://www.some-invalid-host.com/\")
+             (fn [resp]) ;; Will not get invoked
+             (catch Exception e
+               (println \"Encountered an exception: \" e)))
 
        If an exception is successfully caught, the AsyncVal
        representing the doasync will be realized with the catch
@@ -69,38 +71,42 @@
        Additionally, doasync can handle any clojure type or java
        object, in which case, the callback gets invoked immediately.
 
-       == Joining asynchronous values
+       ### Joining asynchronous values
 
        The join function takes an arbitrary number of both
        asynchronous values and regular types / objects and returns an
        AsyncVal that becomes realized when all of the arguments become
        realized. The realized arguments are then applied to the
-       callback function. For example:
+       callback function.
 
-         (doasync (join (http/GET \"http://www.google.com/\")
-                        (http/GET \"http://www.bing.com/\"))
-           (fn [google-response bing-response]
-             ;; Do something with the responses
-             ))
+       For example:
+
+           (doasync (join (http/GET \"http://www.google.com/\")
+                          (http/GET \"http://www.bing.com/\"))
+             (fn [google-response bing-response]
+               ;; Do something with the responses
+               ))
 
        In the event that one of the arguments becomes aborted, the
        combined AsyncVal will also become aborted with the same
        exception.
 
-       == AsyncSeq
+       ### AsyncSeq
 
        AsyncSeq is an AsyncVal that is always realized with a clojure
        sequence or nil. It also implements the clojure sequence
        protocol, however calling first, more, or next on it will throw
        an exception if it has not been realized yet. AsyncSeqs can
-       used with doasync just the same as AsyncVals can. For example:
+       used with doasync just the same as AsyncVals can.
 
-         (doasync my-async-seq
-           (fn [[val & more :as realized]]
-             ;; more is another async-seq
-             (when realized
-               (println \"GOT: \" val)
-               (recur* more))))
+       For example:
+
+           (doasync my-async-seq
+             (fn [[val & more :as realized]]
+               ;; more is another async-seq
+               (when realized
+                 (println \"GOT: \" val)
+                 (recur* more))))
 
        The recur* function allows asynchronous recursion. It must be
        used in a tail position. The recur* function takes N arguments
@@ -111,7 +117,7 @@
        scenario and become aborted with an exception. These exceptions
        may be handled in the same way as the previous catch example
 
-       == Composability
+       ### Composability
 
        The above primitives are enough to build up some powerful
        asynchronous abstractions. This namespace contains a number of
