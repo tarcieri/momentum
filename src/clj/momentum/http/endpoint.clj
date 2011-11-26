@@ -1,7 +1,9 @@
 (ns momentum.http.endpoint
   (:use
    momentum.core
-   momentum.http.routing))
+   momentum.http.routing)
+  (:require
+   [momentum.http.websocket :as websocket]))
 
 (defn map-request
   [ch hdrs body]
@@ -42,3 +44,15 @@
          (if val
            (put ch val)
            (close ch)))))))
+
+(defmacro endpoint
+  [& routes]
+  `(websocket/proto
+    (routing
+     ~@(map
+        (fn [[method path binding & stmts]]
+          (let [expr `(endpoint* (fn ~binding ~@stmts))]
+            (if (= method 'ANY)
+              `(match ~path ~expr)
+              `(match ~(keyword method) ~path ~expr))))
+        routes))))

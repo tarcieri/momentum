@@ -1,6 +1,5 @@
 (ns momentum.http.response
-  (:use
-   momentum.core))
+  (:use momentum.core))
 
 (defmulti responder (fn [type & args] type))
 

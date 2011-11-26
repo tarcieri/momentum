@@ -1,24 +1,12 @@
 (ns momentum.http
+  (:use momentum.util.namespace)
   (:require
    [momentum.http.endpoint  :as endpoint]
-   [momentum.http.response  :as response]
-   [momentum.http.routing   :as routing]
-   [momentum.http.websocket :as websocket]))
+   [momentum.http.response  :as response]))
 
-(def respond response/respond)
+(import-fn #'response/respond)
+(import-macro #'endpoint/endpoint)
 
 (defn websocket?
   [request]
   (= "websocket" (request "upgrade")))
-
-(defmacro endpoint
-  [& routes]
-  `(websocket/proto
-    (routing/routing
-     ~@(map
-        (fn [[method path binding & stmts]]
-          (let [expr `(endpoint/endpoint* (fn ~binding ~@stmts))]
-            (if (= method 'ANY)
-              `(routing/match ~path ~expr)
-              `(routing/match ~(keyword method) ~path ~expr))))
-        routes))))
