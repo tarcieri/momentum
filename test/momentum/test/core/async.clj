@@ -266,26 +266,38 @@
 
 ;; ==== recur*
 
-(deftest simple-async-recursion-with-primitives
-  (are [x] (= 5 @x)
-       (doasync 1
-         (fn [val]
-           (if (< val 5)
-             (recur* (inc val))
-             val)))
+(deftest doasync-recursion
+  (let [err (Exception. "BOOM")]
+    (are [x] (= 5 @x)
+         (doasync 1
+           (fn [val]
+             (if (< val 5)
+               (recur* (inc val))
+               val)))
 
-       (doasync (defer 1)
-         (fn [val]
-           (if (< val 5)
-             (recur* (defer (inc val)))
-             val)))
+         (doasync (defer 1)
+           (fn [val]
+             (if (< val 5)
+               (recur* (defer (inc val)))
+               val)))
 
-       ;; Tail recursive for sync values
-       (doasync 100000
-         (fn [v]
-           (if (> v 5)
-             (recur* (dec v))
-             v)))))
+         ;; Tail recursive for sync values
+         (doasync 100000
+           (fn [v]
+             (if (> v 5)
+               (recur* (dec v))
+               v)))
+
+         ;; Handles aborted async vals
+         (doasync 1
+           (fn [v]
+             (when v ;; Prevents infinite loop when buggy
+               (let [val (async-val)]
+                 (abort val err)
+                 (recur* val))))
+           (catch Exception e
+             (when (= err e)
+               5))))))
 
 ;; ==== async-seq
 
