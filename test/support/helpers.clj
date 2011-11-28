@@ -187,7 +187,7 @@
 
 (defn- blocking*
   [seq]
-  (concat (map normalize (blocking seq)) [::timeout]))
+  (concat (map normalize (blocking seq 2000)) [::timeout]))
 
 (defn assert-no-msgs-for
   [f msg chs]

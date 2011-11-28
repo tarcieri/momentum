@@ -679,5 +679,27 @@
     (is (= (remaining actual) length))
     (is (= actual (buffer (repeatedly times #(buffer "HAMMER TIME!")))))))
 
-;; Test pause / resume w/ AsyncVal API
+(defcoretest exception-handling-request-body
+  [ch1]
+  (server/start
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt val]))))
+
+  (POST "http://localhost:4040/"
+    {"transfer-encoding" "chunked"}
+    (async-seq
+      (cons (buffer "Hello")
+            (async-seq
+              (throw (Exception. "BOOM"))))))
+
+  (Thread/sleep 100)
+
+  (is (next-msgs
+       ch1
+       :request :dont-care
+       :body    "Hello"
+       :abort   :dont-care)))
+
+;; (defcoretest exception-handling-request-body)
 ;; Sending request w/ content-length and invalid body length

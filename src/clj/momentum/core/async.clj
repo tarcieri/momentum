@@ -529,6 +529,7 @@
             (dn :body el)
             (recur* more))
           (dn :body nil)))
+
       ;; Handle exceptions by sending them downstream
       (catch Exception e
         (dn :abort e)))
@@ -538,6 +539,7 @@
     (fn [evt val]
       (when-not (#{:pause :resume :abort} evt)
         (throw (IllegalArgumentException. (format "Invalid events: %s" evt))))
+
       (if (= :abort evt)
         (abort ch val)
         (put ch evt)))))
