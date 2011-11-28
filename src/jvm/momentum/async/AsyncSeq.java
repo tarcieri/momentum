@@ -109,7 +109,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
         throw Util.runtimeException(err);
       }
 
-      return RT.seq(val);
+      return val;
     }
 
     return this;
