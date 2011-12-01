@@ -123,7 +123,7 @@
 
     (is (= [:1 :2 :3] @q))))
 
-(deftest doasync-aborting
+(deftest doasync-downstream-aborting
   (let [q    (atom [])
         push (fn [v] (swap! q #(conj % v)))
         fail #(push :fail)]
@@ -161,6 +161,44 @@
            (finally (boom))))
 
     (is (= [:1 :2] @q))))
+
+(deftest doasync-upstream-aborting
+  (let [q    (atom [])
+        push (fn [v] (swap! q #(conj % v)))
+        fail (fn [& args] (push :fail))]
+
+    (let [seed (defer 1)
+          val  (doasync seed fail)]
+      (is (= true (abort val (Exception. "BOOM"))))
+      (is (aborted? seed))
+      (is (thrown-with-msg? Exception #"BOOM" @val)))
+
+    (let [step (defer 2)
+          val  (doasync 1 (constantly step) fail)]
+      (is (= true (abort val (Exception. "BOOM"))))
+      (is (aborted? step))
+      (is (thrown-with-msg? Exception #"BOOM" @val)))
+
+    (let [seed (defer 1)
+          step (future* (Thread/sleep 50) 2)
+          val  (doasync seed (constantly step) fail)]
+      @seed
+      (is (= true (abort val (Exception. "BOOM"))))
+      (is (aborted? step))
+      (is (thrown-with-msg? Exception #"BOOM" @val)))
+
+    (abort
+     (doasync (defer 1)
+       (catch Exception _ (fail)))
+     (Exception.))
+
+    (abort
+     (doasync (defer 1)
+       (finally (push :1)))
+     (Exception.))
+
+    (Thread/sleep 50)
+    (is (= [:1] @q))))
 
 (deftest doasync-catching-exceptions
   (let [q    (atom [])

@@ -59,7 +59,7 @@ public final class AsyncPipeline extends Async<Object> implements Receiver {
   /*
    * A callback to be invoked at the end of everything
    */
-  final IFn finalizer;
+  IFn finalizer;
 
   public AsyncPipeline(Object seed, IFn h, List<Catcher> c, IFn f) {
     handler   = h;
@@ -83,9 +83,21 @@ public final class AsyncPipeline extends Async<Object> implements Receiver {
     }
   }
 
-  // TODO: Doesn't handle finalizers
-  public boolean abort(Exception e) {
-    if (!realizeError(e)) {
+  private void doFinalize() throws Exception {
+    IFn finalizer;
+
+    synchronized (this) {
+      finalizer = this.finalizer;
+      this.finalizer = null;
+    }
+
+    if (finalizer != null) {
+      finalizer.invoke();
+    }
+  }
+
+  public boolean abort(Exception err) {
+    if (!realizeError(err)) {
       return false;
     }
 
@@ -100,7 +112,14 @@ public final class AsyncPipeline extends Async<Object> implements Receiver {
     }
 
     if (pending != null) {
-      pending.abort(e);
+      pending.abort(err);
+    }
+
+    try {
+      doFinalize();
+    }
+    catch (Exception e) {
+      // Just discard since the pipeline has already been aborted.
     }
 
     return true;
@@ -145,10 +164,7 @@ public final class AsyncPipeline extends Async<Object> implements Receiver {
           }
 
           try {
-            if (finalizer != null) {
-              finalizer.invoke();
-            }
-
+            doFinalize();
             realizeSuccess(val);
           }
           catch (Exception err) {
@@ -218,10 +234,7 @@ public final class AsyncPipeline extends Async<Object> implements Receiver {
     }
 
     try {
-      if (finalizer != null) {
-        finalizer.invoke();
-      }
-
+      doFinalize();
       realizeError(err);
     }
     catch (Exception e) {
