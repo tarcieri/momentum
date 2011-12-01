@@ -53,7 +53,6 @@
 (import-fn #'async/close)
 (import-fn #'async/enqueue)
 (import-fn #'async/join)
-(import-fn #'async/pipeline)
 (import-fn #'async/put)
 (import-fn #'async/recur*)
 (import-fn #'async/select)

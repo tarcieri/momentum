@@ -179,12 +179,6 @@
   []
   (AsyncVal.))
 
-;; ==== Pipeline ====
-
-(defn pipeline
-  [stages catchers finalizer]
-  (Pipeline. (reverse stages) catchers finalizer))
-
 (defn join
   "Returns an asynchronous value representing the realization of the
   supplied arguments. The returned asynchronous value will be realized
@@ -243,13 +237,11 @@
 (defmacro doasync
   [seed & clauses]
   (let [[stages catches finally] (partition-clauses clauses)]
-    `(doto (pipeline [~@stages] [~@(map to-catcher catches)] ~(to-finally finally))
+    `(doto (Pipeline.
+            (reverse [~@stages])
+            [~@(map to-catcher catches)]
+            ~(to-finally finally))
        (put ~seed))))
-
-(defn- async-vals
-  "A lazy sequence of async-vals"
-  []
-  (lazy-seq (cons (async-val) (async-vals))))
 
 ;; ==== Async seq ====
 
@@ -365,7 +357,7 @@
   "Returns an async seq representing the values of the passed
   collection in the order that they are materialized."
   [coll]
-  (let [results (take (count coll) (async-vals))]
+  (let [results (repeatedly (count coll) #(async-val))]
     (watch-coll coll (atom results))
     (select-seq results)))
 
@@ -460,7 +452,7 @@
 (defn- channel-seq
   [ch]
   (async-seq
-    (doasync (.take (.transfer ch))
+    (doasync (.. ch transfer take)
       (fn [v]
         (when-not (= ::close-channel v)
           (when (.f ch)
@@ -498,8 +490,8 @@
 (defn- sink-seq
   [coll evts]
   (async-seq
-    (doasync (first* (select {:coll coll :evts evts}))
-      (fn [[k v]]
+    (doasync (select {:coll coll :evt (seq evts)})
+      (fn [[[k v]]]
         (when v
           (cond
            (= :coll k)

@@ -110,6 +110,12 @@ final public class AsyncTransferQueue implements Counted {
     return doClose(e);
   }
 
+  public boolean isClosed() {
+    synchronized (this) {
+      return tail == CLOSED;
+    }
+  }
+
   public boolean close() {
     return doClose(null);
   }
@@ -139,7 +145,7 @@ final public class AsyncTransferQueue implements Counted {
     Node matched;
 
     synchronized (this) {
-      if (tail == CLOSED && (haveData || head ==  null)) {
+      if (tail == CLOSED && (haveData || head == null)) {
         return false;
       }
 
@@ -203,12 +209,20 @@ final public class AsyncTransferQueue implements Counted {
       tail = CLOSED;
     }
 
+    if (head == null || head.isData()) {
+      return true;
+    }
+
     Node curr;
 
-    while ((curr = head) != null && !head.isData()) {
+    while ((curr = head) != null) {
       curr.realize(defaultVal, err);
       head = curr.next();
       curr.next(null);
+    }
+
+    synchronized (this) {
+      count = 0;
     }
 
     return true;
