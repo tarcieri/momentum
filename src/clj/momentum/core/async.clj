@@ -134,15 +134,17 @@
    [momentum.async
     Async
     AsyncSeq
+    AsyncPipeline
+    AsyncPipeline$Catcher
+    AsyncPipeline$Recur
     AsyncVal
     AsyncTransferQueue
     Join
-    Pipeline
-    Pipeline$Catcher
-    Pipeline$Recur
     Receiver]
    [java.io
     Writer]))
+
+(declare doasync)
 
 ;; ==== Async common ====
 
@@ -195,11 +197,11 @@
   callback function will be reinvoked with the joined realized values
   from the supplied arguments. Must be called from the tail position
   of a doasync callback."
-  ([]                (Pipeline$Recur. nil))
-  ([v1]              (Pipeline$Recur. v1))
-  ([v1 v2]           (Pipeline$Recur. (join v1 v2)))
-  ([v1 v2 v3]        (Pipeline$Recur. (join v1 v2 v3)))
-  ([v1 v2 v3 & args] (Pipeline$Recur. (apply join v1 v2 v3 args))))
+  ([]                (AsyncPipeline$Recur. nil))
+  ([v1]              (AsyncPipeline$Recur. v1))
+  ([v1 v2]           (AsyncPipeline$Recur. (join v1 v2)))
+  ([v1 v2 v3]        (AsyncPipeline$Recur. (join v1 v2 v3)))
+  ([v1 v2 v3 & args] (AsyncPipeline$Recur. (apply join v1 v2 v3 args))))
 
 (defn- catch?
   [clause]
@@ -227,22 +229,40 @@
       [(conj stages clause) catches finally]))
    [[] [] nil] clauses))
 
+(defn- wrap-body
+  [body]
+  (if (seq body)
+    `(fn [] ~@body)
+    `nil))
+
+(defn- nested-stages
+  [seed stages]
+  (reduce
+   (fn [curr stage] `(doasync ~curr ~stage))
+   seed stages))
+
 (defn- to-catcher
   [[ _ k b & stmts]]
-  `(Pipeline$Catcher. ~k (fn [~b] ~@stmts)))
+  `(AsyncPipeline$Catcher. ~k (fn [~b] ~@stmts)))
 
-(defn- to-finally
-  [[_ & stmts]]
-  `(fn [] ~@stmts))
+(defn- wrap-catches
+  [catches]
+  (if (seq catches)
+    `[~@(map to-catcher catches)]
+    `nil))
 
 (defmacro doasync
   [seed & clauses]
-  (let [[stages catches finally] (partition-clauses clauses)]
-    `(doto (Pipeline.
-            (reverse [~@stages])
-            [~@(map to-catcher catches)]
-            ~(to-finally finally))
-       (put ~seed))))
+  (let [[stages catches finally] (partition-clauses clauses)
+        stages (reverse stages)]
+
+    (if (or (seq stages) (seq catches) finally)
+      `(AsyncPipeline.
+        ~(nested-stages seed (rest stages))
+        ~(first stages)
+        ~(wrap-catches catches)
+        ~(wrap-body (rest finally)))
+      seed)))
 
 ;; ==== Async seq ====
 

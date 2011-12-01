@@ -59,10 +59,12 @@
       v)))
 
 (deftest doasync-with-no-stages
-  (are [x y] (= x @y)
+  (are [x y] (= x y)
        1   (doasync 1)
        [1] (doasync [1])
-       nil (doasync nil)
+       nil (doasync nil))
+
+  (are [x y] (= x @y)
        1   (doasync (defer 1))
        [1] (doasync (defer [1]))
        nil (doasync (defer nil))))
@@ -203,7 +205,7 @@
              (when (= 3 v1 v2)
                3)))
 
-         (doasync (doasync 3))
+         (doasync (doasync (defer 3)))
          (doasync (doasync 2 inc))
          (doasync (doasync 2 async-inc))
          (doasync (doasync (defer 3)))
