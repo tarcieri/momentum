@@ -129,6 +129,8 @@ public final class AsyncPipeline extends Async<Object> implements Receiver {
    * Receiver API
    */
   public void success(Object val) {
+    IFn handler;
+
     try {
       // Run in a loop in order to handle synchronous recur* without
       // hitting stack overflows.
@@ -136,13 +138,12 @@ public final class AsyncPipeline extends Async<Object> implements Receiver {
         // If the pipeline has been realized already just bail. The most
         // common scenario for this is if the pipeline has been previously
         // aborted.
-        //
-        // This is also establishes a happens-before relationship with
-        // the value of handler.
         synchronized (this) {
           if (isRealized()) {
             return;
           }
+
+          handler = this.handler;
         }
 
         if (handler != null) {
