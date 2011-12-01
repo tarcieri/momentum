@@ -75,7 +75,12 @@ public final class AsyncPipeline extends Async<Object> implements Receiver {
     }
 
     if (val instanceof Async) {
-      pending = (Async) val;
+      Async pending = (Async) val;
+
+      synchronized (this) {
+        this.pending = pending;
+      }
+
       pending.receive(this);
     }
     else {
@@ -129,7 +134,7 @@ public final class AsyncPipeline extends Async<Object> implements Receiver {
    * Receiver API
    */
   public void success(Object val) {
-    IFn handler;
+    IFn h;
 
     try {
       // Run in a loop in order to handle synchronous recur* without
@@ -143,15 +148,15 @@ public final class AsyncPipeline extends Async<Object> implements Receiver {
             return;
           }
 
-          handler = this.handler;
+          h = this.handler;
         }
 
-        if (handler != null) {
+        if (h != null) {
           if (val instanceof JoinedArgs) {
-            val = handler.applyTo(((JoinedArgs) val).seq());
+            val = h.applyTo(((JoinedArgs) val).seq());
           }
           else {
-            val = handler.invoke(val);
+            val = h.invoke(val);
           }
         }
         // If there is no handler, then the pipeline is done.
