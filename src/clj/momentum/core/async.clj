@@ -140,24 +140,25 @@
     Pipeline
     Pipeline$Catcher
     Pipeline$Recur
-    Realizer
     Receiver]
    [java.io
     Writer]))
 
 ;; ==== Async common ====
 
-(defn put
-  "Realize the asynchronous value with the supplied value. Returns
-  true is successful. Returns false otherwise."
-  [^Realizer async-val val]
-  (.put async-val val))
+(defprotocol Realizer
+  "Protocol for realizing async types."
+  (put [async-type val]
+    "Realize an asynchronous type with the supplied value. Returns
+  true if successful. Returns false otherwise.")
+  (abort [async-type err]
+    "Abort an asynchronous type with the supplied exception. Returns
+  true if successful. Returns false otherwise."))
 
-(defn abort
-  "Abort the asynchronous value with the supplied exception. Returns
-  true if successful. Returns false otherwise."
-  [^Realizer async-val err]
-  (.abort async-val err))
+(extend-type Async
+  Realizer
+  (put   [this val] (.put this val))
+  (abort [this err] (.abort this err)))
 
 (defn success?
   "Returns true if the asynchronous value has been realized

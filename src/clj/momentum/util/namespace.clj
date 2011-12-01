@@ -7,9 +7,11 @@
   [sym]
   (let [m        (meta (eval sym))
         m        (meta (intern (:ns m) (:name m)))
-        n        (:name m)
+        n        (symbol (name (:name m))) ;; Work around a strange bug
         arglists (:arglists m)
         doc      (:doc m)]
+    ;; TODO: Don't assoc :file and :line if they are nil (which is the
+    ;; case for protocols)
     `(do
        (def ~n ~(eval sym))
        (alter-meta!

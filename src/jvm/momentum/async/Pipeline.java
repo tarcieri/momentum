@@ -8,7 +8,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
-public final class Pipeline extends Async<Object> implements Realizer {
+public final class Pipeline extends Async<Object> {
 
   /*
    * Represents a catch clause in doasync

@@ -3,7 +3,7 @@ package momentum.async;
 import clojure.lang.*;
 import java.util.LinkedList;
 
-public class Async<T> extends AFn implements IPending, IDeref, IBlockingDeref {
+public abstract class Async<T> extends AFn implements IPending, IDeref, IBlockingDeref {
 
   /*
    * Whether or not the async object is realized
@@ -29,6 +29,20 @@ public class Async<T> extends AFn implements IPending, IDeref, IBlockingDeref {
    * The callbacks to invoke when the deferred value becomes realized
    */
   final LinkedList<Receiver> receivers = new LinkedList<Receiver>();
+
+  /*
+   * Puts a value into the async object
+   */
+  public boolean put(Object val) {
+    throw new UnsupportedOperationException();
+  }
+
+  /*
+   * Aborts an async object
+   */
+  public boolean abort(Exception e) {
+    throw new UnsupportedOperationException();
+  }
 
   final protected boolean realizeSuccess(T v) {
     synchronized (this) {
