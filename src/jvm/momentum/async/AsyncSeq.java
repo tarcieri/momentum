@@ -2,57 +2,32 @@ package momentum.async;
 
 import clojure.lang.*;
 import java.util.*;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.*;
 
 public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, List, Receiver {
+
+  enum State {
+    FRESH,
+    INVOKING,
+    PENDING,
+    FINAL
+  }
+
+  final AtomicReference<State> cs;
 
   /*
    * Function that will realize the sequence
    */
-  IFn fn;
+  final IFn fn;
 
   /*
    * Pending async value that will realize the seq
    */
   Async pending;
 
-  /*
-   * Latch used in the edge case that the seq is being aborted while being
-   * realized on another thread.
-   */
-  CountDownLatch latch;
-
-  public AsyncSeq(IFn fn) {
-    this.fn = fn;
-  }
-
-  public AsyncSeq(Async a) {
-    pending = a;
-    a.receive(this);
-  }
-
-  synchronized void unlatch() {
-    if (latch != null) {
-      latch.countDown();
-    }
-  }
-
-  void latch() throws InterruptedException {
-    if (observe()) {
-      return;
-    }
-
-    synchronized (this) {
-      if (isRealized() || pending != null) {
-        return;
-      }
-
-      if (latch == null) {
-        latch = new CountDownLatch(1);
-      }
-    }
-
-    latch.await();
+  public AsyncSeq(IFn f) {
+    fn = f;
+    cs = new AtomicReference<State>(State.FRESH);
   }
 
   /*
@@ -60,60 +35,38 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
    * async value of some kind, then register a callback on it.
    */
   public boolean observe() {
-    if (isRealized()) {
-      return true;
-    }
-
-    final IFn fn;
-    final Object ret;
-
-    synchronized (this) {
-      // If the fn is null, then we're already in the process of realizing the
-      // sequence
-      if (this.fn == null) {
-        return isRealized();
-      }
-
-      fn = this.fn;
-      this.fn = null;
+    if (!cs.compareAndSet(State.FRESH, State.INVOKING)) {
+      return isRealized();
     }
 
     try {
-      ret = fn.invoke();
+      Object ret = fn.invoke();
+
+      if (ret instanceof Async) {
+        pending = (Async) ret;
+
+        if (cs.compareAndSet(State.INVOKING, State.PENDING)) {
+          pending.receive(this);
+        }
+        else {
+          pending.abort(new InterruptedException());
+        }
+      }
+      else {
+        if (cs.compareAndSet(State.INVOKING, State.FINAL)) {
+          realizeSeq(ret);
+          return true;
+        }
+      }
     }
     catch (Exception e) {
-      // Abort the seq
-      realizeError(e);
-
-      // The seq is realized, so unlatch
-      unlatch();
-
-      // Return true since the seq is realized
-      return true;
+      if (cs.compareAndSet(State.INVOKING, State.FINAL)) {
+        realizeError(e);
+        return true;
+      }
     }
 
-    if (ret instanceof Async) {
-      pending = (Async) ret;
-
-      unlatch();
-
-      // Register the current async sequence as the receiver for the returned
-      // async value
-      pending.receive(this);
-
-      // The volatile isRealized variable must be read in order to determine if
-      // the sequence was realized since registering the reciever
-      return isRealized();
-    }
-    else {
-      // The returned value is a normal object, so the sequence has been
-      // realized.
-      success(ret);
-
-      unlatch();
-
-      return true;
-    }
+    return isRealized();
   }
 
   // Find the first unrealized element and abort it
@@ -122,19 +75,18 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
     AsyncSeq curr = this;
 
     while (true) {
-      try {
-        curr.latch();
-      }
-      catch (Exception e) {
-        return false;
-      }
+      curr.observe();
 
-      if (curr.realizeError(err)) {
-        pending.abort(err);
+      State prev = curr.cs.getAndSet(State.FINAL);
+
+      if (prev != State.FINAL) {
+        if (prev == State.PENDING) {
+          pending.abort(new InterruptedException());
+        }
+
+        // i am epic win
+        realizeError(err);
         return true;
-      }
-      else if (curr.val == null) {
-        return false;
       }
 
       next = curr.val.next();
@@ -148,21 +100,31 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
     }
   }
 
-  /*
-   * Receiver API
-   */
-  public void success(Object val) {
+  private void realizeSeq(Object val) {
     try {
-      // Save off the realized sequence
-      ISeq s = RT.seq(val);
-      realizeSuccess(s);
+      realizeSuccess(RT.seq(val));
     }
     catch (Exception e) {
       realizeError(e);
     }
   }
 
+  /*
+   * Receiver API
+   */
+  public void success(Object val) {
+    if (cs.getAndSet(State.FINAL) == State.FINAL) {
+      return;
+    }
+
+    realizeSeq(val);
+  }
+
   public void error(Exception e) {
+    if (cs.getAndSet(State.FINAL) == State.FINAL) {
+      return;
+    }
+
     realizeError(e);
   }
 

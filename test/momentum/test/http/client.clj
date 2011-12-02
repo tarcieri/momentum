@@ -641,6 +641,7 @@
          :body    nil
          :done    nil))))
 
+;; If test fails, make sure max time not reached
 (defcoretest pause-resume-with-async-val-api
   [ch1 ch2 ch3]
   ;; Scumbag server
@@ -650,6 +651,8 @@
        (fn [[args]]
          (apply dn args)))
      (fn [evt val]
+       (when (= :abort evt)
+         (.printStackTrace val))
        (when (= :request evt)
          (dn :pause nil))
 
@@ -659,7 +662,7 @@
            (do
              (close ch1)
              (dn :response [200 {"content-length" "5"} (buffer "Hello")]))))))
-   {:timeout 30 :keepalive 30})
+   {:timeout 60})
 
   (future
     (dotimes [_ 5]
