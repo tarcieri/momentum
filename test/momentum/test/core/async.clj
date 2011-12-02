@@ -403,6 +403,18 @@
              (fn [v] (reset! res v)))))
     (is (nil? @res))))
 
+(deftest async-seq-upstream-aborting
+  (let [q    (atom [])
+        push (fn [v] (swap! q #(conj % v)))
+        fail (fn [& args] (push :fail))]
+
+    (let [seed (defer 1)
+          val  (async-seq
+                 (doasync seed fail))]
+      (is (= true (abort val (Exception. "BOOM"))))
+      (is (aborted? seed))
+      (is (thrown-with-msg? Exception #"BOOM" @val)))))
+
 (deftest blocking-async-seqs
   (are [x] (= [3 2 1] x)
        (blocking [3 2 1])

@@ -2,6 +2,7 @@ package momentum.async;
 
 import clojure.lang.*;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
 
 public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, List, Receiver {
 
@@ -10,12 +11,48 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
    */
   IFn fn;
 
+  /*
+   * Pending async value that will realize the seq
+   */
+  Async pending;
+
+  /*
+   * Latch used in the edge case that the seq is being aborted while being
+   * realized on another thread.
+   */
+  CountDownLatch latch;
+
   public AsyncSeq(IFn fn) {
     this.fn = fn;
   }
 
   public AsyncSeq(Async a) {
+    pending = a;
     a.receive(this);
+  }
+
+  synchronized void unlatch() {
+    if (latch != null) {
+      latch.countDown();
+    }
+  }
+
+  void latch() throws InterruptedException {
+    if (observe()) {
+      return;
+    }
+
+    synchronized (this) {
+      if (isRealized || pending != null) {
+        return;
+      }
+
+      if (latch == null) {
+        latch = new CountDownLatch(1);
+      }
+    }
+
+    latch.await();
   }
 
   /*
@@ -48,14 +85,21 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
       // Abort the seq
       realizeError(e);
 
+      // The seq is realized, so unlatch
+      unlatch();
+
       // Return true since the seq is realized
       return true;
     }
 
     if (ret instanceof Async) {
+      pending = (Async) ret;
+
+      unlatch();
+
       // Register the current async sequence as the receiver for the returned
       // async value
-      ((Async) ret).receive(this);
+      pending.receive(this);
 
       // The volatile isRealized variable must be read in order to determine if
       // the sequence was realized since registering the reciever
@@ -66,7 +110,41 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
       // realized.
       success(ret);
 
+      unlatch();
+
       return true;
+    }
+  }
+
+  // Find the first unrealized element and abort it
+  public boolean abort(Exception err) {
+    ISeq next;
+    AsyncSeq curr = this;
+
+    while (true) {
+      try {
+        curr.latch();
+      }
+      catch (Exception e) {
+        return false;
+      }
+
+      if (curr.realizeError(err)) {
+        pending.abort(err);
+        return true;
+      }
+      else if (curr.val == null) {
+        return false;
+      }
+
+      next = curr.val.next();
+
+      if (next instanceof AsyncSeq) {
+        curr = (AsyncSeq) next;
+      }
+      else {
+        return false;
+      }
     }
   }
 
