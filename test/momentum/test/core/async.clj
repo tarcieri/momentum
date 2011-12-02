@@ -189,16 +189,16 @@
 
     (abort
      (doasync (defer 1)
-       (catch Exception _ (fail)))
+       (catch Exception _ (push :1)))
      (Exception.))
 
     (abort
      (doasync (defer 1)
-       (finally (push :1)))
+       (finally (push :2)))
      (Exception.))
 
     (Thread/sleep 50)
-    (is (= [:1] @q))))
+    (is (= [:1 :2] @q))))
 
 (deftest doasync-catching-exceptions
   (let [q    (atom [])

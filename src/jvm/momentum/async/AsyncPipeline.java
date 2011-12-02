@@ -2,8 +2,9 @@ package momentum.async;
 
 import clojure.lang.*;
 import java.util.*;
+import java.util.concurrent.atomic.*;
 
-public final class AsyncPipeline extends Async<Object> implements Receiver {
+public final class AsyncPipeline extends Async<Object> {
 
   /*
    * Represents a catch clause in doasync
@@ -42,209 +43,299 @@ public final class AsyncPipeline extends Async<Object> implements Receiver {
   }
 
   /*
-   * Currently pending async value
+   * The various states that a pipeline can be in
+   */
+  enum State {
+    ARGS_PENDING,
+    INVOKING,
+    RET_PENDING,
+    CATCHING,
+    CATCH_RET_PENDING,
+    FINALIZING
+  }
+
+  /*
+   * If the pipeline is seeded with an async object, ArgsReceiver is
+   * used to receive the realized value while maintaining the
+   * appropriate state.
+   */
+  class ArgsReceiver implements Receiver {
+
+    public void success(Object val) {
+      if (cs.compareAndSet(State.ARGS_PENDING, State.INVOKING)) {
+        invokeHandler(val);
+      }
+    }
+
+    public void error(Exception err) {
+      exceptionThrown(State.ARGS_PENDING, err);
+    }
+  }
+
+  /*
+   * Handles realizing the return value
+   */
+  class RetReceiver implements Receiver {
+
+    public void success(Object val) {
+      if (cs.compareAndSet(State.RET_PENDING, State.FINALIZING)) {
+        invokeFinalizer(val, null);
+      }
+    }
+
+    public void error(Exception err) {
+      exceptionThrown(State.RET_PENDING, err);
+    }
+  }
+
+  /*
+   * Handles catch return value realization
+   */
+  class CatchReceiver implements Receiver {
+
+    public void success(Object val) {
+      if (cs.compareAndSet(State.CATCH_RET_PENDING, State.FINALIZING)) {
+        invokeFinalizer(val, null);
+      }
+    }
+
+    public void error(Exception err) {
+      if (cs.compareAndSet(State.CATCH_RET_PENDING, State.FINALIZING)) {
+        invokeFinalizer(null, err);
+      }
+    }
+
+  }
+
+  final AtomicReference<State> cs;
+
+  /*
+   * Pending normal return async value.
    */
   Async pending;
 
   /*
+   * Pending return value from catch expr. Cannot be combined with
+   * pending as it is possible for a thread to set pending after caught
+   * has been set
+   */
+  Async catching;
+
+  /*
    * Callback to invoke once the seed value is realized
    */
-  IFn handler;
+  final IFn handler;
 
   /*
    * List of callbacks to catch various exceptions
    */
-  List<Catcher> catchers;
+  final List<Catcher> catchers;
 
   /*
    * A callback to be invoked at the end of everything
    */
-  IFn finalizer;
+  final IFn finalizer;
 
   public AsyncPipeline(Object seed, IFn h, List<Catcher> c, IFn f) {
     handler   = h;
     catchers  = c;
     finalizer = f;
 
-    handle(seed);
-  }
+    if (seed instanceof Async) {
+      pending = (Async) seed;
 
-  private void handle(Object val) {
-    if (val instanceof Recur) {
-      val = ((Recur) val).val();
-    }
-
-    if (val instanceof Async) {
-      Async pending = (Async) val;
-
-      synchronized (this) {
-        this.pending = pending;
+      if (handler != null) {
+        cs = new AtomicReference<State>(State.ARGS_PENDING);
+        pending.receive(new ArgsReceiver());
       }
-
-      pending.receive(this);
+      else {
+        cs  = new AtomicReference<State>(State.RET_PENDING);
+        pending.receive(new RetReceiver());
+      }
     }
     else {
-      success(val);
-    }
-  }
 
-  private void doFinalize() throws Exception {
-    IFn finalizer;
-
-    synchronized (this) {
-      finalizer = this.finalizer;
-      this.finalizer = null;
-    }
-
-    if (finalizer != null) {
-      finalizer.invoke();
+      if (handler != null) {
+        cs = new AtomicReference<State>(State.INVOKING);
+        invokeHandler(seed);
+      }
+      else {
+        cs = new AtomicReference<State>(State.FINALIZING);
+        invokeFinalizer(seed, null);
+      }
     }
   }
 
   public boolean abort(Exception err) {
-    if (!realizeError(err)) {
-      return false;
+    while (true) {
+      State curr = cs.get();
+
+      switch (curr) {
+        case ARGS_PENDING:
+        case INVOKING:
+        case RET_PENDING:
+          if (catchers != null) {
+            if (cs.compareAndSet(curr, State.CATCHING)) {
+              if (curr != State.INVOKING) {
+                pending.abort(new InterruptedException());
+              }
+
+              invokeCatchers(err);
+              return true;
+            }
+          }
+          else if (cs.compareAndSet(curr, State.FINALIZING)) {
+            if (curr != State.INVOKING) {
+              pending.abort(new InterruptedException());
+            }
+
+            invokeFinalizer(null, err);
+            return true;
+          }
+
+          break;
+
+        case CATCHING:
+        case CATCH_RET_PENDING:
+          if (cs.compareAndSet(curr, State.FINALIZING)) {
+            if (curr != State.CATCHING) {
+              catching.abort(new InterruptedException());
+            }
+
+            invokeFinalizer(null, err);
+            return true;
+          }
+
+          break;
+
+        default:
+          return false;
+      }
     }
-
-    Async pending;
-
-    synchronized (this) {
-      pending = this.pending;
-
-      this.handler  = null;
-      this.catchers = null;
-      this.pending  = null;
-    }
-
-    if (pending != null) {
-      pending.abort(err);
-    }
-
-    try {
-      doFinalize();
-    }
-    catch (Exception e) {
-      // Just discard since the pipeline has already been aborted.
-    }
-
-    return true;
   }
 
-  /*
-   * Receiver API
-   */
-  public void success(Object val) {
-    IFn h;
-
+  private void invokeHandler(Object val) {
     try {
-      // Run in a loop in order to handle synchronous recur* without
-      // hitting stack overflows.
       while (true) {
-        // If the pipeline has been realized already just bail. The most
-        // common scenario for this is if the pipeline has been previously
-        // aborted.
-        synchronized (this) {
-          if (isRealized()) {
-            return;
-          }
-
-          h = this.handler;
+        // First, invoke the handler
+        if (val instanceof JoinedArgs) {
+          val = handler.applyTo(((JoinedArgs) val).seq());
         }
-
-        if (h != null) {
-          if (val instanceof JoinedArgs) {
-            val = h.applyTo(((JoinedArgs) val).seq());
-          }
-          else {
-            val = h.invoke(val);
-          }
-        }
-        // If there is no handler, then the pipeline is done.
         else {
-          // Unbox special values
-          if (val instanceof JoinedArgs) {
-            val = ((JoinedArgs) val).seq();
-          }
-          else if (val instanceof Recur) {
-            val = ((Recur) val).val();
-          }
-
-          try {
-            doFinalize();
-            realizeSuccess(val);
-          }
-          catch (Exception err) {
-            realizeError(err);
-          }
-
-          return;
+          val = handler.invoke(val);
         }
 
-        synchronized (this) {
-          if (val instanceof Recur) {
-            val = ((Recur) val).val();
-          }
-          else {
-            handler = null;
-          }
+        if (val instanceof Recur) {
+          val = ((Recur) val).val();
 
           if (val instanceof Async) {
             pending = (Async) val;
 
-            if (handler != null && pending.observe() && pending.err == null) {
+            // Avoid stack overflow exceptions w/ recur*
+            if (pending.observe() && pending.err == null) {
               val = pending.val;
             }
+            else if (cs.compareAndSet(State.INVOKING, State.ARGS_PENDING)) {
+              pending.receive(new ArgsReceiver());
+              return;
+            }
             else {
-              pending.receive(this);
+              // Another thread aborted the pipeline - bail
+              pending.abort(new InterruptedException());
               return;
             }
           }
         }
-      }
-    }
-    catch (Exception e) {
-      error(e);
-    }
-  }
+        else {
+          if (val instanceof Async) {
+            pending = (Async) val;
 
-  public void error(Exception err) {
-    if (isRealized()) {
-      return;
-    }
+            if (cs.compareAndSet(State.INVOKING, State.RET_PENDING)) {
+              pending.receive(new RetReceiver());
+              return;
+            }
+            else {
+              // Another thread aborted the pipeline - bail
+              pending.abort(new InterruptedException());
+              return;
+            }
+          }
+          else {
+            if (cs.compareAndSet(State.INVOKING, State.FINALIZING)) {
+              invokeFinalizer(val, null);
+            }
 
-    List<Catcher> catchers;
-
-    synchronized (this) {
-      catchers = this.catchers;
-
-      this.handler  = null;
-      this.catchers = null;
-    }
-
-    if (catchers != null) {
-      Iterator<Catcher> i = catchers.iterator();
-
-      try {
-        while (i.hasNext()) {
-          Catcher c = i.next();
-
-          if (c.isMatch(err)) {
-            handle(c.invoke(err));
             return;
           }
         }
+
+        // Ensure still in invoking state before recuring
+        if (cs.get() != State.INVOKING) {
+          return;
+        }
+      }
+    }
+    catch (Exception e) {
+      exceptionThrown(State.INVOKING, e);
+    }
+  }
+
+  private void exceptionThrown(State from, Exception err) {
+    if (catchers != null) {
+      if (cs.compareAndSet(from, State.CATCHING)) {
+        invokeCatchers(err);
+      }
+    }
+    else if (cs.compareAndSet(from, State.FINALIZING)) {
+      invokeFinalizer(null, err);
+    }
+  }
+
+  private void invokeCatchers(Exception err) {
+    try {
+      for (Catcher c: catchers) {
+        if (c.isMatch(err)) {
+          Object val = c.invoke(err);
+
+          if (val instanceof Async) {
+            catching = (Async) val;
+
+            if (cs.compareAndSet(State.CATCHING, State.CATCH_RET_PENDING)) {
+              catching.receive(new CatchReceiver());
+            }
+          }
+          else if (cs.compareAndSet(State.CATCHING, State.FINALIZING)) {
+            invokeFinalizer(val, null);
+          }
+
+          return;
+        }
+      }
+    }
+    catch (Exception e) {
+      err = e;
+    }
+
+    if (cs.compareAndSet(State.CATCHING, State.FINALIZING)) {
+      invokeFinalizer(null, err);
+    }
+  }
+
+  private void invokeFinalizer(Object val, Exception err) {
+    if (finalizer != null) {
+      try {
+        finalizer.invoke();
       }
       catch (Exception e) {
         err = e;
       }
     }
 
-    try {
-      doFinalize();
+    if (err != null) {
       realizeError(err);
     }
-    catch (Exception e) {
-      realizeError(e);
+    else {
+      realizeSuccess(val);
     }
   }
 }
