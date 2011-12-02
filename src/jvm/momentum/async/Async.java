@@ -1,19 +1,45 @@
 package momentum.async;
 
 import clojure.lang.*;
-import java.util.LinkedList;
+import java.util.concurrent.atomic.*;
+import java.util.concurrent.locks.LockSupport;
 
 public abstract class Async<T> extends AFn implements IPending, IDeref, IBlockingDeref {
+
+  static class Node {
+    /*
+     * Next node
+     */
+    final Node next;
+
+    /*
+     * Callback to invoke
+     */
+    final Receiver cb;
+
+    /*
+     * Thread waiting on async object
+     */
+    final Thread th;
+
+    Node(Node next, Receiver cb, Thread t) {
+      this.next = next;
+      this.cb   = cb;
+      this.th   = t;
+    }
+  }
+
+  static final Node REALIZED = new Node(null, null, null);
 
   /*
    * Whether or not the async object is realized
    */
-  volatile boolean isRealized;
+  private final AtomicBoolean isRealized = new AtomicBoolean();
 
   /*
    * Is there a thread waiting for the async object to become realized
    */
-  boolean isBlocked;
+  private boolean isBlocked;
 
   /*
    * The realized value of the async object
@@ -28,7 +54,23 @@ public abstract class Async<T> extends AFn implements IPending, IDeref, IBlockin
   /*
    * The callbacks to invoke when the deferred value becomes realized
    */
-  final LinkedList<Receiver> receivers = new LinkedList<Receiver>();
+  final AtomicReference<Node> head = new AtomicReference<Node>();
+
+  boolean observe() {
+    return isRealized();
+  }
+
+  final public boolean isRealized() {
+    return head.get() == REALIZED;
+  }
+
+  final public boolean isSuccessful() {
+    return isRealized() && err == null;
+  }
+
+  final public boolean isAborted() {
+    return isRealized() && err != null;
+  }
 
   /*
    * Puts a value into the async object
@@ -45,159 +87,116 @@ public abstract class Async<T> extends AFn implements IPending, IDeref, IBlockin
   }
 
   final protected boolean realizeSuccess(T v) {
-    synchronized (this) {
-      if (isRealized) {
-        return false;
-      }
-
-      // Handle the actual value
-      val = v;
-
-      // Mark the async object as realized
-      isRealized = true;
-
-      // Notify any pending threads
-      if (isBlocked) {
-        notifyAll();
-      }
+    if (!isRealized.compareAndSet(false, true)) {
+      return false;
     }
 
+    // Handle the actual value
+    val = v;
     deliverAll(true);
 
     return true;
   }
 
   final protected boolean realizeError(Exception e) {
-    // The synchronization block is required to ensure that there is no race
-    // condition between invoking pending callbacks and registering new ones as
-    // pending.
-    synchronized (this) {
-      if (isRealized) {
-        return false;
-      }
-
-      // First track the error
-      err = e;
-
-      // Mark the async object as realized
-      isRealized = true;
-
-      // Notify any pending threads
-      if (isBlocked) {
-        notifyAll();
-      }
+    if (!isRealized.compareAndSet(false, true)) {
+      return false;
     }
 
+    err = e;
     deliverAll(false);
 
     return true;
   }
 
-  /*
-   * Receivalbe API
-   */
   final public void receive(Receiver r) {
     if (r == null) {
       throw new NullPointerException("Receiver is null");
     }
 
-    // Check to see if the async object is realized yet. The check is actually
-    // done twice if the first one fails, however, the second time around only
-    // the volatile boolean field is checked. The reason why the method is
-    // called the first time around is because isRealized() is a hook point
-    // that is overridden in AsyncSeq (and possibly other subclasses).
-    if (!observe()) {
-      synchronized (this) {
-        // Check to make sure that the object still is not realized now that a
-        // lock has been established, also a lighter check is done than the
-        // first time around.
-        if (!isRealized) {
-          receivers.add(r);
-          return;
-        }
-      }
+    if (listen(r, null)) {
+      deliver(r, err == null);
     }
-
-    deliver(r, err == null);
   }
 
-  boolean observe() {
-    return isRealized;
-  }
+  final private boolean listen(Receiver r, Thread t) {
+    Node curr, node;
 
-  final public boolean isRealized() {
-    return isRealized;
-  }
+    // Clean up the observe concept
+    observe();
 
-  final public boolean isSuccessful() {
-    return isRealized && err == null;
-  }
+    do {
+      curr = head.get();
 
-  final public boolean isAborted() {
-    return isRealized && err != null;
+      // If the async object is already realized, then just deliver it now
+      if (curr == REALIZED) {
+        return true;
+      }
+
+      node = new Node(curr, r, t);
+
+    } while (!head.compareAndSet(curr, node));
+
+    return false;
   }
 
   /*
    * I(Blocking)Deref API
    */
   final public Object deref() {
-    return deref(-1, null);
+    return deref(false, 0, null);
   }
 
   final public Object deref(long ms, Object timeoutValue) {
-    // Wait for the value to become realized
-    if (block(ms)) {
-      if (err != null) {
-        throw Util.runtimeException(err);
-      }
-      else {
-        return val;
-      }
-    }
-
-    return timeoutValue;
+    return deref(true, ms * 1000000, timeoutValue);
   }
 
-  /*
-   * Block for the Async object to become realized for a maximum given time in
-   * ms;
-   */
-  final protected boolean block(long ms) {
-    if (observe()) {
-      return true;
-    }
+  final private Object deref(boolean timed, long nanos, Object timeoutValue) {
+    if (!listen(null, Thread.currentThread())) {
+      long lastTime = timed ? System.nanoTime() : 0L;
 
-    if (ms == 0) {
-      return false;
-    }
+      // Loop & park current thread until the async object is realized
+      do {
+        if (timed) {
+          if (nanos <= 0) {
+            return timeoutValue;
+          }
 
-    synchronized (this) {
-      if (isRealized) {
-        return true;
-      }
+          LockSupport.park(nanos);
 
-      isBlocked = true;
+          long now = System.nanoTime();
 
-      try {
-        if (ms < 0) {
-          wait();
+          nanos -= (now - lastTime);
+          lastTime = now;
         }
         else {
-          wait(ms);
+          LockSupport.park();
         }
-      }
-      catch (InterruptedException e) {
-        throw new RuntimeException(e);
-      }
 
-      return isRealized;
+      } while (head.get() != REALIZED);
+    }
+
+    // Successfully waited for the async object to realize
+    if (err != null) {
+      throw Util.runtimeException(err);
+    }
+    else {
+      return val;
     }
   }
 
   final void deliverAll(boolean success) {
-    Receiver r;
-    while ((r = receivers.poll()) != null) {
-      deliver(r, success);
+    Node curr = head.getAndSet(REALIZED);
+
+    while (curr != null) {
+      if (curr.cb != null) {
+        deliver(curr.cb, success);
+      }
+      else {
+        LockSupport.unpark(curr.th);
+      }
+
+      curr = curr.next;
     }
   }
 

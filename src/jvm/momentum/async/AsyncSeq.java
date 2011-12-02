@@ -43,7 +43,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
     }
 
     synchronized (this) {
-      if (isRealized || pending != null) {
+      if (isRealized() || pending != null) {
         return;
       }
 
@@ -60,7 +60,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
    * async value of some kind, then register a callback on it.
    */
   public boolean observe() {
-    if (isRealized) {
+    if (isRealized()) {
       return true;
     }
 
@@ -71,7 +71,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
       // If the fn is null, then we're already in the process of realizing the
       // sequence
       if (this.fn == null) {
-        return isRealized;
+        return isRealized();
       }
 
       fn = this.fn;
@@ -103,7 +103,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
 
       // The volatile isRealized variable must be read in order to determine if
       // the sequence was realized since registering the reciever
-      return isRealized;
+      return isRealized();
     }
     else {
       // The returned value is a normal object, so the sequence has been

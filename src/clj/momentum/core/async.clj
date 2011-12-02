@@ -289,7 +289,9 @@
 (defn- realize-coll
   [coll ms]
   (if (async-seq? coll)
-    (deref coll ms nil)
+    (if (>= ms 0)
+      (deref coll ms nil)
+      (deref coll))
     coll))
 
 (defn blocking
