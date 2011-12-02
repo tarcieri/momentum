@@ -162,6 +162,12 @@
   (put   [this val] (.put this val))
   (abort [this err] (.abort this err)))
 
+(defn interrupt
+  "Interrupts an asynchronous type with an optionally supplied
+  string. Returns true if successful. Returns false otherwise."
+  ([async-val]     (abort async-val (InterruptedException.)))
+  ([async-val str] (abort async-val (InterruptedException. str))))
+
 (defn success?
   "Returns true if the asynchronous value has been realized
   successfully."
