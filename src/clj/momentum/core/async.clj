@@ -171,13 +171,19 @@
 (defn success?
   "Returns true if the asynchronous value has been realized
   successfully."
-  [^Async async-val]
-  (.isSuccessful async-val))
+  ([^Async async-val] (.isSuccessful async-val))
+  ([v1 v2 & args]
+     (and (success? v1)
+          (success? v2)
+          (every? success? args))))
 
 (defn aborted?
   "Returns true if the asynchronous value has been aborted."
-  [^Async async-val]
-  (.isAborted async-val))
+  ([^Async async-val] (.isAborted async-val))
+  ([v1 v2 & args]
+     (and (aborted? v1)
+          (aborted? v2)
+          (every? aborted? args))))
 
 ;; ==== Async value ====
 

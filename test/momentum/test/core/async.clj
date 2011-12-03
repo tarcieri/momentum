@@ -547,6 +547,33 @@
               (future* (Thread/sleep 40) (reset! res :done))))))
     (is (nil? @res))))
 
+(deftest aborting-joins
+  ;; Downstream aborting
+  (let [val1 (future* (Thread/sleep 20) 1)]
+    (is (thrown-with-msg? Exception #"BOOM"
+          @(join val1 (defer (boom)))))
+    (is (aborted? val1)))
+
+  ;; Upstream aborting
+  (let [val1 (defer 1)
+        val2 (defer 2)]
+    (is (= true (abort (join val1 val2 3) (Exception.))))
+    (is (aborted? val1))
+    (is (aborted? val2)))
+
+  (let [val1 (defer 1)
+        val2 (async-val)]
+    (put val2 :hello)
+    (is (= true (abort (join val1 val2) (Exception.))))
+    (is (aborted? val1))
+    (is (not (aborted? val2))))
+
+  (let [val1 (defer 1)
+        val2 (defer [1 2 3])
+        val3 (async-seq val2)]
+    (is (= true (abort (join val1 val3) (Exception.))))
+    (is (aborted? val1 val2 val3))))
+
 ;; ==== select
 
 (deftest synchronous-selects

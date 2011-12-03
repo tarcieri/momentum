@@ -4,9 +4,6 @@ import clojure.lang.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/*
- * TODO: Figure out how to abort async values in progress
- */
 public class Join extends Async<JoinedArgs> {
 
   class IndexedReceiver implements Receiver {
@@ -22,9 +19,17 @@ public class Join extends Async<JoinedArgs> {
     }
 
     public void error(Exception err) {
-      realizeError(err);
+      if (realizeError(err)) {
+        for (Object o: async) {
+          if (o instanceof Async) {
+            ((Async) o).abort(err);
+          }
+        }
+      }
     }
   }
+
+  final List<Object> async;
 
   /*
    * The list of realized values
@@ -38,14 +43,11 @@ public class Join extends Async<JoinedArgs> {
 
   public Join(List<Object> vs) {
     int idx = 0, delta = 0;
-    Iterator i = vs.iterator();
-    Object o;
 
-    arr = new JoinedArgs(vs);
+    async = vs;
+    arr   = new JoinedArgs(vs);
 
-    while (i.hasNext()) {
-      o = i.next();
-
+    for (Object o: async) {
       if (o instanceof Async) {
         ++delta;
         ((Async) o).receive(new IndexedReceiver(idx));
@@ -57,6 +59,20 @@ public class Join extends Async<JoinedArgs> {
     if (counter.addAndGet(delta) == 0) {
       realizeSuccess(arr);
     }
+  }
+
+  public boolean abort(Exception err) {
+    if (!realizeError(err)) {
+      return false;
+    }
+
+    for (Object o: async) {
+      if (o instanceof Async) {
+        ((Async) o).abort(err);
+      }
+    }
+
+    return true;
   }
 
   void realizeElement(int idx, Object v) {
