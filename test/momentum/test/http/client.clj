@@ -6,7 +6,10 @@
    momentum.http.client)
   (:require
    [momentum.net.server  :as net]
-   [momentum.http.server :as server]))
+   [momentum.http.server :as server])
+  (:import
+   [java.io
+    IOException]))
 
 (defn- connection-tracker
   [app ch]
@@ -716,7 +719,7 @@
          :done    nil))))
 
 ;; If test fails, make sure max time not reached
-(defcoretest pause-resume-with-async-val-api
+(defcoretest ^{:network true} pause-resume-with-async-val-api
   [ch1 ch2 ch3]
   ;; Scumbag server
   (server/start
@@ -736,7 +739,7 @@
            (do
              (close ch1)
              (dn :response [200 {"content-length" "5"} (buffer "Hello")]))))))
-   {:timeout 60})
+   {:timeout 120})
 
   (future
     (dotimes [_ 5]
@@ -777,6 +780,28 @@
        :request :dont-care
        :body    "Hello"
        :abort   :dont-care)))
+
+(defcoretest early-response-body-termination
+  [ch1]
+  (server/start
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :request evt)
+         (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
+         (dn :body (buffer "Hello"))))))
+
+  (let [[_ _ body] @(GET "http://localhost:4040/")
+        body @body more (next body)]
+
+    (is (= (buffer "Hello") (first body)))
+
+    (is (= true (interrupt more)))
+
+    (is (next-msgs
+         ch1
+         :request :dont-care
+         :abort   #(instance? IOException %)))))
 
 ;; (defcoretest exception-handling-request-body)
 ;; Sending request w/ content-length and invalid body length

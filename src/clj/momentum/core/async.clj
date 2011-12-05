@@ -444,7 +444,7 @@
   all of the seqs passed in as they materialize and the key
   referencing the seq."
   (async-seq
-    (doasync (first* (select map))
+    (doasync (first (select* map))
       (fn [[k seq]]
         (if-let [[v & more] seq]
           (cons (map-entry k v) (splice (assoc map k more)))
@@ -526,6 +526,12 @@
               (when (< 0 depth)
                 (recur new-paused? depth)))))))))
 
+(defn- abort-ch
+  [ch err]
+  (when (abort ch err)
+    (when-let [f (.f ch)]
+      (f :abort err))))
+
 (defn- channel-seq
   [ch]
   (async-seq
@@ -536,7 +542,12 @@
             (toggle-availability ch))
           (let [nxt (channel-seq ch)]
             (reset! (.head ch) nxt)
-            (cons v nxt)))))))
+            (cons v nxt))))
+      (catch InterruptedException e
+        (abort-ch ch e))
+      (catch Exception e
+        (abort-ch ch e)
+        (throw e)))))
 
 (defn channel
   "Returns a new channel. Calling seq with a channel returns an

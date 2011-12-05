@@ -52,6 +52,7 @@
 (import-fn #'async/channel)
 (import-fn #'async/close)
 (import-fn #'async/enqueue)
+(import-fn #'async/interrupt)
 (import-fn #'async/join)
 (import-fn #'async/put)
 (import-fn #'async/recur*)
