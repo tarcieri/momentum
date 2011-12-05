@@ -14,36 +14,39 @@
    :else
    (assoc hdrs :body body)))
 
-(defn- handle-response-body
-  [dn body]
-  (doasync body
-    (fn [[chunk & more]]
-      (dn :body (buffer chunk))
-      (when chunk
-        (recur* more)))))
+(defn- handle-request
+  [f dn [hdrs body] ch up]
+  (try
+    (doasync (f (map-request ch hdrs body))
+      (fn [[status hdrs body]]
+        (if (coll? body)
+          (let [type (if (= 101 status) :upgraded :chunked)]
+            (dn :response [status hdrs type])
+            (reset! up (sink dn body)))
+          (dn :response [status hdrs (buffer body)])))
+      (catch Exception e
+        (dn :abort e)))
+    (catch Exception e
+      (dn :abort e))))
 
 (defn endpoint*
   [f]
   (fn [dn _]
-    (let [ch (channel)]
+    (let [ch (channel dn 5)
+          up (atom nil)]
       (fn [evt val]
         (cond
          (= :request evt)
-         (let [[hdrs req-body] val]
-           (doasync (f (map-request ch hdrs req-body))
-             (fn [[status hdrs resp-body]]
-               (if (coll? resp-body)
-                 (let [type (if (= 101 status) :upgraded :chunked)]
-                   (dn :response [status hdrs type])
-                   (handle-response-body dn resp-body))
-                 (dn :response [status hdrs (buffer resp-body)])))
-             (catch Exception err
-               (dn :abort err))))
+         (handle-request f dn val ch up)
 
          (= :body evt)
          (if val
            (put ch val)
-           (close ch)))))))
+           (close ch))
+
+         (#{:pause :resume} evt)
+         (when-let [upstream @up]
+           (upstream evt val)))))))
 
 (defmacro endpoint
   [& routes]
