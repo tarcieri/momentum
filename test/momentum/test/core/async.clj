@@ -110,18 +110,21 @@
            (finally (swap! q #(conj % :1))))
 
          (doasync 3
+           (finally [win?] (swap! q #(conj % :2))))
+
+         (doasync 3
            (catch Exception e (fail))
-           (finally (swap! q #(conj % :2))))
+           (finally (swap! q #(conj % :3))))
 
          (doasync 3
            (catch Exception e (fail))
            (catch RuntimeException e (fail))
-           (finally (swap! q #(conj % :3))))
+           (finally (swap! q #(conj % :4))))
 
          (doasync 2 inc
            (catch Exception e (fail))))
 
-    (is (= [:1 :2 :3] @q))))
+    (is (= [:1 :2 :3 :4] @q))))
 
 (deftest doasync-downstream-aborting
   (let [q    (atom [])
@@ -627,34 +630,40 @@
 
 (deftest handling-async-select-errors
   (let [val1 (async-val)
-        val2 (async-val)
+        val2 (defer-boom)
         res  (atom nil)]
-
-    (future
-      (Thread/sleep 10)
-      (abort val2 (Exception. "BOOM")))
 
     (is (thrown-with-msg? Exception #"BOOM"
           @(doasync (select [val1 val2])
              (fn [_]
                (reset! res :fail)))))
 
+    (is (aborted? val1))
+
     (is (nil? @res)))
 
   (let [val1 (async-val)
-        val2 (async-val)
+        val2 (defer-boom)
         res  (atom nil)]
-
-    (future
-      (Thread/sleep 10)
-      (abort val2 (Exception. "BOOM")))
 
     (is (thrown-with-msg? Exception #"BOOM"
           @(doasync (select {:first val1 :second val2})
              (fn [_]
                (reset! res :fail)))))
 
-    (is (nil? @res)))  )
+    (is (nil? @res))))
+
+(deftest aborting-selects
+  (let [val1 (async-val)
+        val2 (async-val)
+        res  (atom nil)]
+
+    (abort
+     (doasync (select [val1 val2])
+       (fn [_] (reset! res :fail)))
+     BOOM)
+
+    (is (aborted? val1 val2))))
 
 ;; ==== batch
 

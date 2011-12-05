@@ -139,12 +139,15 @@
     AsyncPipeline$Recur
     AsyncVal
     AsyncTransferQueue
-    Join
-    Receiver]
+    Join]
    [java.io
     Writer]))
 
 (declare doasync)
+
+(defn- map-entry
+  [k v]
+  (clojure.lang.MapEntry. k v))
 
 ;; ==== Async common ====
 
@@ -157,10 +160,44 @@
     "Abort an asynchronous type with the supplied exception. Returns
   true if successful. Returns false otherwise."))
 
+(defprotocol Receiver
+  "Protocol for receiving realized async values."
+  (receive [async-type success-fn error-fn]
+    "Register an success callback and an error callback on an
+  asynchronous value. The success callback will be invoked with the
+  value that the asynchronous value is realized with. The error
+  callback will be invoked with the exception that the asynchronous
+  value is aborted with. Only one of the two callbacks will be
+  invoked."))
+
 (extend-type Async
   Realizer
   (put   [this val] (.put this val))
-  (abort [this err] (.abort this err)))
+  (abort [this err] (.abort this err))
+
+  Receiver
+  (receive [async-type success-fn error-fn]
+    (.receive
+     async-type
+     (reify momentum.async.Receiver
+       (success [_ v] (success-fn v))
+       (error [_ err] (error-fn err))))))
+
+(extend-type clojure.lang.MapEntry
+  Receiver
+  (receive [this success-fn error-fn]
+    (receive (val this)
+      #(success-fn (map-entry (key this) %))
+      error-fn)))
+
+(extend-type Object
+  Realizer
+  (put   [_ _] false)
+  (abort [_ _] false)
+
+  Receiver
+  (receive [this success-fn _]
+    (success-fn this)))
 
 (defn interrupt
   "Interrupts an asynchronous type with an optionally supplied
@@ -254,7 +291,7 @@
    seed stages))
 
 (defn- to-catcher
-  [[ _ k b & stmts]]
+  [[_ k b & stmts]]
   `(AsyncPipeline$Catcher. ~k (fn [~b] ~@stmts)))
 
 (defn- wrap-catches
@@ -262,6 +299,12 @@
   (if (seq catches)
     `[~@(map to-catcher catches)]
     `nil))
+
+(defn- to-finally
+  [[_ binding & stmts]]
+  (if (vector? binding)
+    `(fn ~binding ~@stmts)
+    `(fn [_#] ~binding ~@stmts)))
 
 (defmacro doasync
   [seed & clauses]
@@ -273,7 +316,7 @@
         ~(nested-stages seed (rest stages))
         ~(first stages)
         ~(wrap-catches catches)
-        ~(wrap-body (rest finally)))
+        ~(to-finally finally))
       seed)))
 
 ;; ==== Async seq ====
@@ -363,38 +406,37 @@
            ~@body
            (recur* more#))))))
 
+(defn select*
+  [coll]
+  "Returns a collection of the same size as coll containing
+  asynchronous values that will be realized incrementally as the
+  asynchronous values contained by coll become realized."
+  (let [ordered (repeatedly (count coll) async-val)
+        index   (atom 0)]
+    (doseq [v coll]
+      (receive v
+        #(put (nth ordered (get-and-swap! index inc)) %)
+        #(abort (nth ordered (get-and-swap! index inc)) %)))
+    ordered))
+
 (defn- select-seq
-  [vals]
-  (when (seq vals)
+  [coll ordered]
+  (when (seq ordered)
     (async-seq
-      (doasync (first vals)
-        #(cons % (select-seq (next vals)))))))
-
-(defn- map-entry
-  [k v]
-  (clojure.lang.MapEntry. k v))
-
-(defn- watch-coll
-  [coll head]
-  (let [entry? (map? coll)]
-    (doseq [el coll]
-      (doasync (if entry? (val el) el)
-        (fn [v]
-          (when-let [async-val (atomic-pop! head)]
-            (if entry?
-              (put async-val (map-entry (key el) v))
-              (put async-val v))))
+      (doasync (first ordered)
+        (fn [val]
+          (cons val (select-seq coll (next ordered))))
+        (catch InterruptedException e
+          (doseq [val coll] (abort val e)))
         (catch Exception e
-          (when-let [async-val (atomic-pop! head)]
-            (abort async-val e)))))))
+          (doseq [val coll] (abort val e))
+          (throw e))))))
 
 (defn select
   "Returns an async seq representing the values of the passed
   collection in the order that they are materialized."
   [coll]
-  (let [results (repeatedly (count coll) #(async-val))]
-    (watch-coll coll (atom results))
-    (select-seq results)))
+  (select-seq coll (select* coll)))
 
 (defn splice
   [map]

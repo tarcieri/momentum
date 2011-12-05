@@ -324,7 +324,7 @@ public final class AsyncPipeline extends Async<Object> {
   private void invokeFinalizer(Object val, Exception err) {
     if (finalizer != null) {
       try {
-        finalizer.invoke();
+        finalizer.invoke(err == null);
       }
       catch (Exception e) {
         err = e;
