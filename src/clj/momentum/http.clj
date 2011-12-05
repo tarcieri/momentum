@@ -6,7 +6,3 @@
 
 (import-fn #'response/respond)
 (import-macro #'endpoint/endpoint)
-
-(defn websocket?
-  [request]
-  (= "websocket" (request "upgrade")))
