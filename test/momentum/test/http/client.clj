@@ -528,7 +528,8 @@
                     :query-string   ""
                     :request-method method
                     :remote-addr    :dont-care
-                    :local-addr     :dont-care} nil]
+                    :local-addr     :dont-care
+                    "host"          "localhost"} nil]
          :done nil))))
 
 (defcoretest passing-headers-to-deferred-request
@@ -561,11 +562,11 @@
   [ch1]
   (start-hello-world-app ch1)
 
-  (GET "/" {:host "localhost" :port 4040})
+  (GET "http://localhost:4040")
 
   (is (next-msgs
        ch1
-       :request [#(includes-hdrs {:path-info "/"} %) nil])))
+       :request [#(includes-hdrs {:path-info "/" "host" "localhost"} %) nil])))
 
 (defcoretest handling-chunked-response-bodies-with-async-val-api
   [ch1]

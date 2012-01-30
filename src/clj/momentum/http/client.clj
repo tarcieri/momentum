@@ -256,8 +256,10 @@
   [uri]
   (when uri
     (let [uri  (URI. uri)
+          host (.getHost uri)
           port (.getPort uri)]
-      {:host         (.getHost uri)
+      {:host         host
+       "host"        host
        :port         (if (> port 0) port)
        :path-info    (.getPath uri)
        :script-name  ""
