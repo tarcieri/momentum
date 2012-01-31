@@ -811,7 +811,7 @@ public final class HttpParser extends AFn {
 
     try {
       parseLoop: {
-        %% getkey buf.get(p);
+        %% getkey buf.getUnsigned(p);
         %% write exec;
       }
     }

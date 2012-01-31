@@ -2977,7 +2977,7 @@ static final int http_en_main = 1;
 		continue _goto;
 	}
 case 1:
-	_widec = ( buf.get(p));
+	_widec = ( buf.getUnsigned(p));
 	_keys = _http_cond_offsets[cs]*2
 ;	_klen = _http_cond_lengths[cs];
 	if ( _klen > 0 ) {
@@ -2996,7 +2996,7 @@ case 1:
 			else {
 				switch ( _http_cond_spaces[_http_cond_offsets[cs] + ((_mid - _keys)>>1)] ) {
 	case 0: {
-		_widec = 65536 + (( buf.get(p)) - 0);
+		_widec = 65536 + (( buf.getUnsigned(p)) - 0);
 		if ( 
 // line 448 "src/rl/momentum/http/HttpParser.rl"
 
@@ -3443,7 +3443,7 @@ case 1:
 // line 262 "src/rl/momentum/http/HttpParser.rl"
 	{
       status *= 10;
-      status += ( buf.get(p)) - '0';
+      status += ( buf.getUnsigned(p)) - '0';
     }
 	break;
 	case 91:
@@ -3456,7 +3456,7 @@ case 1:
 // line 271 "src/rl/momentum/http/HttpParser.rl"
 	{
       httpMajor *= 10;
-      httpMajor += ( buf.get(p)) - '0';
+      httpMajor += ( buf.getUnsigned(p)) - '0';
 
       if (httpMajor > 999) {
         throw new HttpParserException("The HTTP major version is invalid.");
@@ -3467,7 +3467,7 @@ case 1:
 // line 280 "src/rl/momentum/http/HttpParser.rl"
 	{
       httpMinor *= 10;
-      httpMinor += ( buf.get(p)) - '0';
+      httpMinor += ( buf.getUnsigned(p)) - '0';
 
       if (httpMinor > 999) {
         throw new HttpParserException("The HTTP minor version is invalid.");
@@ -3505,7 +3505,7 @@ case 1:
       }
 
       contentLength *= 10;
-      contentLength += ( buf.get(p)) - '0';
+      contentLength += ( buf.getUnsigned(p)) - '0';
     }
 	break;
 	case 97:
@@ -3753,7 +3753,7 @@ case 1:
       }
 
       contentLength *= 16;
-      contentLength += HEX_MAP[( buf.get(p))];
+      contentLength += HEX_MAP[( buf.getUnsigned(p))];
     }
 	break;
 	case 112:
