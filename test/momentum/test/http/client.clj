@@ -165,6 +165,49 @@
                                        "baz" ["1" "2" "3"]} %) ""]
        :done nil)))
 
+(defcoretest header-assoc!-regression
+  [ch1]
+  (server/start
+   (fn [dn _]
+     (fn [evt val]
+       (when (= :request evt)
+         (dn :response [200 {"date"             "Tue, 31 Jan 2012 05:48:17 GMT"
+                             "server"           "Apache"
+                             "content-location" "index.en.html"
+                             "vary"             "negotiate,accept-language,Accept-Encoding"
+                             "tcn"              "choice"
+                             "last-modified"    "Tue, 31 Jan 2012 03:39:36 GMT"
+                             "etag"             "3885-4b7cab6438e00"
+                             "accept-ranges"    "bytes"
+                             "content-length"   "5"}
+                        (buffer "Hello")])))))
+
+  (connect
+   (fn [dn _]
+     (fn [evt val]
+       (cond
+        (= :open evt)
+        (dn :request [{:request-method "GET"
+                       :path-info      "/"}])
+
+        (= :response evt)
+        (enqueue ch1 [evt val]))))
+   {:host "127.0.0.1" :port 4040})
+
+  (is (next-msgs
+       ch1
+       :response [200 {:http-version      [1 1]
+                       "date"             "Tue, 31 Jan 2012 05:48:17 GMT"
+                       "server"           "Apache"
+                       "content-location" "index.en.html"
+                       "vary"             "negotiate,accept-language,Accept-Encoding"
+                       "tcn"              "choice"
+                       "last-modified"    "Tue, 31 Jan 2012 03:39:36 GMT"
+                       "etag"             "3885-4b7cab6438e00"
+                       "accept-ranges"    "bytes"
+                       "content-length"   "5"}
+                  "Hello"])))
+
 (defcoretest receiving-a-chunked-body
   [ch1]
   (server/start

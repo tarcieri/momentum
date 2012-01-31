@@ -40,13 +40,13 @@
 
   action end_header_value {
       if (headerValue != null) {
-          callback.header(headers, headerName, headerValue.materializeStr());
+          headers = callback.header(headers, headerName, headerValue.materializeStr());
 
           headerName  = null;
           headerValue = null;
       }
       else if (headerName != null) {
-          callback.header(headers, headerName, HttpParser.EMPTY_STRING);
+          headers = callback.header(headers, headerName, HttpParser.EMPTY_STRING);
           headerName = null;
       }
   }

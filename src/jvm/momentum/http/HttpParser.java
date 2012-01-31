@@ -3528,7 +3528,7 @@ case 1:
 
       headerName  = null;
       headerValue = null;
-      callback.header(headers, HDR_CONTENT_LENGTH, String.valueOf(contentLength));
+      headers     = callback.header(headers, HDR_CONTENT_LENGTH, String.valueOf(contentLength));
     }
 	break;
 	case 99:
@@ -3542,7 +3542,7 @@ case 1:
 
       headerName  = null;
       headerValue = null;
-      callback.header(headers, HDR_TRANSFER_ENCODING, VAL_CHUNKED);
+      headers     = callback.header(headers, HDR_TRANSFER_ENCODING, VAL_CHUNKED);
     }
 	break;
 	case 100:
@@ -3552,7 +3552,7 @@ case 1:
 
       headerName  = null;
       headerValue = null;
-      callback.header(headers, HDR_CONNECTION, VAL_CLOSE);
+      headers     = callback.header(headers, HDR_CONNECTION, VAL_CLOSE);
     }
 	break;
 	case 101:
@@ -3562,7 +3562,7 @@ case 1:
 
       headerName  = null;
       headerValue = null;
-      callback.header(headers, HDR_CONNECTION, VAL_UPGRADE);
+      headers     = callback.header(headers, HDR_CONNECTION, VAL_UPGRADE);
     }
 	break;
 	case 102:
@@ -3574,7 +3574,7 @@ case 1:
 
       headerName  = null;
       headerValue = null;
-      callback.header(headers, HDR_EXPECT, VAL_100_CONTINUE);
+      headers     = callback.header(headers, HDR_EXPECT, VAL_100_CONTINUE);
     }
 	break;
 	case 103:
@@ -3829,13 +3829,13 @@ case 1:
 // line 41 "src/rl/momentum/http/common.rl"
 	{
       if (headerValue != null) {
-          callback.header(headers, headerName, headerValue.materializeStr());
+          headers = callback.header(headers, headerName, headerValue.materializeStr());
 
           headerName  = null;
           headerValue = null;
       }
       else if (headerName != null) {
-          callback.header(headers, headerName, HttpParser.EMPTY_STRING);
+          headers = callback.header(headers, headerName, HttpParser.EMPTY_STRING);
           headerName = null;
       }
   }

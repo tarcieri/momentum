@@ -330,7 +330,7 @@ public final class HttpParser extends AFn {
 
       headerName  = null;
       headerValue = null;
-      callback.header(headers, HDR_CONTENT_LENGTH, String.valueOf(contentLength));
+      headers     = callback.header(headers, HDR_CONTENT_LENGTH, String.valueOf(contentLength));
     }
 
     action end_transfer_encoding_chunked {
@@ -342,7 +342,7 @@ public final class HttpParser extends AFn {
 
       headerName  = null;
       headerValue = null;
-      callback.header(headers, HDR_TRANSFER_ENCODING, VAL_CHUNKED);
+      headers     = callback.header(headers, HDR_TRANSFER_ENCODING, VAL_CHUNKED);
     }
 
     action end_connection_close {
@@ -350,7 +350,7 @@ public final class HttpParser extends AFn {
 
       headerName  = null;
       headerValue = null;
-      callback.header(headers, HDR_CONNECTION, VAL_CLOSE);
+      headers     = callback.header(headers, HDR_CONNECTION, VAL_CLOSE);
     }
 
     action end_connection_upgrade {
@@ -358,7 +358,7 @@ public final class HttpParser extends AFn {
 
       headerName  = null;
       headerValue = null;
-      callback.header(headers, HDR_CONNECTION, VAL_UPGRADE);
+      headers     = callback.header(headers, HDR_CONNECTION, VAL_UPGRADE);
     }
 
     action end_expect_continue {
@@ -368,7 +368,7 @@ public final class HttpParser extends AFn {
 
       headerName  = null;
       headerValue = null;
-      callback.header(headers, HDR_EXPECT, VAL_100_CONTINUE);
+      headers     = callback.header(headers, HDR_EXPECT, VAL_100_CONTINUE);
     }
 
     action start_head {
