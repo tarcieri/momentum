@@ -438,7 +438,13 @@
              "Content-Length: 5\r\n\r\n" ;; 37
              "Hell")                     ;; 41
         "o"]
-       :request [(assoc post-request "content-length" "5") "Hello"])))
+       :request [(assoc post-request "content-length" "5") "Hello"]))
+
+  (is (parsed
+       [(str "POST / HTTP/1.1\r\n"
+             "Content-Length: 12\r\n\r\n")
+        "こにちは"]
+       :request [(assoc post-request "content-length" "12") "こにちは"])))
 
 (deftest parsing-chunked-bodies
   (is (parsed
