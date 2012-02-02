@@ -26,6 +26,7 @@
      chunked?
      head?
      expecting-100?
+     body-until-close?
      queue
      opts])
 
@@ -40,6 +41,7 @@
    false            ;; chunked?
    false            ;; head?
    false            ;; expecting-100?
+   false            ;; body-until-close?
    queue            ;; queue
    opts))           ;; opts
 
@@ -70,7 +72,8 @@
     ;; Maybe the upstream should be reset to nil
     (when (exchange-complete? current-state)
       (upstream :done nil)
-      (downstream :close (not (.keepalive? current-state))))))
+      (downstream :close (not (.keepalive? current-state)))
+      true)))
 
 (defn- stream-or-finalize-response
   [state evt chunk current-state]
@@ -105,7 +108,11 @@
     (swap-then!
      state
      (fn [current-state]
-       (let [keepalive?
+       (let [until-close?
+             (and (= :chunked body)
+                  (not (.head? current-state))
+                  (body-until-close? hdrs))
+             keepalive?
              (and (.keepalive? current-state)
                   (keepalive-response? response (.head? current-state)))]
          (cond
@@ -116,24 +123,27 @@
           ;; body through
           (and (not (.head? current-state)) (= :chunked body))
           (assoc current-state
-            :keepalive? keepalive?
-            :next-up-fn stream-or-finalize-response)
+            :keepalive?        keepalive?
+            :body-until-close? until-close?
+            :next-up-fn        stream-or-finalize-response)
 
           ;; If the exchange is waiting for the response to complete
           ;; then just finish everything up
           (= awaiting-response (.next-dn-fn current-state))
           (do
             (assoc current-state
-              :keepalive? keepalive?
-              :next-dn-fn exchange-complete
-              :next-up-fn exchange-complete))
+              :keepalive?        keepalive?
+              :body-until-close? until-close?
+              :next-dn-fn        exchange-complete
+              :next-up-fn        exchange-complete))
 
           ;; Otherwise, just mark the request as alone
           :else
           (do
             (assoc current-state
-             :keepalive? keepalive?
-             :next-up-fn awaiting-request)))))
+              :keepalive?        keepalive?
+              :body-until-close? until-close?
+              :next-up-fn         awaiting-request)))))
      (fn [current-state]
        (upstream :response response)
        (maybe-finalize-exchange current-state)))))
@@ -224,8 +234,14 @@
             (next-up evt (dissoc val :exchange-count))
 
             (= :close evt)
-            (when (not= exchange-complete (.next-up-fn current-state))
-              (throw (Exception. "Connection reset by peer")))
+            (do
+              ;; If we're streaming the body until close, simulate a
+              ;; final chunk event
+              (if (.body-until-close? current-state)
+                (when-not (stream-or-finalize-response state :body nil current-state)
+                  (throw (Exception. "Connection reset by peer")))
+                (when (not= exchange-complete (.next-up-fn current-state))
+                  (throw (Exception. "Connection reset by peer")))))
 
             (= :abort evt)
             (next-up evt val)
@@ -307,10 +323,7 @@
               (upstream evt val))
 
             (= :abort evt)
-            (do
-              ;; (println "======== CLIENT")
-              ;; (.printStackTrace val)
-              (abort resp val))
+            (abort resp val)
 
             :else
             (when-not (#{:done} evt)
@@ -318,8 +331,7 @@
 
      ;; Extract the connection options
      (select-keys hdrs [:host :port]))
-    resp)
-  )
+    resp))
 
 (defn request
   ([hdrs]

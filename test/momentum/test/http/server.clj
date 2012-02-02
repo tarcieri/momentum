@@ -559,6 +559,31 @@
 
     (is (closed-socket?))))
 
+(defcoretest returning-connection-close-terminates-connection-multiple-chunks
+  [ch1]
+  (start
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :request evt)
+         (dn :response [200 {"connection" "close"} :chunked])
+         (future
+           (Thread/sleep 20)
+           (dn :body (buffer "hello "))
+           (Thread/sleep 40)
+           (dn :body (buffer "world"))
+           (dn :body nil))))))
+
+  (with-socket
+    (write-socket "GET / HTTP/1.1\r\n\r\n")
+
+    (is (receiving
+         "HTTP/1.1 200 OK\r\n"
+         "connection: close\r\n\r\n"
+         "hello world"))
+
+    (is (closed-socket?))))
+
 (defcoretest returning-connection-close-and-chunks
   [ch1]
   (start

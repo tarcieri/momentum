@@ -53,7 +53,7 @@
 
   # ==== TOKENS ====
 
-        CRLF = "\r\n";
+        CRLF = "\r" ? "\n"; # Fuck you news.ycombinator.com
          CTL = (cntrl | 127);
         LWSP = " " | "\t";
          LWS = CRLF ? LWSP *;

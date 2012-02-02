@@ -240,6 +240,36 @@
 
   (is (no-msgs ch1)))
 
+(defcoretest receiving-a-chunked-body-connection-close
+  [ch1]
+  (server/start
+   (fn [dn _]
+     (fn [evt val]
+       (when (= :request evt)
+         (dn :response [200 {"connection" "close"} :chunked])
+         (future
+           (Thread/sleep 20)
+           (dn :body (buffer "hello "))
+           (Thread/sleep 40)
+           (dn :body (buffer "world"))
+           (dn :body nil))))))
+
+  (connect
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :open evt)
+         (dn :request [{:request-method "GET" :path-info "/"} nil]))))
+   {:host "127.0.0.1" :port 4040})
+
+  (is (next-msgs
+       ch1
+       :open     :dont-care
+       :response [200 #(includes-hdrs {"connection" "close"} %) :chunked]
+       :body     "hello "
+       :body     "world"
+       :body     nil)))
+
 (defcoretest sending-a-chunked-body
   [ch1 ch2]
   (start-hello-world-app ch1)

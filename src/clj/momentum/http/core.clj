@@ -118,6 +118,11 @@
             (= "chunked" (maybe-lower-case transfer-encoding))
             (not (status-expects-body? status)))))))
 
+(defn body-until-close?
+  [headers]
+  (and (not (= "chunked" (maybe-lower-case (headers "transfer-encoding"))))
+       (nil? (headers "content-length"))))
+
 (defn is-100?
   [[status]]
   (= 100 status))

@@ -218,7 +218,7 @@
   identity_body := identity_chunk *
                      $! something_went_wrong;
 
-  untracked_body := any $ handle_untracked_body;
+  untracked_body := any * $ handle_untracked_body;
 
   # === Upgraded connections
   upgraded := any * $ handle_message;
