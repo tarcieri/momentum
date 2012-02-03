@@ -49,3 +49,6 @@
 
       (is (= (to-string (response-body))
              "HelloWorld")))))
+
+;; TODO:
+;; * TE:chunked header is stripped
