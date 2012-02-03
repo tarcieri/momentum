@@ -112,14 +112,14 @@ public final class AsyncPipeline extends Async<Object> {
   /*
    * Pending normal return async value.
    */
-  Async pending;
+  IAsync pending;
 
   /*
    * Pending return value from catch expr. Cannot be combined with
    * pending as it is possible for a thread to set pending after caught
    * has been set
    */
-  Async catching;
+  IAsync catching;
 
   /*
    * Callback to invoke once the seed value is realized
@@ -141,8 +141,8 @@ public final class AsyncPipeline extends Async<Object> {
     catchers  = c;
     finalizer = f;
 
-    if (seed instanceof Async) {
-      pending = (Async) seed;
+    if (seed instanceof IAsync) {
+      pending = (IAsync) seed;
 
       if (handler != null) {
         cs = new AtomicReference<State>(State.ARGS_PENDING);
@@ -228,12 +228,12 @@ public final class AsyncPipeline extends Async<Object> {
         if (val instanceof Recur) {
           val = ((Recur) val).val();
 
-          if (val instanceof Async) {
-            pending = (Async) val;
+          if (val instanceof IAsync) {
+            pending = (IAsync) val;
 
             // Avoid stack overflow exceptions w/ recur*
-            if (pending.observe() && pending.err == null) {
-              val = pending.val;
+            if (pending.observe() && pending.err() == null) {
+              val = pending.val();
             }
             else if (cs.compareAndSet(State.INVOKING, State.ARGS_PENDING)) {
               pending.receive(new ArgsReceiver());
@@ -247,8 +247,8 @@ public final class AsyncPipeline extends Async<Object> {
           }
         }
         else {
-          if (val instanceof Async) {
-            pending = (Async) val;
+          if (val instanceof IAsync) {
+            pending = (IAsync) val;
 
             if (cs.compareAndSet(State.INVOKING, State.RET_PENDING)) {
               pending.receive(new RetReceiver());
@@ -297,8 +297,8 @@ public final class AsyncPipeline extends Async<Object> {
         if (c.isMatch(err)) {
           Object val = c.invoke(err);
 
-          if (val instanceof Async) {
-            catching = (Async) val;
+          if (val instanceof IAsync) {
+            catching = (IAsync) val;
 
             if (cs.compareAndSet(State.CATCHING, State.CATCH_RET_PENDING)) {
               catching.receive(new CatchReceiver());

@@ -23,7 +23,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
   /*
    * Pending async value that will realize the seq
    */
-  Async pending;
+  IAsync pending;
 
   public AsyncSeq(IFn f) {
     fn = f;
@@ -42,8 +42,8 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
     try {
       Object ret = fn.invoke();
 
-      if (ret instanceof Async) {
-        pending = (Async) ret;
+      if (ret instanceof IAsync) {
+        pending = (IAsync) ret;
 
         if (cs.compareAndSet(State.INVOKING, State.PENDING)) {
           pending.receive(this);

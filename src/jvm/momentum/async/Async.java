@@ -4,7 +4,7 @@ import clojure.lang.*;
 import java.util.concurrent.atomic.*;
 import java.util.concurrent.locks.LockSupport;
 
-public abstract class Async<T> extends AFn implements IPending, IDeref, IBlockingDeref {
+public abstract class Async<T> extends AFn implements IAsync {
 
   static class Node {
     /*
@@ -51,12 +51,20 @@ public abstract class Async<T> extends AFn implements IPending, IDeref, IBlockin
    */
   Exception err;
 
+  public T val() {
+    return val;
+  }
+
+  public Exception err() {
+    return err;
+  }
+
   /*
    * The callbacks to invoke when the deferred value becomes realized
    */
   final AtomicReference<Node> head = new AtomicReference<Node>();
 
-  boolean observe() {
+  public boolean observe() {
     return isRealized();
   }
 
