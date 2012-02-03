@@ -4,7 +4,7 @@ import clojure.lang.*;
 import java.util.*;
 import java.util.concurrent.atomic.*;
 
-public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, List, Receiver {
+public class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, List, Receiver {
 
   enum State {
     FRESH,
@@ -30,11 +30,19 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
     cs = new AtomicReference<State>(State.FRESH);
   }
 
+  public AsyncSeq(IAsync p) {
+    fn = null;
+    cs = new AtomicReference<State>(State.PENDING);
+
+    pending = p;
+    pending.receive(this);
+  }
+
   /*
    * Evaluate the body of the async seq only once. If the return value is an
    * async value of some kind, then register a callback on it.
    */
-  public boolean observe() {
+  public final boolean observe() {
     if (!cs.compareAndSet(State.FRESH, State.INVOKING)) {
       return isRealized();
     }
@@ -70,7 +78,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
   }
 
   // Find the first unrealized element and abort it
-  public boolean abort(Exception err) {
+  public final boolean abort(Exception err) {
     ISeq next;
     AsyncSeq curr = this;
 
@@ -100,7 +108,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
     }
   }
 
-  private void realizeSeq(Object val) {
+  private final void realizeSeq(Object val) {
     try {
       realizeSuccess(RT.seq(val));
     }
@@ -112,7 +120,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
   /*
    * Receiver API
    */
-  public void success(Object val) {
+  public final void success(Object val) {
     if (cs.getAndSet(State.FINAL) == State.FINAL) {
       return;
     }
@@ -120,7 +128,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
     realizeSeq(val);
   }
 
-  public void error(Exception e) {
+  public final void error(Exception e) {
     if (cs.getAndSet(State.FINAL) == State.FINAL) {
       return;
     }
@@ -128,7 +136,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
     realizeError(e);
   }
 
-  void ensureSuccess() {
+  final void ensureSuccess() {
     if (observe()) {
       if (err != null) {
         throw Util.runtimeException(err);
@@ -143,7 +151,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
   /*
    * ISeq API
    */
-  public ISeq seq() {
+  final public ISeq seq() {
     if (isRealized()) {
       if (err != null) {
         throw Util.runtimeException(err);
@@ -155,7 +163,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
     return this;
   }
 
-  public Object first() {
+  final public Object first() {
     ensureSuccess();
 
     if (val == null) {
@@ -165,7 +173,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
     return val.first();
   }
 
-  public ISeq next() {
+  final public ISeq next() {
     ensureSuccess();
 
     if (val == null) {
@@ -175,7 +183,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
     return val.next();
   }
 
-  public ISeq more() {
+  final public ISeq more() {
     ensureSuccess();
 
     if (val == null) {
@@ -185,11 +193,11 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
     return val.more();
   }
 
-  public ISeq cons(Object o) {
+  final public ISeq cons(Object o) {
     return new Cons(o, seq());
   }
 
-  public int count() {
+  final public int count() {
     int c = 0;
 
 	  for (ISeq s = seq(); s != null; s = s.next()) {
@@ -199,15 +207,15 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
     return c;
   }
 
-  public IPersistentCollection empty() {
+  final public IPersistentCollection empty() {
     return PersistentList.EMPTY;
   }
 
-  public boolean equiv(Object o) {
+  final public boolean equiv(Object o) {
     return equals(o);
   }
 
-  public boolean equals(Object o) {
+  final public boolean equals(Object o) {
     ensureSuccess();
 
     if (val != null) {
@@ -222,35 +230,35 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
    * java.util.Collection API
    */
 
-  public Object[] toArray() {
+  final public Object[] toArray() {
   	return RT.seqToArray(seq());
   }
 
-  public boolean add(Object o) {
+  final public boolean add(Object o) {
   	throw new UnsupportedOperationException();
   }
 
-  public boolean remove(Object o) {
+  final public boolean remove(Object o) {
   	throw new UnsupportedOperationException();
   }
 
-  public boolean addAll(Collection c) {
+  final public boolean addAll(Collection c) {
   	throw new UnsupportedOperationException();
   }
 
-  public void clear() {
+  final public void clear() {
   	throw new UnsupportedOperationException();
   }
 
-  public boolean retainAll(Collection c) {
+  final public boolean retainAll(Collection c) {
   	throw new UnsupportedOperationException();
   }
 
-  public boolean removeAll(Collection c) {
+  final public boolean removeAll(Collection c) {
   	throw new UnsupportedOperationException();
   }
 
-  public boolean containsAll(Collection c) {
+  final public boolean containsAll(Collection c) {
   	for (Object o : c) {
   		if (!contains(o)) {
   			return false;
@@ -260,7 +268,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
   	return true;
   }
 
-  public Object[] toArray(Object[] a) {
+  final public Object[] toArray(Object[] a) {
   	if (a.length >= count()) {
   		ISeq s = seq();
 
@@ -279,15 +287,15 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
     }
   }
 
-  public int size() {
+  final public int size() {
   	return count();
   }
 
-  public boolean isEmpty() {
+  final public boolean isEmpty() {
   	return seq() == null;
   }
 
-  public boolean contains(Object o) {
+  final public boolean contains(Object o) {
   	for (ISeq s = seq(); s != null; s = s.next()) {
   		if (Util.equiv(s.first(), o)) {
   			return true;
@@ -297,7 +305,7 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
   	return false;
   }
 
-  public Iterator iterator() {
+  final public Iterator iterator() {
   	return new SeqIterator(seq());
   }
 
@@ -306,23 +314,23 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
    */
 
   @SuppressWarnings("unchecked")
-  List reify() {
+  final List reify() {
     return new ArrayList<Object>(this);
   }
 
-  public List subList(int fromIndex, int toIndex) {
+  final public List subList(int fromIndex, int toIndex) {
   	return reify().subList(fromIndex, toIndex);
   }
 
-  public Object set(int index, Object element) {
+  final public Object set(int index, Object element) {
   	throw new UnsupportedOperationException();
   }
 
-  public Object remove(int index) {
+  final public Object remove(int index) {
   	throw new UnsupportedOperationException();
   }
 
-  public int indexOf(Object o) {
+  final public int indexOf(Object o) {
   	ISeq s = seq();
 
   	for (int i = 0; s != null; s = s.next(), i++) {
@@ -334,27 +342,27 @@ public final class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, Lis
   	return -1;
   }
 
-  public int lastIndexOf(Object o) {
+  final public int lastIndexOf(Object o) {
   	return reify().lastIndexOf(o);
   }
 
-  public ListIterator listIterator() {
+  final public ListIterator listIterator() {
   	return reify().listIterator();
   }
 
-  public ListIterator listIterator(int index) {
+  final public ListIterator listIterator(int index) {
   	return reify().listIterator(index);
   }
 
-  public Object get(int index) {
+  final public Object get(int index) {
   	return RT.nth(this, index);
   }
 
-  public void add(int index, Object element) {
+  final public void add(int index, Object element) {
   	throw new UnsupportedOperationException();
   }
 
-  public boolean addAll(int index, Collection c) {
+  final public boolean addAll(int index, Collection c) {
   	throw new UnsupportedOperationException();
   }
 
