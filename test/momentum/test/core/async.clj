@@ -789,3 +789,13 @@
   (let [coll    (seq [1 2 3])
         spliced (splice {:ch1 coll})]
     (is (= coll (get spliced :ch1)))))
+
+(deftest pulling-the-last-item-in-a-spliced-seq-removes-the-key
+  (let [ch (channel)
+        spliced (splice {:ch (seq ch)})]
+    (put ch :omg)
+    (close ch)
+    (doasync spliced
+      (fn [[[k v] & more]]
+        (is (= [k v] [:ch :omg]))
+        (is (nil? (get more :ch)))))))
