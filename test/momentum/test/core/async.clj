@@ -752,3 +752,40 @@
     (is (not (success? val)))
     (is (aborted? val))))
 
+;; ==== splice
+(deftest splice-two-synchronous-seqs
+  (is (= (map
+          (fn [[k v]] [k v])
+          (splice {:a [1 2] :b [4 5]}))
+         (list [:a 1] [:a 2] [:b 4] [:b 5]))))
+
+(deftest splice-two-asynchronous-seqs
+  (let [ch1     (channel)
+        ch2     (channel)
+        spliced (splice {:ch1 (seq ch1) :ch2 (seq ch2)})]
+
+    (defer (put ch1 :omg))
+
+    @(doasync spliced
+       (fn [[el & more]]
+         (is (= [:ch1 :omg] el))
+         (defer (put ch2 :w0t))
+         more)
+       (fn [[el & more]]
+         (is (= [:ch2 :w0t] el))
+         (close ch2)
+         more))))
+
+(deftest removing-spliced-seqs
+  (let [ch1     (channel)
+        ch2     (channel)
+        spliced (splice {:ch1 (seq ch1) :ch2 (seq ch2)})
+        spliced (dissoc spliced :ch1)]
+
+    (put ch1 :zomg)
+    (is (= :win (deref spliced 30 :win)))))
+
+(deftest accessing-the-spliced-seqs
+  (let [coll    (seq [1 2 3])
+        spliced (splice {:ch1 coll})]
+    (is (= coll (get spliced :ch1)))))

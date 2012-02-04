@@ -58,6 +58,7 @@
 (import-fn #'async/recur*)
 (import-fn #'async/select)
 (import-fn #'async/sink)
+(import-fn #'async/splice)
 (import-fn #'async/success?)
 
 (import-macro #'async/doasync)

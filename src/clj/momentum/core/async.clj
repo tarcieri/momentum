@@ -139,7 +139,8 @@
     AsyncPipeline$Recur
     AsyncVal
     AsyncTransferQueue
-    Join]
+    Join
+    SplicedAsyncSeq]
    [java.io
     Writer]))
 
@@ -336,10 +337,10 @@
   (instance? AsyncSeq x))
 
 (defn- realize-coll
-  [coll ms]
+  [coll ms default-val]
   (if (async-seq? coll)
     (if (>= ms 0)
-      (deref coll ms nil)
+      (deref coll ms default-val)
       (deref coll))
     coll))
 
@@ -348,12 +349,14 @@
   collection If the sequence is an async sequence, then the current
   thread will wait at most ms milliseconds (or indefinitely if no
   timeout value passed) for the async sequence to realize."
-  ([coll] (blocking coll -1))
-  ([coll ms]
+  ([coll]     (blocking coll -1))
+  ([coll ms]  (blocking coll ms nil))
+  ([coll ms default-val]
      (lazy-seq
-      (let [coll (realize-coll coll ms)]
+      (let [coll (realize-coll (seq coll) ms default-val)]
         (when coll
-          (cons (first coll) (blocking (next coll))))))))
+          (cons (first coll)
+                (blocking (next coll) ms default-val)))))))
 
 (defn first*
   "Returns an async value representing the first item in the
@@ -400,7 +403,7 @@
   (assert (vector? seq-exprs) "a vector for its binding")
   (assert (even? (count seq-exprs)) "an even number of forms in binding vector")
   (let [[binding seq] seq-exprs]
-    `(doasync ~seq
+    `(doasync (seq ~seq)
        (fn [s#]
          (when-let [[~binding & more#] s#]
            ~@body
@@ -443,12 +446,7 @@
   "Returns an async seq that consists of map entries of the values of
   all of the seqs passed in as they materialize and the key
   referencing the seq."
-  (async-seq
-    (doasync (first (select* map))
-      (fn [[k seq]]
-        (if-let [[v & more] seq]
-          (cons (map-entry k v) (splice (assoc map k more)))
-          (splice (dissoc map k)))))))
+  (SplicedAsyncSeq. map))
 
 (defmacro future*
   "Takes a body of expressions and invoke it in another
