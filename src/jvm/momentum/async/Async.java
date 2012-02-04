@@ -170,7 +170,7 @@ public abstract class Async<T> extends AFn implements IAsync {
             return timeoutValue;
           }
 
-          LockSupport.park(nanos);
+          LockSupport.parkNanos(nanos);
 
           long now = System.nanoTime();
 

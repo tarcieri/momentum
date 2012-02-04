@@ -49,14 +49,19 @@
       (inc v)
       v)))
 
-;; ==== doasync
-
 (defn- async-compare-and-inc
   [expected]
   (fn [v]
     (if (= expected v)
       (defer (inc v))
       v)))
+
+;; ==== deref
+
+(deftest deref-with-timeout-works
+  (is (= :timeout (deref (async-val) 50 :timeout))))
+
+;; ==== doasync
 
 (deftest doasync-with-no-stages
   (are [x y] (= x y)
