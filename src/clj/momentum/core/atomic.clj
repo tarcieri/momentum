@@ -29,6 +29,13 @@
   [atom & args]
   `(swap! ~atom (fn [val#] (assoc val# ~@args))))
 
+(defn atomic-queue
+  ([] (atom clojure.lang.PersistentQueue/EMPTY)))
+
+(defn atomic-stack
+  ([]     (atom (list)))
+  ([coll] (atom coll)))
+
 (defn atomic-pop!
   "Atomically pop an element off of a stack. The stack should be
   represented as an atom that references a seq."
@@ -47,3 +54,11 @@
     (let [new-head (cons val seq)]
       (if (compare-and-set! atom seq new-head)
         new-head (recur @atom)))))
+
+(defn atomic-conj!
+  "Atomically add an element onto a collection using conj."
+  [atom val]
+  (loop [coll @atom]
+    (let [new-coll (conj coll val)]
+      (if (compare-and-set! atom coll new-coll)
+        new-coll (recur @atom)))))
