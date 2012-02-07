@@ -429,7 +429,7 @@
        (blocking (async-dec-seq 3))
        (blocking (cons 3 (async-dec-seq 2))))
 
-  (is (= []  (blocking nil)))
+  (is (= nil (blocking nil)))
   (is (= [1] (blocking [1])))
   (is (= [1] (blocking (cons 1 (lazy-seq nil))))))
 
@@ -521,6 +521,27 @@
   (let [ch (channel)]
     (close ch)
     (is (not (put ch :hello)))))
+
+(deftest blocking-channel-seqs-already-closed
+  (let [ch (channel)]
+    (put ch :hello)
+    (put ch :world)
+    (close ch)
+    (is (= (blocking (seq ch))
+           [:hello :world]))))
+
+(deftest blocking-channel-seqs-will-be-closed
+  (let [ch (channel)]
+    (future
+      (Thread/sleep 10)
+      (put ch :hello)
+      (Thread/sleep 10)
+      (put ch :world)
+      (Thread/sleep 10)
+      (close ch))
+
+    (is (= (blocking (seq ch))
+           [:hello :world]))))
 
 ;; ==== join
 
@@ -753,6 +774,7 @@
     (is (aborted? val))))
 
 ;; ==== splice
+
 (deftest splice-two-synchronous-seqs
   (is (= (map
           (fn [[k v]] [k v])
@@ -773,6 +795,7 @@
          more)
        (fn [[el & more]]
          (is (= [:ch2 :w0t] el))
+         (close ch1)
          (close ch2)
          more))))
 
@@ -799,3 +822,88 @@
       (fn [[[k v] & more]]
         (is (= [k v] [:ch :omg]))
         (is (nil? (get more :ch)))))))
+
+(deftest closing-spliced-seq-member-followed-by-more-events
+  (let [ch1     (channel)
+        ch2     (channel)
+        spliced (splice {:ch1 (seq ch1) :ch2 (seq ch2)})]
+
+    (future
+      (Thread/sleep 10)
+      (put ch1 :one)
+      (Thread/sleep 10)
+      (close ch1)
+      (Thread/sleep 10)
+      (put ch2 :two)
+      (Thread/sleep 10)
+      (close ch2))
+
+    @(doasync spliced
+       (fn [[el & more]]
+         (is (= el [:ch1 :one]))
+         more)
+       (fn [[el & more]]
+         (is (= el [:ch2 :two]))
+         more)
+       (fn [coll]
+         (is (nil? coll))))))
+
+(deftest simple-blocking-spliced-async-seq
+  (let [ch1 (channel)
+        ch2 (channel)]
+
+    (future
+      (Thread/sleep 10)
+      (put ch1 :one)
+      (Thread/sleep 10)
+      (put ch2 :two)
+      (Thread/sleep 10)
+      (close ch1)
+      (Thread/sleep 10)
+      (close ch2))
+
+    (is (= (blocking (splice {:ch1 (seq ch1) :ch2 (seq ch2)}))
+           [[:ch1 :one] [:ch2 :two]]))))
+
+(deftest blocking-spliced-seq-closed
+  (let [ch1 (channel)
+        ch2 (channel)]
+
+    (future
+      (Thread/sleep 10)
+      (close ch1)
+      (Thread/sleep 10)
+      (close ch2))
+
+    (is (= [] (blocking (splice {:ch1 (seq ch1) :ch2 (seq ch2)}))))))
+
+(deftest blocking-spliced-seq-assoc
+  (let [ch1 (channel)
+        ch2 (channel)]
+
+    (future
+      (Thread/sleep 10)
+      (put ch1 :one)
+      (close ch1)
+
+      (Thread/sleep 10)
+      (put ch2 :two)
+      (close ch2))
+
+    (is (= [[:ch1 :one] [:ch2 :two]]
+           (assoc (blocking (splice {:ch1 (seq ch1)}))
+             :ch2 (seq ch2))))))
+
+(deftest blocking-spliced-seq-dissoc
+  (let [ch1 (channel)
+        ch2 (channel)]
+
+    (future
+      (Thread/sleep 10)
+      (put ch1 :one)
+      (close ch1))
+
+    (is (= [[:ch1 :one]]
+           (dissoc
+            (blocking (splice {:ch1 (seq ch1) :ch2 (seq ch2)}))
+            :ch2)))))

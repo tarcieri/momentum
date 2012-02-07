@@ -156,7 +156,7 @@ public abstract class Async<T> extends AFn implements IAsync {
   }
 
   final public Object deref(long ms, Object timeoutValue) {
-    return deref(true, ms * 1000000, timeoutValue);
+    return deref(ms > 0, ms * 1000000, timeoutValue);
   }
 
   final private Object deref(boolean timed, long nanos, Object timeoutValue) {

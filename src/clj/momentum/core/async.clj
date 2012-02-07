@@ -279,18 +279,6 @@
       [(conj stages clause) catches finally]))
    [[] [] nil] clauses))
 
-(defn- wrap-body
-  [body]
-  (if (seq body)
-    `(fn [] ~@body)
-    `nil))
-
-(defn- nested-stages
-  [seed stages]
-  (reduce
-   (fn [curr stage] `(doasync ~curr ~stage))
-   seed stages))
-
 (defn- to-catcher
   [[_ k b & stmts]]
   `(AsyncPipeline$Catcher. ~k (fn [~b] ~@stmts)))
@@ -307,17 +295,27 @@
     `(fn ~binding ~@stmts)
     `(fn [_#] ~binding ~@stmts)))
 
+(defn- thread-doasync
+  [stmt [stage & more] catches finally]
+  (if more
+    (thread-doasync
+     `(AsyncPipeline.
+       ~stmt
+       ~stage
+       []
+       nil)
+     more catches finally)
+    `(AsyncPipeline.
+      ~stmt
+      ~stage
+      ~(wrap-catches catches)
+      ~(to-finally finally))))
+
 (defmacro doasync
   [seed & clauses]
-  (let [[stages catches finally] (partition-clauses clauses)
-        stages (reverse stages)]
-
+  (let [[stages catches finally] (partition-clauses clauses)]
     (if (or (seq stages) (seq catches) finally)
-      `(AsyncPipeline.
-        ~(nested-stages seed (rest stages))
-        ~(first stages)
-        ~(wrap-catches catches)
-        ~(to-finally finally))
+      (thread-doasync seed stages catches finally)
       seed)))
 
 ;; ==== Async seq ====
@@ -336,27 +334,65 @@
   [x]
   (instance? AsyncSeq x))
 
-(defn- realize-coll
-  [coll ms default-val]
-  (if (async-seq? coll)
-    (if (>= ms 0)
-      (deref coll ms default-val)
-      (deref coll))
-    coll))
+(defprotocol Blocking
+  (^{:private true} blocking* [coll ms default-val]))
+
+(extend-protocol Blocking
+  nil
+  (blocking* [seq ms default-val] nil)
+
+  clojure.lang.ISeq
+  (blocking* [seq ms default-val]
+    (lazy-seq
+     (when-let [head (first seq)]
+       (cons head (blocking* (next seq) ms default-val)))))
+
+  clojure.lang.Seqable
+  (blocking* [seqable ms default-val]
+    (blocking* (seq seqable) ms default-val))
+
+  AsyncSeq
+  (blocking* [seq ms default-val]
+    (lazy-seq
+     (when-let [coll (deref seq ms (and default-val [default-val]))]
+       (cons (first coll) (blocking* (next coll) ms default-val)))))
+
+  SplicedAsyncSeq
+  (blocking* [spliced ms default-val]
+    (let [blocked-seq
+          (lazy-seq
+           (when-let [coll (deref spliced ms (and default-val [default-val]))]
+             (cons (first coll) (blocking* (next coll) ms default-val))))]
+
+      ;; Implement the various interfaces
+      (reify
+        clojure.lang.Sequential
+
+        clojure.lang.ISeq
+        (first [_]    (first blocked-seq))
+        (next  [_]    (next blocked-seq))
+        (count [_]    (count blocked-seq))
+        (equiv [_ o]  (.equiv blocked-seq o))
+        (seq   [this] (and (seq blocked-seq) this))
+
+        clojure.lang.IPersistentMap
+        (assoc [_ key val]
+          (blocking* (.assoc spliced key val) ms default-val))
+
+        (assocEx [_ key val]
+          (blocking* (.assocEx spliced key val) ms default-val))
+
+        (without [_ key]
+          (blocking* (.without spliced key) ms default-val))))))
 
 (defn blocking
   "Returns a lazy sequence consisting of the items in the passed
   collection If the sequence is an async sequence, then the current
   thread will wait at most ms milliseconds (or indefinitely if no
   timeout value passed) for the async sequence to realize."
-  ([coll]     (blocking coll -1))
-  ([coll ms]  (blocking coll ms nil))
-  ([coll ms default-val]
-     (lazy-seq
-      (let [coll (realize-coll (seq coll) ms default-val)]
-        (when coll
-          (cons (first coll)
-                (blocking (next coll) ms default-val)))))))
+  ([coll]                (blocking* coll -1 nil))
+  ([coll ms]             (blocking* coll ms nil))
+  ([coll ms default-val] (blocking* coll ms default-val)))
 
 (defn first*
   "Returns an async value representing the first item in the

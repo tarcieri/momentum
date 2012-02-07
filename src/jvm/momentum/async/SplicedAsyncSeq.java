@@ -13,7 +13,12 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
     }
 
     public void success(Object val) {
-      realizeEntrySuccess(key, val);
+      if (val == null) {
+        keyClosed(key);
+      }
+      else {
+        realizeEntrySuccess(key, val);
+      }
     }
 
     public void error(Exception err) {
@@ -24,10 +29,13 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
 
   final IPersistentMap map;
 
+  volatile IPersistentMap nextMap;
+
   public SplicedAsyncSeq(IPersistentMap m) {
     super((IAsync) new AsyncVal());
 
-    map = m;
+    map     = m;
+    nextMap = m;
 
     if (map.count() == 0) {
       pending.put(null);
@@ -68,6 +76,15 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
     }
   }
 
+  void keyClosed(Object key) {
+    if (nextMap.count() > 1) {
+      nextMap = nextMap.without(key);
+    }
+    else {
+      pending.put(null);
+    }
+  }
+
   void realizeEntrySuccess(Object key, Object val) {
     ISeq seq, next;
     MapEntry entry;
@@ -82,11 +99,11 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
           pending.put(new Cons(entry, null));
         }
         else {
-          pending.put(new Cons(entry, without(key)));
+          pending.put(new Cons(entry, new SplicedAsyncSeq(nextMap.without(key))));
         }
       }
       else {
-        pending.put(new Cons(entry, assoc(key, next)));
+        pending.put(new Cons(entry, new SplicedAsyncSeq(nextMap.assoc(key, next))));
       }
     }
     else {
@@ -96,7 +113,7 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
         pending.put(new Cons(entry, null));
       }
       else {
-        pending.put(new Cons(entry, without(key)));
+        pending.put(new Cons(entry, new SplicedAsyncSeq(nextMap.without(key))));
       }
     }
   }
