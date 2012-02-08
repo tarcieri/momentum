@@ -33,13 +33,13 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
 
   }
 
-  final LinkedHashMap map;
+  final LinkedHashMap<Object,Object> map;
 
   final AtomicInteger keysRemaining;
 
   final AtomicReference<AsyncVal> asyncVal = new AtomicReference<AsyncVal>();
 
-  public SplicedAsyncSeq(final LinkedHashMap m) {
+  public SplicedAsyncSeq(final LinkedHashMap<Object,Object> m) {
     super(null);
 
     map = m;
@@ -51,7 +51,7 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
 
     asyncVal.set(p);
 
-    for (Entry entry : (Set<Entry>) map.entrySet()) {
+    for (Entry<Object,Object> entry : map.entrySet()) {
 
       // Handle async and sync values differently.
       if (entry.getValue() instanceof IAsync) {
@@ -75,10 +75,10 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
     return p;
   }
 
-  LinkedHashMap cloneMap() {
-    LinkedHashMap ret = new LinkedHashMap(map.size());
+  LinkedHashMap<Object,Object> cloneMap() {
+    LinkedHashMap<Object,Object> ret = new LinkedHashMap<Object,Object>(map.size());
 
-    for (Entry entry : (Set<Entry>) map.entrySet()) {
+    for (Entry<Object,Object> entry : map.entrySet()) {
 
       if (entry.getValue() instanceof AsyncSeq) {
         AsyncSeq seq = (AsyncSeq) entry.getValue();
@@ -159,6 +159,16 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
     }
   }
 
+  void abortSelectedValues(Exception err) {
+    for (Entry<Object,Object> entry : map.entrySet()) {
+      Object val = entry.getValue();
+
+      if (val instanceof IAsync) {
+        ((IAsync)val).abort(err);
+      }
+    }
+  }
+
   void realizeEntryError(Object key, Exception err) {
     AsyncVal p = acquireVal();
 
@@ -167,14 +177,14 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
     }
 
     if (p.abort(err)) {
-      for (Entry entry : (Set<Entry>) map.entrySet()) {
-        Object val = entry.getValue();
-
-        if (key != entry.getKey() && val instanceof IAsync) {
-          ((IAsync)val).abort(err);
-        }
-      }
+      abortSelectedValues(err);
     }
+  }
+
+  public boolean abort(Exception err) {
+    boolean ret = super.abort(err);
+    abortSelectedValues(err);
+    return ret;
   }
 
   /*
@@ -215,7 +225,7 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
    * IPersistentMap interface implementation
    */
   public SplicedAsyncSeq assoc(Object key, Object val) {
-    LinkedHashMap newMap = cloneMap();
+    LinkedHashMap<Object,Object> newMap = cloneMap();
 
     newMap.put(key, val);
 
@@ -231,7 +241,7 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
   }
 
   public SplicedAsyncSeq without(Object key) {
-    LinkedHashMap newMap = cloneMap();
+    LinkedHashMap<Object,Object> newMap = cloneMap();
     newMap.remove(key);
 
     return new SplicedAsyncSeq(newMap);

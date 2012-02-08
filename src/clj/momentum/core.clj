@@ -56,7 +56,6 @@
 (import-fn #'async/join)
 (import-fn #'async/put)
 (import-fn #'async/recur*)
-(import-fn #'async/select)
 (import-fn #'async/sink)
 (import-fn #'async/splice)
 (import-fn #'async/success?)

@@ -433,6 +433,12 @@
   (is (= [1] (blocking [1])))
   (is (= [1] (blocking (cons 1 (lazy-seq nil))))))
 
+(deftest aborting-unrealized-async-seqs
+  (let [s (async-seq (async-val))]
+    (is (= true (abort s BOOM)))
+    (is (aborted? s))
+    (is (= false (abort s BOOM)))))
+
 ;; ==== channels
 
 (deftest using-channels
@@ -603,94 +609,6 @@
     (is (= true (abort (join val1 val3) (Exception.))))
     (is (aborted? val1 val2 val3))))
 
-;; ==== select
-
-(deftest synchronous-selects
-  (are [x] (= (seq x)
-              @(doasync (join (select x) [])
-                 (fn [vals aggregated]
-                   (if-let [[v & more] vals]
-                     (recur* more (conj aggregated v))
-                     (seq aggregated)))))
-
-       [1]
-       [1 2 3 4 5]
-       [1 2 3 4 5 6 7 8 9 10]
-       nil
-       []
-       {}
-       {:foo 1 :bar 2}))
-
-(deftest asynchronous-selects
-  (let [val1 (async-val)
-        val2 (async-val)]
-
-    (future
-      (Thread/sleep 10)
-      (put val2 :hello)
-      (Thread/sleep 10)
-      (put val1 :world))
-
-    (is (= [:hello :world]
-           @(doasync (join (select [val1 val2]) [])
-              (fn [vs agg]
-                (if-let [[v & more] vs]
-                  (recur* more (conj agg v))
-                  agg))))))
-
-  (let [val1 (async-val)
-        val2 (async-val)]
-
-    (future
-      (Thread/sleep 10)
-      (put val2 :hello)
-      (Thread/sleep 10)
-      (put val1 :world))
-
-    (is (= [[:second :hello] [:first :world]]
-           @(doasync (join (select {:first val1 :second val2}) [])
-              (fn [vs agg]
-                (if-let [[v & more] vs]
-                  (recur* more (conj agg v))
-                  agg)))))))
-
-(deftest handling-async-select-errors
-  (let [val1 (async-val)
-        val2 (defer-boom)
-        res  (atom nil)]
-
-    (is (thrown-with-msg? Exception #"BOOM"
-          @(doasync (select [val1 val2])
-             (fn [_]
-               (reset! res :fail)))))
-
-    (is (aborted? val1))
-
-    (is (nil? @res)))
-
-  (let [val1 (async-val)
-        val2 (defer-boom)
-        res  (atom nil)]
-
-    (is (thrown-with-msg? Exception #"BOOM"
-          @(doasync (select {:first val1 :second val2})
-             (fn [_]
-               (reset! res :fail)))))
-
-    (is (nil? @res))))
-
-(deftest aborting-selects
-  (let [val1 (async-val)
-        val2 (async-val)
-        res  (atom nil)]
-
-    (abort
-     (doasync (select [val1 val2])
-       (fn [_] (reset! res :fail)))
-     BOOM)
-
-    (is (aborted? val1 val2))))
-
 ;; ==== batch
 
 (deftest batching-regular-seqs
@@ -775,6 +693,62 @@
 
 ;; ==== splice
 
+(deftest asynchronous-splice
+  (let [val1 (async-val)
+        val2 (async-val)]
+
+    (future
+      (Thread/sleep 10)
+      (put val2 :hello)
+      (Thread/sleep 10)
+      (put val1 :world))
+
+    (is (= [[:second :hello] [:first :world]]
+           @(doasync (join (splice {:first val1 :second val2}) [])
+              (fn [vs agg]
+                (if-let [[v & more] vs]
+                  (recur* more (conj agg v))
+                  agg)))))))
+
+(deftest handling-async-splice-errors
+  (let [val1 (async-val)
+        val2 (defer-boom)
+        res  (atom nil)]
+
+    (is (thrown-with-msg? Exception #"BOOM"
+          @(doasync (splice [:val1 val1] [:val2 val2])
+             (fn [_]
+               (reset! res :fail)))))
+
+    (is (aborted? val1))
+
+    (is (nil? @res)))
+
+  (let [val1 (async-val)
+        val2 (defer-boom)
+        res  (atom nil)]
+
+    (is (thrown-with-msg? Exception #"BOOM"
+          @(doasync (splice {:first val1 :second val2})
+             (fn [_]
+               (reset! res :fail)))))
+
+    (is (nil? @res))))
+
+(deftest aborting-splices
+  (let [val1 (async-val)
+        val2 (async-val)
+        res  (atom nil)]
+
+    (abort
+     (doasync (splice [:val1 val1] [:val2 val2])
+       (fn [_]
+         (reset! res :fail)))
+     BOOM)
+
+    (is (aborted? val1))
+    (is (aborted? val2))))
+
 (deftest splice-two-synchronous-seqs
   (is (= (map
           (fn [[k v]] [k v])
@@ -856,14 +830,15 @@
   (let [ch1     (channel)
         ch2     (channel)
         seq1    (seq ch1)
-        seq2    (seq ch2)
-        spliced (splice {:ch1 seq1 :ch2 seq2})]
+        seq2    (seq ch2)]
 
     (future
       (Thread/sleep 10)
-      (abort ch1 (Exception.)))
+      (abort ch1 BOOM))
 
-    (is (thrown? Exception @(doasync spliced)))
+    (is (thrown-with-msg? Exception #"BOOM"
+          @(doasync (splice {:ch1 seq1 :ch2 seq2}))))
+
     (is (aborted? seq1))
     (is (aborted? seq2))))
 

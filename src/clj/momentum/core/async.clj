@@ -453,38 +453,6 @@
            ~@body
            (recur* more#))))))
 
-(defn select*
-  "Returns a collection of the same size as coll containing
-  asynchronous values that will be realized incrementally as the
-  asynchronous values contained by coll become realized."
-  [coll]
-  (let [ordered (repeatedly (count coll) async-val)
-        index   (atom 0)]
-    (doseq [v coll]
-      (receive v
-        #(put (nth ordered (get-and-swap! index inc)) %)
-        #(abort (nth ordered (get-and-swap! index inc)) %)))
-    ordered))
-
-(defn- select-seq
-  [coll ordered]
-  (when (seq ordered)
-    (async-seq
-      (doasync (first ordered)
-        (fn [val]
-          (cons val (select-seq coll (next ordered))))
-        (catch InterruptedException e
-          (doseq [val coll] (abort val e)))
-        (catch Exception e
-          (doseq [val coll] (abort val e))
-          (throw e))))))
-
-(defn select
-  "Returns an async seq representing the values of the passed
-  collection in the order that they are materialized."
-  [coll]
-  (select-seq coll (select* coll)))
-
 (defn splice
   "Returns an async seq that consists of map entries of the values of
   all of the seqs passed in as they materialize and the key
@@ -634,7 +602,7 @@
 (defn- sink-seq
   [coll evts]
   (async-seq
-    (doasync (select {:coll coll :evt (seq evts)})
+    (doasync (splice {:coll coll :evt (seq evts)})
       (fn [[[k v]]]
         (when v
           (cond

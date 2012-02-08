@@ -73,7 +73,7 @@ public class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, List, Rec
   }
 
   // Find the first unrealized element and abort it
-  public final boolean abort(Exception err) {
+  public boolean abort(Exception err) {
     ISeq next;
     AsyncSeq curr = this;
 
@@ -90,6 +90,10 @@ public class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, List, Rec
         // i am epic win
         realizeError(err);
         return true;
+      }
+
+      if (curr.val == null) {
+        return false;
       }
 
       next = curr.val.next();
