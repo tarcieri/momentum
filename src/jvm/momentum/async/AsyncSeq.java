@@ -13,7 +13,7 @@ public class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, List, Rec
     FINAL
   }
 
-  final AtomicReference<State> cs;
+  final AtomicReference<State> cs = new AtomicReference<State>(State.FRESH);
 
   /*
    * Function that will realize the sequence
@@ -27,15 +27,10 @@ public class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, List, Rec
 
   public AsyncSeq(IFn f) {
     fn = f;
-    cs = new AtomicReference<State>(State.FRESH);
   }
 
-  public AsyncSeq(IAsync p) {
-    fn = null;
-    cs = new AtomicReference<State>(State.PENDING);
-
-    pending = p;
-    pending.receive(this);
+  Object setup() {
+    return fn.invoke();
   }
 
   /*
@@ -48,7 +43,7 @@ public class AsyncSeq extends Async<ISeq> implements ISeq, Sequential, List, Rec
     }
 
     try {
-      Object ret = fn.invoke();
+      Object ret = setup();
 
       if (ret instanceof IAsync) {
         pending = (IAsync) ret;

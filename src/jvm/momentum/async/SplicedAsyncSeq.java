@@ -3,8 +3,8 @@ package momentum.async;
 import clojure.lang.*;
 import java.util.*;
 import java.util.Map.Entry;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
 
@@ -35,21 +35,21 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
 
   final LinkedHashMap map;
 
-  final AtomicBoolean isComplete;
-
   final AtomicInteger keysRemaining;
 
-  public SplicedAsyncSeq(LinkedHashMap m) {
-    super((IAsync) new AsyncVal());
+  final AtomicReference<AsyncVal> asyncVal = new AtomicReference<AsyncVal>();
 
-    map           = m;
-    isComplete    = new AtomicBoolean();
-    keysRemaining = new AtomicInteger(map.size());
+  public SplicedAsyncSeq(final LinkedHashMap m) {
+    super(null);
 
-    if (map.size() == 0) {
-      pending.put(null);
-      return;
-    }
+    map = m;
+    keysRemaining = new AtomicInteger(m.size());
+  }
+
+  Object setup() {
+    AsyncVal p = new AsyncVal();
+
+    asyncVal.set(p);
 
     for (Entry entry : (Set<Entry>) map.entrySet()) {
 
@@ -60,7 +60,7 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
         // Short circuit if the value is already realized
         if (val.isRealized() && val.val() != null) {
           realizeEntrySuccess(entry.getKey(), val.val());
-          break;
+          return p;
         }
         else {
           val.receive(new SelectReceiver(entry.getKey(), val instanceof AsyncSeq));
@@ -68,9 +68,11 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
       }
       else {
         realizeEntrySuccess(entry.getKey(), entry.getValue());
-        break;
+        return p;
       }
     }
+
+    return p;
   }
 
   LinkedHashMap cloneMap() {
@@ -93,16 +95,35 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
     return ret;
   }
 
+  AsyncVal acquireVal() {
+    AsyncVal p = asyncVal.get();
+
+    if (p == null) {
+      return null;
+    }
+    else if (!asyncVal.compareAndSet(p, null)) {
+      return null;
+    }
+
+    return p;
+  }
+
   void keyClosed(Object key) {
     if (keysRemaining.decrementAndGet() > 0) {
       return;
     }
 
-    pending.put(null);
+    AsyncVal p = acquireVal();
+
+    if (p != null) {
+      p.put(null);
+    }
   }
 
   void realizeEntrySuccess(Object key, Object val) {
-    if (isComplete.getAndSet(true)) {
+    AsyncVal p = acquireVal();
+
+    if (p == null) {
       return;
     }
 
@@ -116,34 +137,36 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
 
       if (next == null) {
         if (keysRemaining.get() > 1) {
-          pending.put(new Cons(entry, without(key)));
+          p.put(new Cons(entry, without(key)));
         }
         else {
-          pending.put(new Cons(entry, null));
+          p.put(new Cons(entry, null));
         }
       }
       else {
-        pending.put(new Cons(entry, assoc(key, next)));
+        p.put(new Cons(entry, assoc(key, next)));
       }
     }
     else {
       entry = new MapEntry(key, val);
 
       if (keysRemaining.get() > 1) {
-        pending.put(new Cons(entry, without(key)));
+        p.put(new Cons(entry, without(key)));
       }
       else {
-        pending.put(new Cons(entry, null));
+        p.put(new Cons(entry, null));
       }
     }
   }
 
   void realizeEntryError(Object key, Exception err) {
-    if (isComplete.getAndSet(true)) {
+    AsyncVal p = acquireVal();
+
+    if (p == null) {
       return;
     }
 
-    if (pending.abort(err)) {
+    if (p.abort(err)) {
       for (Entry entry : (Set<Entry>) map.entrySet()) {
         Object val = entry.getValue();
 

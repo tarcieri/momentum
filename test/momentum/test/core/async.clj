@@ -821,7 +821,11 @@
     (doasync spliced
       (fn [[[k v] & more]]
         (is (= [k v] [:ch :omg]))
-        (is (nil? (get more :ch)))))))
+        (is (not (nil? (get more :ch))))
+        more)
+      (fn [coll]
+        (is (nil? coll))
+        (is (nil? (get coll :ch)))))))
 
 (deftest closing-spliced-seq-member-followed-by-more-events
   (let [ch1     (channel)
