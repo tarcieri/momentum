@@ -852,6 +852,21 @@
        (fn [coll]
          (is (nil? coll))))))
 
+(deftest an-error-in-one-spliced-value-aborts-all
+  (let [ch1     (channel)
+        ch2     (channel)
+        seq1    (seq ch1)
+        seq2    (seq ch2)
+        spliced (splice {:ch1 seq1 :ch2 seq2})]
+
+    (future
+      (Thread/sleep 10)
+      (abort ch1 (Exception.)))
+
+    (is (thrown? Exception @(doasync spliced)))
+    (is (aborted? seq1))
+    (is (aborted? seq2))))
+
 (deftest simple-blocking-spliced-async-seq
   (let [ch1 (channel)
         ch2 (channel)]
