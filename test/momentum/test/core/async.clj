@@ -907,3 +907,33 @@
            (dissoc
             (blocking (splice {:ch1 (seq ch1) :ch2 (seq ch2)}))
             :ch2)))))
+
+(deftest prioritized-async-seqs
+  (let [ch1 (channel)
+        ch2 (channel)
+        sq1 (seq ch1)
+        sq2 (seq ch2)]
+
+    (put ch1 :one)
+    (put ch2 :two)
+
+    (future
+      (Thread/sleep 10)
+      (close ch1)
+      (close ch2))
+
+    (is (= (blocking (splice [:ch2 sq2] [:ch1 sq1]))
+           [[:ch2 :two] [:ch1 :one]]))
+
+    (is (= (blocking (splice [:ch1 sq1] [:ch2 sq2]))
+           [[:ch1 :one] [:ch2 :two]]))))
+
+(deftest uses-lower-priority-events-when-first-available
+  (let [ch1 (channel)
+        ch2 (channel)]
+
+    (future
+      (Thread/sleep 10)
+      (put ch2 :zomg))
+
+    (is (= [:ch2 :zomg] (first (blocking (splice [:ch1 (seq ch1)] [:ch2 (seq ch2)])))))))

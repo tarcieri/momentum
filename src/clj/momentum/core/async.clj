@@ -142,7 +142,9 @@
     Join
     SplicedAsyncSeq]
    [java.io
-    Writer]))
+    Writer]
+   [java.util
+    LinkedHashMap]))
 
 (declare doasync)
 
@@ -373,7 +375,9 @@
         (next  [_]    (next blocked-seq))
         (count [_]    (count blocked-seq))
         (equiv [_ o]  (.equiv blocked-seq o))
-        (seq   [this] (and (seq blocked-seq) this))
+
+        (seq [this]
+          (and (seq blocked-seq) this))
 
         clojure.lang.IPersistentMap
         (assoc [_ key val]
@@ -383,7 +387,11 @@
           (blocking* (.assocEx spliced key val) ms default-val))
 
         (without [_ key]
-          (blocking* (.without spliced key) ms default-val))))))
+          (blocking* (.without spliced key) ms default-val))
+
+        clojure.lang.ILookup
+        (valAt [_ k]   (.valAt spliced k))
+        (valAt [_ k v] (.valAt spliced k v))))))
 
 (defn blocking
   "Returns a lazy sequence consisting of the items in the passed
@@ -446,10 +454,10 @@
            (recur* more#))))))
 
 (defn select*
-  [coll]
   "Returns a collection of the same size as coll containing
   asynchronous values that will be realized incrementally as the
   asynchronous values contained by coll become realized."
+  [coll]
   (let [ordered (repeatedly (count coll) async-val)
         index   (atom 0)]
     (doseq [v coll]
@@ -478,11 +486,25 @@
   (select-seq coll (select* coll)))
 
 (defn splice
-  [map]
   "Returns an async seq that consists of map entries of the values of
   all of the seqs passed in as they materialize and the key
-  referencing the seq."
-  (SplicedAsyncSeq. map))
+  referencing the If. seq multiple maps are passed, the returned seq
+  will assign priority in the order of the arguments."
+  ([pairs]
+     (let [args (LinkedHashMap.)]
+       (if (map? pairs)
+         (doseq [[k v] pairs]
+           (.put args k v))
+         (let [[k v] pairs]
+           (.put args k v)))
+       (SplicedAsyncSeq. args)))
+  ([first & more]
+     (let [args (LinkedHashMap.)]
+       (let [[k v] first]
+         (.put args k v))
+       (doseq [[k v] more]
+         (.put args k v))
+       (SplicedAsyncSeq. args))))
 
 (defmacro future*
   "Takes a body of expressions and invoke it in another

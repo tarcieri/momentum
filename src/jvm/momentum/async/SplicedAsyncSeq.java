@@ -1,19 +1,25 @@
 package momentum.async;
 
 import clojure.lang.*;
+import java.util.*;
+import java.util.Map.Entry;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
 
   final class SelectReceiver implements Receiver {
 
     final Object key;
+    final boolean isAsyncSeq;
 
-    SelectReceiver(Object k) {
+    SelectReceiver(Object k, boolean aseq) {
       key = k;
+      isAsyncSeq = aseq;
     }
 
     public void success(Object val) {
-      if (val == null) {
+      if (val == null && isAsyncSeq) {
         keyClosed(key);
       }
       else {
@@ -27,65 +33,79 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
 
   }
 
-  final IPersistentMap map;
+  final LinkedHashMap map;
 
-  volatile IPersistentMap nextMap;
+  final AtomicBoolean isComplete;
 
-  public SplicedAsyncSeq(IPersistentMap m) {
+  final AtomicInteger keysRemaining;
+
+  public SplicedAsyncSeq(LinkedHashMap m) {
     super((IAsync) new AsyncVal());
 
-    map     = m;
-    nextMap = m;
+    map           = m;
+    isComplete    = new AtomicBoolean();
+    keysRemaining = new AtomicInteger(map.size());
 
-    if (map.count() == 0) {
+    if (map.size() == 0) {
       pending.put(null);
       return;
     }
 
-    Object key, val;
-    IMapEntry entry;
-    IAsync asyncVal;
+    for (Entry entry : (Set<Entry>) map.entrySet()) {
 
-    for (Object o : map) {
-      if (o instanceof IMapEntry) {
-        entry = (IMapEntry) o;
-        key   = entry.key();
-        val   = entry.val();
+      // Handle async and sync values differently.
+      if (entry.getValue() instanceof IAsync) {
+        IAsync val = (IAsync) entry.getValue();
 
-        if (val instanceof IAsync) {
-          asyncVal = (IAsync) val;
-
-          // Check if the value is already realized, if it is, short circuit
-          if (asyncVal.isRealized() && asyncVal.val() != null) {
-            realizeEntrySuccess(key, asyncVal.val());
-            break;
-          }
-          else {
-            asyncVal.receive(new SelectReceiver(key));
-          }
-        }
-        else {
-          realizeEntrySuccess(key, val);
+        // Short circuit if the value is already realized
+        if (val.isRealized() && val.val() != null) {
+          realizeEntrySuccess(entry.getKey(), val.val());
           break;
         }
-
+        else {
+          val.receive(new SelectReceiver(entry.getKey(), val instanceof AsyncSeq));
+        }
       }
       else {
-        throw new RuntimeException("Must pass a map to (splice ...)");
+        realizeEntrySuccess(entry.getKey(), entry.getValue());
+        break;
       }
     }
+  }
+
+  LinkedHashMap cloneMap() {
+    LinkedHashMap ret = new LinkedHashMap(map.size());
+
+    for (Entry entry : (Set<Entry>) map.entrySet()) {
+
+      if (entry.getValue() instanceof AsyncSeq) {
+        AsyncSeq seq = (AsyncSeq) entry.getValue();
+
+        // Skip any realized async seqs
+        if (seq.isRealized() && seq.val() == null) {
+          continue;
+        }
+      }
+
+      ret.put(entry.getKey(), entry.getValue());
+    }
+
+    return ret;
   }
 
   void keyClosed(Object key) {
-    if (nextMap.count() > 1) {
-      nextMap = nextMap.without(key);
+    if (keysRemaining.decrementAndGet() > 0) {
+      return;
     }
-    else {
-      pending.put(null);
-    }
+
+    pending.put(null);
   }
 
   void realizeEntrySuccess(Object key, Object val) {
+    if (isComplete.getAndSet(true)) {
+      return;
+    }
+
     ISeq seq, next;
     MapEntry entry;
 
@@ -95,41 +115,41 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
       entry = new MapEntry(key, seq.first());
 
       if (next == null) {
-        if (map.count() == 0) {
-          pending.put(new Cons(entry, null));
+        if (keysRemaining.get() > 1) {
+          pending.put(new Cons(entry, without(key)));
         }
         else {
-          pending.put(new Cons(entry, new SplicedAsyncSeq(nextMap.without(key))));
+          pending.put(new Cons(entry, null));
         }
       }
       else {
-        pending.put(new Cons(entry, new SplicedAsyncSeq(nextMap.assoc(key, next))));
+        pending.put(new Cons(entry, assoc(key, next)));
       }
     }
     else {
       entry = new MapEntry(key, val);
 
-      if (map.count() == 0) {
-        pending.put(new Cons(entry, null));
+      if (keysRemaining.get() > 1) {
+        pending.put(new Cons(entry, without(key)));
       }
       else {
-        pending.put(new Cons(entry, new SplicedAsyncSeq(nextMap.without(key))));
+        pending.put(new Cons(entry, null));
       }
     }
   }
 
   void realizeEntryError(Object key, Exception err) {
-    IMapEntry entry;
-    Object val;
+    if (isComplete.getAndSet(true)) {
+      return;
+    }
 
-    pending.abort(err);
+    if (pending.abort(err)) {
+      for (Entry entry : (Set<Entry>) map.entrySet()) {
+        Object val = entry.getValue();
 
-    for (Object o : map) {
-      entry = (IMapEntry) o;
-      val   = entry.val();
-
-      if (key != entry.key() && val instanceof IAsync) {
-        ((IAsync)val).abort(err);
+        if (key != entry.getKey() && val instanceof IAsync) {
+          ((IAsync)val).abort(err);
+        }
       }
     }
   }
@@ -142,33 +162,56 @@ public final class SplicedAsyncSeq extends AsyncSeq implements IPersistentMap {
   }
 
   public IMapEntry entryAt(Object key) {
-    return map.entryAt(key);
+    Object val = map.get(key);
+
+    if (val != null) {
+      return new MapEntry(key, val);
+    }
+
+    return null;
   }
 
   /*
    * ILookup interface implementation
    */
   public Object valAt(Object key) {
-    return map.valAt(key);
+    return map.get(key);
   }
 
   public Object valAt(Object key, Object notFound) {
-    return map.valAt(key, notFound);
+    Object val = map.get(key);
+
+    if (val == null) {
+      return notFound;
+    }
+
+    return val;
   }
 
   /*
    * IPersistentMap interface implementation
    */
   public SplicedAsyncSeq assoc(Object key, Object val) {
-    return new SplicedAsyncSeq(map.assoc(key, val));
+    LinkedHashMap newMap = cloneMap();
+
+    newMap.put(key, val);
+
+    return new SplicedAsyncSeq(newMap);
   }
 
   public SplicedAsyncSeq assocEx(Object key, Object val) {
-    return new SplicedAsyncSeq(map.assocEx(key, val));
+    if (map.containsKey(key)) {
+      throw new RuntimeException("Key already present");
+    }
+
+    return assoc(key, val);
   }
 
   public SplicedAsyncSeq without(Object key) {
-    return new SplicedAsyncSeq(map.without(key));
+    LinkedHashMap newMap = cloneMap();
+    newMap.remove(key);
+
+    return new SplicedAsyncSeq(newMap);
   }
 
 }
