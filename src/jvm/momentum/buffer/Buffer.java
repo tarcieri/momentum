@@ -705,7 +705,7 @@ public abstract class Buffer implements Seqable {
 
   public final byte get(int idx) {
     if (idx < 0 || idx >= capacity) {
-      throw new IndexOutOfBoundsException();
+      throw new IndexOutOfBoundsException("Index " + idx + " is out of bounds (capacity " + capacity + ")");
     }
 
     return _get(idx);

@@ -1091,3 +1091,15 @@
   (are [a b] (= a (to-string b))
        "" nil
        "" ""))
+
+;; === Regression tests
+(deftest composite-buffer-regression-test-1
+  (let [b (Buffer/wrap
+           (Buffer/allocate 5)
+           (Buffer/allocate 5)
+           (Buffer/allocate 5))]
+
+    ;; Bugs caused the last get in each line to throw an out of bounds
+    ;; exception
+    (is (= 0 (.get b 0) (.get b 10)))
+    (is (= 0 (.get b 10) (.get b 0)))))

@@ -270,7 +270,7 @@ public final class CompositeBuffer extends Buffer {
       // Search right
       do {
         ++bufferIdx;
-      } while (indices[bufferIdx + 1] < idx);
+      } while (indices[bufferIdx + 1] <= idx);
     }
     else {
       // Search left
