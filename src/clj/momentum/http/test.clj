@@ -3,6 +3,7 @@
    clojure.test
    momentum.core.buffer)
   (:require
+   [momentum.http.client :as client]
    [momentum.http.server :as server]
    [momentum.net.test    :as net]
    [momentum.util.base64 :as base64]
@@ -28,9 +29,12 @@
   (if (or (nil? o) (keyword? o))
     o (buffer o)))
 
-(defmacro with-app
+(defmacro with-endpoint
   [app & stmts]
-  `(net/with-app (server/handler ~app {}) ~@stmts))
+  `(net/with-endpoint
+     :client client/proto
+     (server/proto ~app {})
+     ~@stmts))
 
 (defn- request*
   [method path hdrs body]

@@ -5,19 +5,27 @@
    momentum.http.test
    momentum.http.routing))
 
+(def params-received (atom nil))
+(def path-info       (atom nil))
+
+(defn- reset-params-atom [f]
+  (reset! params-received nil)
+  (reset! path-info       nil)
+  (f))
+
 (def not-found-response
-  [404 {"content-length" "9"} (buffer "Not found")])
+  [404 {"content-length" "9" :http-version [1 1]} (buffer "Not found")])
 
 (def hello-response
-  [200 {"content-length" "5"} (buffer "Hello")])
+  [200 {"content-length" "5" :http-version [1 1]} (buffer "Hello")])
 
 (defn- params
   [& params]
   [204 {:params (apply hash-map params)} nil])
 
-(defn- path-info
-  [script-name path-info]
-  [204 {:script-name script-name :path-info path-info} nil])
+;; (defn- path-info
+;;   [script-name path-info]
+;;   [204 {:script-name script-name :path-info path-info} nil])
 
 (defn- hello-world
   [dn _]
@@ -29,16 +37,18 @@
   [dn _]
   (fn [evt val]
     (when (= :request evt)
-      (dn :response [204 {:params (-> val first :params)} nil]))))
+      (reset! params-received (-> val first :params))
+      (dn :response [204 {} nil]))))
 
 (defn- echo-path
   [dn _]
   (fn [evt val]
     (when (= :request evt)
-      (dn :response [204 (select-keys (first val) [:path-info :script-name]) nil]))))
+      (reset! path-info (select-keys (first val) [:path-info :script-name]))
+      (dn :response [204 {} nil]))))
 
 (def fail-response
-  [200 {"content-length" "4"} (buffer "fail")])
+  [200 {"content-length" "4" :http-version [1 1]} (buffer "fail")])
 
 (defn- fail
   [dn _]
@@ -47,15 +57,15 @@
       (dn :response fail-response))))
 
 (deftest single-route-router
-  (with-app
+  (with-endpoint
     (routing
      (match "/" hello-world))
 
     (GET "/")
-    (is (responded? [200 {"content-length" "5"} "Hello"]))))
+    (is (responded? [200 {"content-length" "5" :http-version [1 1]} "Hello"]))))
 
 (deftest matches-first-route-that-matches-requirements
-  (with-app
+  (with-endpoint
     (routing
      (match "/foo" fail)
      (match "/bar" hello-world)
@@ -69,7 +79,7 @@
     (is (responded? hello-response))))
 
 (deftest matches-method-requirements
-  (with-app
+  (with-endpoint
     (routing
      (match :GET  "/" fail)
      (match :POST "/" hello-world)
@@ -79,7 +89,7 @@
     (is (responded? fail-response))))
 
 (deftest embedding-a-default-match
-  (with-app
+  (with-endpoint
     (routing
      (match "/zomg" fail)
      hello-world)
@@ -91,7 +101,7 @@
     (is (responded? fail-response))))
 
 (deftest routes-are-anchored-by-default
-  (with-app
+  (with-endpoint
     (routing
      (match "/" hello-world))
 
@@ -99,80 +109,92 @@
     (is (responded? not-found-response))))
 
 (deftest routes-extract-params
-  (with-app
+  (with-endpoint
     (routing
      (match "/:foo" echo-params)
      (match "/" hello-world))
 
     (GET "/hello")
-    (is (responded? (params :foo "hello")))
+    (is (= 204 (response-status)))
+    (is (= {:foo "hello"} @params-received))
 
     (GET "/")
     (is (responded? hello-response))))
 
 (deftest routes-with-multiple-params
-  (with-app
+  (with-endpoint
     (routing
      (match "/:foo/:bar" echo-params))
 
     (GET "/hello/world")
-    (is (responded? (params :foo "hello" :bar "world")))))
+    (is (= 204 (response-status)))
+    (is (= {:foo "hello" :bar "world"} @params-received))))
 
 (deftest splat-arguments
-  (with-app
+  (with-endpoint
     (routing
      (match "/*foo" echo-params))
 
     (GET "/")
-    (is (responded? (params :foo "")))
+    (is (= 204 (response-status)))
+    (is (= {:foo ""} @params-received))
 
     (GET "/foo")
-    (is (responded? (params :foo "foo")))
+    (is (= 204 (response-status)))
+    (is (= {:foo "foo"} @params-received))
 
     (GET "/foo/bar")
-    (is (responded? (params :foo "foo/bar")))
+    (is (= 204 (response-status)))
+    (is (= {:foo "foo/bar"} @params-received))
 
     (GET "/foo/bar/")
-    (is (responded? (params :foo "foo/bar")))
+    (is (= 204 (response-status)))
+    (is (= {:foo "foo/bar"} @params-received))
 
     (GET "/foo///////b////b////")
-    (is (responded? (params :foo "foo///////b////b")))))
+    (is (= 204 (response-status)))
+    (is (= {:foo "foo///////b////b"} @params-received))))
 
 (deftest scoping-endpoints
-  (with-app
+  (with-endpoint
     (routing
      (scope "/zomg" echo-path))
 
     (GET "/zomg/hello")
-    (is (responded? (path-info "/zomg" "/hello")))
+    (is (= 204 (response-status)))
+    (is (= {:path-info "/hello" :script-name "/zomg"} @path-info))
 
     (GET "/zomg")
-    (is (responded? (path-info "/zomg" "")))))
+    (is (= 204 (response-status)))
+    (is (= {:path-info "" :script-name "/zomg"} @path-info))))
 
 (deftest scoping-endpoints-with-params
-  (with-app
+  (with-endpoint
     (routing
      (scope "/zomg" echo-params))
 
     (GET "/zomg/hello")
-    (is (responded? (params))))
+    (is (= 204 (response-status)))
+    (is (= {} @params-received)))
 
-  (with-app
+  (with-endpoint
     (routing
      (scope "/:blah" echo-params))
 
     (GET "/zomg")
-    (is (responded? (params :blah "zomg")))
+    (is (= 204 (response-status)))
+    (is (= {:blah "zomg"} @params-received))
 
     (GET "/zomg/bar")
-    (is (responded? (params :blah "zomg")))))
+    (is (= 204 (response-status)))
+    (is (= {:blah "zomg"} @params-received))))
 
 (deftest scoping-routes
-  (with-app
+  (with-endpoint
     (routing
      (scope "/foo"
-            (match "/bar" hello-world)
-            (match "/lulz/one" fail)))
+       (match "/bar" hello-world)
+       (match "/lulz/one" fail)))
 
     (GET "/foo")
     (is (responded? not-found-response))
@@ -184,9 +206,12 @@
     (is (responded? fail-response))))
 
 (deftest scoping-routes-with-params
-  (with-app
+  (with-endpoint
     (routing
      (scope "/:foo" (match "/:bar" echo-params)))
 
     (GET "/one/two")
-    (is (responded? (params :foo "one" :bar "two")))))
+    (is (= 204 (response-status)))
+    (is (= {:foo "one" :bar "two"} @params-received))))
+
+(use-fixtures :each reset-params-atom)

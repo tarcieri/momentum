@@ -11,6 +11,13 @@
    [java.util.concurrent
     LinkedBlockingQueue]))
 
+;; TODO:
+;; * Setting req body to :chunked but no CL/TE/Conn headers
+
+(def default-options
+  {:keepalive 60
+   :timeout   5})
+
 (declare
  handle-request
  handle-response)
@@ -213,47 +220,44 @@
        (dn evt val)))))
 
 (defn proto
-  [app opts]
-  (fn [dn env]
-    (let [queue   (LinkedBlockingQueue.)
-          state   (atom (mk-initial-state dn queue opts))
-          next-up (app (mk-downstream-fn state dn) env)]
-      ;; Save off the upstream function
-      (swap! state #(assoc % :upstream next-up))
-      ;; Return the protocol upstream function
-      (response-parser
-       queue
-       (fn [evt val]
-         (let [current-state @state]
-           (cond
-            (#{:response :body} evt)
-            (let [next-up-fn (.next-up-fn current-state)]
-              (next-up-fn state evt val current-state))
+  ([app] (proto app default-options))
+  ([app opts]
+     (fn [dn env]
+       (let [queue   (LinkedBlockingQueue.)
+             state   (atom (mk-initial-state dn queue opts))
+             next-up (app (mk-downstream-fn state dn) env)]
+         ;; Save off the upstream function
+         (swap! state #(assoc % :upstream next-up))
+         ;; Return the protocol upstream function
+         (response-parser
+          queue
+          (fn [evt val]
+            (let [current-state @state]
+              (cond
+               (#{:response :body} evt)
+               (let [next-up-fn (.next-up-fn current-state)]
+                 (next-up-fn state evt val current-state))
 
-            (= :open evt)
-            (next-up evt (dissoc val :exchange-count))
+               (= :open evt)
+               (next-up evt (dissoc val :exchange-count))
 
-            (= :close evt)
-            (do
-              ;; If we're streaming the body until close, simulate a
-              ;; final chunk event
-              (if (.body-until-close? current-state)
-                (when-not (stream-or-finalize-response state :body nil current-state)
-                  (throw (Exception. "Connection reset by peer")))
-                (when (not= exchange-complete (.next-up-fn current-state))
-                  (throw (Exception. "Connection reset by peer")))))
+               (= :close evt)
+               (do
+                 ;; If we're streaming the body until close, simulate a
+                 ;; final chunk event
+                 (if (.body-until-close? current-state)
+                   (when-not (stream-or-finalize-response state :body nil current-state)
+                     (throw (Exception. "Connection reset by peer")))
+                   (when (not= exchange-complete (.next-up-fn current-state))
+                     (throw (Exception. "Connection reset by peer")))))
 
-            (= :abort evt)
-            (next-up evt val)
+               (= :abort evt)
+               (next-up evt val)
 
-            :else
-            (next-up evt val))))))))
+               :else
+               (next-up evt val)))))))))
 
 (def client net/client)
-
-(def default-options
-  {:keepalive 60
-   :timeout   5})
 
 (def default-client (net/client {:pool {:keepalive 60}}))
 

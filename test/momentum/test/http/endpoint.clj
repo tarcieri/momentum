@@ -6,7 +6,7 @@
    momentum.http.test))
 
 (deftest very-simple-endpoint
-  (with-app
+  (with-endpoint
     (endpoint
      (GET "/foo" [request]
        (respond :text "hello")))
@@ -18,7 +18,7 @@
     (is (= 404 (response-status)))))
 
 (deftest endpoint-works-with-deferred-values
-  (with-app
+  (with-endpoint
     (endpoint
      (GET "/foo" [request]
        (future*
@@ -30,7 +30,7 @@
     (is (= (buffer "Hello") (response-body)))))
 
 (deftest request-provides-headers
-  (with-app
+  (with-endpoint
     (endpoint
      (GET "/foo" [request]
        (respond :text (request "foo"))))
@@ -39,9 +39,9 @@
     (is (= 200 (response-status)))
     (is (= (buffer "Zomg") (response-body)))))
 
-(deftest getting-the-request-body
+(deftest ^{:focus true} getting-the-request-body
   (let [res (atom [])]
-    (with-app
+    (with-endpoint
       (endpoint
        (POST "/foo" [request]
          (doasync (request :input)
@@ -52,7 +52,7 @@
                  (recur* more))
                (respond :text "Done"))))))
 
-      (POST "/foo" :chunked)
+      (POST "/foo" {"transfer-encoding" "chunked"} :chunked)
       (send-chunks "one" "two" "three" nil)
 
       (is (= 200 (response-status)))
@@ -60,7 +60,7 @@
       (is (= (map #(buffer %) ["one" "two" "three"]) @res)))))
 
 (deftest streaming-response-body
-  (with-app
+  (with-endpoint
     (endpoint
      (GET "/foo" [request]
        (let [ch (channel)]
