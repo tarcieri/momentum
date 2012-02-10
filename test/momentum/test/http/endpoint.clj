@@ -39,7 +39,7 @@
     (is (= 200 (response-status)))
     (is (= (buffer "Zomg") (response-body)))))
 
-(deftest ^{:focus true} getting-the-request-body
+(deftest getting-the-request-body
   (let [res (atom [])]
     (with-endpoint
       (endpoint

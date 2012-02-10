@@ -85,13 +85,8 @@
                   (upstream evt val)
                   (when-not (#{:close :abort} evt)
                     (recur (next messages))))))))
-        (catch Exception e
-          (println "FAAAAAAAAAAAAIL")
-          (println "MSG: " (.getMessage e))
-          (.printStackTrace e)
-          (put write-ch [:close nil]))
-        (catch Throwable e
-          (println "THROOOOOOOOOWABLE")))
+        (catch Throwable _
+          (put write-ch [:close nil])))
 
       ;; Clean up
       (reset! open? false)

@@ -1,25 +1,16 @@
 (ns momentum.test.http.test
   (:use
    clojure.test
+   momentum.core
    momentum.http.test))
 
-(defn- echo-app
-  [dn _]
-  (fn [evt val]
-    (if (= :request evt)
-      (dn :response (cons 200 val))
-      (dn evt val))))
-
 (deftest basic-tests
-  (with-app echo-app
+  (with-endpoint
+    (fn [dn _]
+      (fn [evt val]
+        (if (= :request evt)
+          (dn :response [200 {"content-length" "5"} (buffer "Hello")]))))
+
     (let [conn (GET "/")]
-      (is (= (first conn)
-             [:response [200
-                         {"host"          "example.org"
-                          :http-version   [1 1]
-                          :query-string   ""
-                          :script-name    ""
-                          :request-method "GET"
-                          :path-info      "/"
-                          :remote-addr    ["127.0.0.1" 1234]
-                          :local-addr     ["127.0.0.1" 4321]} nil]])))))
+      (is (= (second (seq conn))
+             [:response [200 {"content-length" "5" :http-version [1 1]} (buffer "Hello")]])))))

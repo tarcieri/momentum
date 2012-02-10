@@ -51,6 +51,7 @@
 (import-fn #'async/blocking)
 (import-fn #'async/channel)
 (import-fn #'async/close)
+(import-fn #'async/concat*)
 (import-fn #'async/enqueue)
 (import-fn #'async/interrupt)
 (import-fn #'async/join)

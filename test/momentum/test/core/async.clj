@@ -26,6 +26,13 @@
      (when (> i 0)
        (cons i (async-dec-seq (dec i)))))))
 
+(defn- async-inc-seq [i]
+  (async-seq
+    (future*
+     (Thread/sleep 5)
+     (when (< i 0)
+       (cons i (async-inc-seq (inc i)))))))
+
 (defmacro defer
   [& body]
   `(future*
@@ -645,6 +652,21 @@
 
 ;; (deftest mapping-async-seq
 ;;   (is true))
+
+;; ==== concat*
+
+(deftest simple-concat*
+  (are [x y] (= x y)
+       (concat*)             ()
+       (concat* [])          ()
+       (concat* [1 2])       '(1 2)
+       (concat* [1 2] [3 4]) '(1 2 3 4)
+
+       (blocking
+        (concat*
+         (async-dec-seq 2)
+         (async-inc-seq -1)))
+       '(2 1 -1)))
 
 ;; ==== AsyncTransferQueue
 

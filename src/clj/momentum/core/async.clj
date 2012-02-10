@@ -425,6 +425,19 @@
              (recur* (join (dec n) (next realized)))
              coll))))))
 
+(defn concat*
+  "Returns an asynchronous sequence representing the concatenation of
+  the elements in the supplied colls."
+  ([] [])
+  ([x] x)
+  ([x y]
+     (async-seq
+       (doasync x
+         (fn [[head & more :as x]]
+           (if x
+             (cons head (concat* more y))
+             y))))))
+
 (defn map*
   "Returns an asynchronous sequence consisting of the result of recursively
   applying f to the set of first items of each coll once they become
@@ -600,24 +613,27 @@
   (.close (.transfer ch)))
 
 (defn- sink-seq
-  [coll evts]
+  [stream]
   (async-seq
-    (doasync (splice {:coll coll :evt (seq evts)})
-      (fn [[[k v]]]
-        (when v
-          (cond
-           (= :coll k)
-           (cons (first v) (sink-seq (next v) evts))
+    (doasync stream
+      (fn [[[k v] & more]]
+        (cond
+         (= :coll k)
+         (when-not (= ::eos v)
+           (cons v (sink-seq more)))
 
-           (= :pause (first v))
-           (doasync (next v)
-             (fn [[evt & more]]
-               (if (= :pause evt)
+         ;; When a pause event is received, iterate over the event
+         ;; stream until a :resume event is received.
+         (= :pause v)
+         (let [coll (get more :coll)]
+           (doasync (dissoc more :coll)
+             (fn [[[k v] & more]]
+               (if (= :pause v)
                  (recur* more)
-                 (sink-seq coll more))))
+                 (sink-seq (assoc more :coll coll))))))
 
-           :else
-           (sink-seq coll (next v))))))))
+         :else
+         (sink-seq more))))))
 
 ;; TODO: Don't hardcode this to :body events
 (defn sink
@@ -626,7 +642,7 @@
   and :abort events"
   [dn coll]
   (let [ch (channel)]
-    (doasync (sink-seq coll (seq ch))
+    (doasync (sink-seq (splice [:evt (seq ch)] [:coll (concat* coll [::eos])]))
       (fn [coll]
         (if-let [[el & more] coll]
           (do
