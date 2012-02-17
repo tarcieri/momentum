@@ -232,7 +232,15 @@
 (defn to-string
   ([buf] (to-string buf "UTF-8"))
   ([buf ^String encoding]
-     (.toString (if buf (buffer buf) EMPTY) encoding)))
+     (cond
+      (string? buf)
+      buf
+
+      buf
+      (.toString (buffer buf) encoding)
+
+      :else
+      (.toString EMPTY encoding))))
 
 ;; TODO: Revisit the transfer helper
 (defn transfer!
