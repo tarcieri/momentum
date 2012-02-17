@@ -181,7 +181,7 @@
 (defn- write-message-header
   [buf name val]
   (when-not (or (nil? val) (= "" val))
-    (write buf (str name) ": " (str val) CRLF)))
+    (write buf (str name) ": " (to-string val) CRLF)))
 
 (defn- write-message-headers
   [buf hdrs]

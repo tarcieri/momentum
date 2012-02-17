@@ -236,6 +236,9 @@
       (string? buf)
       buf
 
+      (number? buf)
+      (str buf)
+
       buf
       (.toString (buffer buf) encoding)
 
