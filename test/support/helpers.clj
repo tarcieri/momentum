@@ -69,6 +69,7 @@
   ([f] (socket-connect f 4040))
   ([f port]
      (let [sock (Socket. "127.0.0.1" port)]
+       (.setSoTimeout sock 2000)
        (let [in (.getInputStream sock) out (.getOutputStream sock)]
          (try
            (f sock in out)

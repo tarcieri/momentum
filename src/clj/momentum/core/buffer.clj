@@ -201,11 +201,11 @@
 
 (defn remaining
   [buf]
-  (.remaining buf))
+  (and buf (.remaining buf)))
 
 (defn remaining?
   [buf]
-  (.hasRemaining buf))
+  (and buf (.hasRemaining buf)))
 
 (defn reset
   [^Buffer buf]

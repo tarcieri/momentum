@@ -29,6 +29,7 @@
 (import-fn #'buffer/transfer!)
 (import-fn #'buffer/transfer)
 (import-fn #'buffer/wrap)
+(import-fn #'buffer/write)
 (import-fn #'buffer/write-byte)
 (import-fn #'buffer/write-ubyte)
 (import-fn #'buffer/write-short)

@@ -299,7 +299,9 @@
                (swap-then!
                 state
                 #(assoc % :open? false)
-                #(send-upstream state evt val %)))
+                (fn [current-state]
+                  (when-not (.aborting? current-state)
+                    (send-upstream state evt val current-state)))))
 
              :else
              (send-upstream state evt val current-state)))
