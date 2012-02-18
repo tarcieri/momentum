@@ -5,6 +5,9 @@
    momentum.core
    momentum.http.server))
 
+;; TODO:
+;; - Basic chunked body request / responses
+
 (defn- start-hello-world-app
   [ch]
   (start
@@ -26,14 +29,13 @@
 
       (is (next-msgs
            ch1
-           :request [{:local-addr     ["127.0.0.1" 4040]
-                      :remote-addr    ["127.0.0.1" :dont-care]
-                      :script-name    ""
+           :open    :dont-care
+           :request [{:script-name    ""
                       :path-info      "/"
                       :query-string   ""
                       :request-method method
                       :http-version   [1 1]} nil]
-           :done nil))
+           :close nil))
 
       (is (no-msgs ch1))
 
@@ -56,14 +58,13 @@
 
     (is (next-msgs
          ch1
-         :request [{:local-addr     ["127.0.0.1" 4040]
-                    :remote-addr    ["127.0.0.1" :dont-care]
-                    :script-name    ""
+         :open    :dont-care
+         :request [{:script-name    ""
                     :path-info      "/foo"
                     :query-string   "bar=baz"
                     :request-method "GET"
                     :http-version   [1 1]} nil]
-         :done nil))
+         :close nil))
 
     (is (no-msgs ch1))))
 
@@ -79,10 +80,46 @@
 
     (is (next-msgs
          ch1
+         :open    :dont-care
          :request [#(includes-hdrs {"content-length" "5"} %) "Hello"]
-         :done    nil))
+         :close   nil))
 
     (is (no-msgs ch1))))
+
+(defcoretest simple-request-with-chunked-body
+  [ch1]
+  (start
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= [:body  nil] [evt val])
+         (future
+           (Thread/sleep 50)
+           (dn :response [204 {} nil]))))))
+
+  (with-socket
+    (write-socket "POST / HTTP/1.1\r\n"
+                  "Connection: close\r\n"
+                  "Transfer-Encoding: chunked\r\n\r\n")
+
+    (is (next-msgs
+         ch1
+         :open :dont-care
+         :request [#(includes-hdrs {"connection" "close" "transfer-encoding" "chunked"} %)
+                   :chunked]))
+
+    (is (no-msgs ch1))
+
+    (write-socket "5\r\nHello\r\n")
+    (is (next-msgs ch1 :body "Hello"))
+
+    (write-socket "0\r\n\r\n")
+    (is (next-msgs ch1 :body nil :close nil))
+
+    (is (receiving
+         "HTTP/1.1 204 No Content\r\n\r\n"))
+
+    (is (closed-socket?))))
 
 (defcoretest request-with-full-uri
   [ch1]
@@ -93,9 +130,8 @@
 
     (is (next-msgs
          ch1
-         :request [{:local-addr     ["127.0.0.1" 4040]
-                    :remote-addr    ["127.0.0.1" :dont-care]
-                    :script-name    ""
+         :open    :dont-care
+         :request [{:script-name    ""
                     :path-info      "/search"
                     :query-string   "q=zomg"
                     :request-method "GET"
@@ -178,32 +214,6 @@
 
     (is (closed-socket?))))
 
-(defcoretest head-request-with-te-chunked-and-response-body
-  [ch1]
-  (start
-   (fn [dn _]
-     (fn [evt val]
-       (when (= :request evt)
-         (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
-         (dn :body (buffer "Hello"))
-         (dn :body nil)))))
-
-  (with-socket
-    (write-socket "HEAD / HTTP/1.1\r\n\r\n")
-
-    (is (receiving
-         "HTTP/1.1 200 OK\r\n"
-         "transfer-encoding: chunked\r\n\r\n"))
-
-    (write-socket "HEAD / HTTP/1.1\r\n"
-                  "connection: close\r\n\r\n")
-
-    (is (receiving
-         "HTTP/1.1 200 OK\r\n"
-         "transfer-encoding: chunked\r\n\r\n"))
-
-    (is (closed-socket?))))
-
 (defcoretest no-content-response-but-with-content
   [ch1]
   (start
@@ -259,14 +269,13 @@
 
     (is (next-msgs
          ch1
+         :open :dont-care
          :request [{:script-name    ""
                     :path-info      "/"
                     :query-string   ""
                     :request-method "GET"
-                    :remote-addr    :dont-care
-                    :local-addr     :dont-care
                     :http-version   [1 0]} nil]
-         :done nil))
+         :close nil))
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"))))
@@ -296,17 +305,16 @@
 
     (is (next-msgs
          ch1
+         :open    :dont-care
          :request [{:script-name    ""
                     :path-info      "/"
                     :query-string   ""
                     :request-method "GET"
-                    :remote-addr    :dont-care
-                    :local-addr     :dont-care
                     :http-version   [1 1]
                     "foo"           ["1" "2" "3"]
                     "bar"           ["omg" "hi2u"]
                     "baz"           "lol"} nil]
-         :done nil))
+         :close nil))
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
@@ -335,8 +343,8 @@
 
     (is (next-msgs
          ch1
-         :request [#(includes-hdrs {:request-method "GET" :path-info "/"} %) nil]
-         :done    nil))
+         :open    :dont-care
+         :request [#(includes-hdrs {:request-method "GET" :path-info "/"} %) nil]))
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
@@ -347,20 +355,20 @@
 
     (is (next-msgs
          ch1
-         :request [#(includes-hdrs {:request-method "GET" :path-info "/foo"} %) nil]
-         :done    nil))
+         :request [#(includes-hdrs {:request-method "GET" :path-info "/foo"} %) nil]))
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
          "content-length: 5\r\n\r\n"
          "Hello"))
 
-    (write-socket "POST /bar HTTP/1.1\r\n\r\n")
+    (write-socket "POST /bar HTTP/1.1\r\n"
+                  "connection:close\r\n\r\n")
 
     (is (next-msgs
          ch1
          :request [#(includes-hdrs {:request-method "POST" :path-info "/bar"} %) nil]
-         :done    nil))
+         :close   nil))
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
@@ -369,47 +377,9 @@
 
     (close-socket)
 
-    (is (next-msgs ch2 :binding nil :binding nil :binding nil))
+    (is (next-msgs ch2 :binding nil))
 
-    (is (no-msgs ch1))))
-
-(defcoretest sending-message-from-completed-exchange-on-keepalive-connection
-  [ch1]
-  (start
-   (let [latch (atom true)]
-     (fn [dn _]
-       (fn [evt val]
-         (when (= :request evt)
-           (if @latch
-             (do
-               (dn :response [200 {"content-length" "5"} (buffer "Hello")])
-               (future
-                 (Thread/sleep 50)
-                 (try
-                   (dn :response [200 {"content-length" "5"} (buffer "FAIL!")])
-                   (catch Exception e
-                     (enqueue ch1 [:error e]))))
-               (reset! latch false))
-             (future
-               (Thread/sleep 100)
-               (dn :response [200 {"content-length" "5"} (buffer "World")]))))))))
-
-  (with-socket
-    (write-socket "GET / HTTP/1.1\r\n\r\n")
-
-    (is (receiving
-         "HTTP/1.1 200 OK\r\n"
-         "content-length: 5\r\n\r\n"
-         "Hello"))
-
-    (write-socket "GET / HTTP/1.1\r\n\r\n")
-
-    (is (receiving
-         "HTTP/1.1 200 OK\r\n"
-         "content-length: 5\r\n\r\n"
-         "World"))
-
-    (is (next-msgs ch1 :error #(instance? Exception %)))))
+    (is (no-msgs ch1 ch2))))
 
 (defcoretest keepalive-head-requests
   [ch1 ch2]
@@ -427,8 +397,8 @@
 
     (is (next-msgs
          ch1
-         :request :dont-care
-         :done    nil))
+         :open    :dont-care
+         :request :dont-care))
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
@@ -439,8 +409,7 @@
 
     (is (next-msgs
          ch1
-         :request :dont-care
-         :done    nil))
+         :request :dont-care))
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
@@ -455,14 +424,16 @@
     (is (next-msgs
          ch1
          :request :dont-care
-         :done    nil))
+         :close   nil))
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
          "content-type: text/plain\r\n"
          "content-length: 5\r\n\r\n")))
 
-  (is (next-msgs ch2 :binding nil :binding nil :binding nil)))
+  (is (next-msgs ch2 :binding nil))
+
+  (is (no-msgs ch1 ch2)))
 
 (defcoretest keepalive-204-responses
   [ch1 ch2]
@@ -477,29 +448,32 @@
   (with-socket
     (write-socket "GET / HTTP/1.1\r\n\r\n")
 
-    (is (next-msgs ch1 :request :dont-care :done nil))
+    (is (next-msgs ch1 :open :dont-care :request :dont-care))
     (is (receiving "HTTP/1.1 204 No Content\r\n\r\n"))
 
     (write-socket "POST /blah HTTP/1.1\r\n"
                   "Content-Length: 5\r\n\r\n"
                   "Hello")
-    (is (next-msgs ch1 :request [:dont-care "Hello"] :done nil))
+
+    (is (next-msgs ch1 :request [:dont-care "Hello"]))
     (is (receiving "HTTP/1.1 204 No Content\r\n\r\n"))
 
     (write-socket "GET /zomg HTTP/1.1\r\n"
                   "lulz: 4-the\r\n\r\n")
-    (is (next-msgs ch1 :request :dont-care :done nil))
+
+    (is (next-msgs ch1 :request :dont-care))
     (is (receiving "HTTP/1.1 204 No Content\r\n\r\n"))
 
     (write-socket "GET / HTTP/1.1\r\n"
                   "Connection: close\r\n\r\n")
-    (is (next-msgs ch1 :request :dont-care :done nil))
-    (is (receiving
-         "HTTP/1.1 204 No Content\r\n\r\n"))
+
+    (is (next-msgs ch1 :request :dont-care :close nil))
+    (is (receiving "HTTP/1.1 204 No Content\r\n\r\n"))
 
     (is (closed-socket?)))
 
-  (is (next-msgs ch2 :binding nil :binding nil :binding nil :binding nil)))
+  (is (next-msgs ch2 :binding nil))
+  (is (no-msgs ch1 ch2)))
 
 (defcoretest keepalive-304-responses
   [ch1 ch2]
@@ -514,31 +488,32 @@
   (with-socket
     (write-socket "GET / HTTP/1.1\r\n\r\n")
 
-    (is (next-msgs ch1 :request :dont-care :done nil))
+    (is (next-msgs ch1 :open :dont-care  :request :dont-care))
     (is (receiving "HTTP/1.1 304 Not Modified\r\n\r\n"))
 
     (write-socket "POST /blah HTTP/1.1\r\n"
                   "Content-Length: 5\r\n\r\n"
                   "Hello")
 
-    (is (next-msgs ch1 :request [:dont-care "Hello"] :done nil))
+    (is (next-msgs ch1 :request [:dont-care "Hello"]))
     (is (receiving "HTTP/1.1 304 Not Modified\r\n\r\n"))
 
     (write-socket "GET /zomg HTTP/1.1\r\n"
                   "lulz: 4-the\r\n\r\n")
 
-    (is (next-msgs ch1 :request :dont-care :done nil))
+    (is (next-msgs ch1 :request :dont-care))
     (is (receiving "HTTP/1.1 304 Not Modified\r\n\r\n"))
 
     (write-socket "GET / HTTP/1.1\r\n"
                   "Connection: close\r\n\r\n")
 
-    (is (next-msgs ch1 :request :dont-care :done nil))
+    (is (next-msgs ch1 :request :dont-care :close nil))
     (is (receiving "HTTP/1.1 304 Not Modified\r\n\r\n"))
 
     (is (closed-socket?)))
 
-  (is (next-msgs ch2 :binding nil :binding nil :binding nil :binding nil)))
+  (is (next-msgs ch2 :binding nil))
+  (is (no-msgs ch1 ch2)))
 
 (defcoretest returning-connection-close-terminates-connection
   [ch1]
@@ -601,8 +576,9 @@
 
     (is (next-msgs
          ch1
+         :open    :dont-care
          :request :dont-care
-         :done    nil))
+         :close   nil))
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
@@ -654,16 +630,17 @@
 
     (is (next-msgs
          ch1
+         :open    :dont-care
          :request [#(includes-hdrs {"transfer-encoding" "chunked"} %) :chunked]))
 
     (write-socket "5\r\nHello\r\n5\r\nWorld\r\n0\r\n\r\n")
 
     (is (next-msgs
          ch1
-         :body "Hello"
-         :body "World"
-         :body nil
-         :done nil))
+         :body  "Hello"
+         :body  "World"
+         :body  nil
+         :close nil))
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
@@ -718,8 +695,8 @@
 
     (is (next-msgs
          ch1
-         :request :dont-care
-         :done    nil))
+         :open    :dont-care
+         :request :dont-care))
 
     (is (no-msgs ch1 ch2))))
 
@@ -739,11 +716,11 @@
 
     (is (next-msgs
          ch1
+         :open    :dont-care
          :request [#(includes-hdrs {"transfer-encoding" "chunked"} %) :chunked]
          :body    "Hello"
          :body    " World"
-         :body    nil
-         :done    nil))
+         :body    nil))
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
@@ -759,8 +736,7 @@
          :request [#(includes-hdrs {"transfer-encoding" "chunked"} %) :chunked]
          :body    "ZomG!!"
          :body    "INCEPTION"
-         :body    nil
-         :done    nil))
+         :body    nil))
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
@@ -773,7 +749,7 @@
     (is (next-msgs
          ch1
          :request [#(includes-hdrs {"connection" "close"} %) nil]
-         :done    nil))
+         :close nil))
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
@@ -793,6 +769,7 @@
 
     (is (next-msgs
          ch1
+         :open    :dont-care
          :request [:dont-care :chunked]
          :body    "TROLLOLOLOLOLOLLLOLOLOLLOL"
          :abort   #(instance? Exception %))))
@@ -818,6 +795,7 @@
 
     (is (next-msgs
          ch1
+         :open    :dont-care
          :request [#(includes-hdrs
                      {"connection"     "close"
                       "content-length" "10000"} %) :chunked]))
@@ -826,9 +804,7 @@
 
     (write-socket (apply str (for [x (range 10000)] "a")))
 
-    (is (next-msgs
-         ch1
-         :done nil))))
+    (is (next-msgs ch1 :close nil))))
 
 (defcoretest handling-100-continue-requests-with-100-response
   [ch1]
@@ -851,6 +827,7 @@
 
     (is (next-msgs
          ch1
+         :open    :dont-care
          :request [#(includes-hdrs {"expect" "100-continue"} %) :chunked]))
 
     (is (receiving "HTTP/1.1 100 Continue\r\n"))
@@ -859,9 +836,9 @@
 
     (is (next-msgs
          ch1
-         :body "Hello"
-         :body nil
-         :done nil))))
+         :body  "Hello"
+         :body  nil
+         :close nil))))
 
 (defcoretest handling-100-continue-requests-by-responding-directly
   [ch1]
@@ -882,8 +859,8 @@
 
     (is (next-msgs
          ch1
-         :request [#(includes-hdrs {"expect" "100-continue"} %) :chunked]
-         :done    nil))
+         :open    :dont-care
+         :request [#(includes-hdrs {"expect" "100-continue"} %) :chunked]))
 
     (is (receiving
          "HTTP/1.1 417 Expectation Failed\r\n"
@@ -895,8 +872,10 @@
 
     (is (next-msgs
          ch1
+         :body    "Hello"
+         :body    nil
          :request [#(includes-hdrs {:request-method "GET"} %) nil]
-         :done    nil))
+         :close   nil))
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
@@ -956,10 +935,11 @@
 
     (is (next-msgs
          ch1
+         :open    :dont-care
          :request [#(includes-hdrs {"expect" "100-continue"} %) :chunked]
          :body    "Hello"
          :body    nil
-         :done    nil))
+         :close   nil))
 
     (is (receiving
          "HTTP/1.1 204 No Content\r\n"
@@ -986,10 +966,11 @@
 
     (is (next-msgs
          ch1
+         :open    :dont-care
          :request [#(includes-hdrs {"expect" "100-continue"} %) :chunked]
          :body    "Hello"
          :body    nil
-         :done    nil))
+         :close   nil))
 
     (is (receiving
          "HTTP/1.1 100 Continue\r\n\r\n"
@@ -1019,9 +1000,10 @@
                          "expect" "100-continue"}]
       (is (next-msgs
            ch1
+           :open    :dont-care
            :request [#(includes-hdrs expected-hdrs %) "Hello"]
            :error   #(instance? Exception %)
-           :done    nil))
+           :close   nil))
 
       (is (no-msgs ch1)))))
 
@@ -1029,14 +1011,18 @@
   [ch1]
   (start
    (fn [dn _]
-     (enqueue ch1 [:binding nil])
-     (fn [_ _]))
+     (fn [evt val]
+       (enqueue ch1 [evt val])))
    {:keepalive 1})
 
   (with-socket
     (Thread/sleep 2010)
     (is (closed-socket?))
-    (is (no-msgs ch1))))
+
+    (is (next-msgs
+         ch1
+         :open  :dont-care
+         :close nil))))
 
 (defcoretest timing-out-halfway-streamed-chunked-request
   [ch1]
@@ -1053,6 +1039,7 @@
 
     (is (next-msgs
          ch1
+         :open    :dont-care
          :request [:dont-care :chunked]
          :body    "Hello"
          :body    "World"))
@@ -1076,7 +1063,7 @@
     (write-socket "POST / HTTP/1.1\r\n"
                   "Transfer-Encoding: chunked\r\n\r\n")
 
-    (is (next-msgs ch1 :request :dont-care))
+    (is (next-msgs ch1 :open :dont-care :request :dont-care))
 
     (Thread/sleep 800)
 
@@ -1124,8 +1111,11 @@
   (start
    (fn [dn _]
      (fn [evt val]
+       (when (= :abort evt)
+         (.printStackTrace val))
        (enqueue ch1 [evt val])
-       (dn :response [200 {"content-length" "5"} (buffer "Hello")])))
+       (when (= :request evt)
+         (dn :response [200 {"content-length" "5"} (buffer "Hello")]))))
    {:keepalive 1})
 
   (with-socket
@@ -1162,38 +1152,9 @@
 
     (is (next-msgs
          ch1
+         :open    :dont-care
          :request :dont-care
-         :done    nil))
-
-    (is (no-msgs ch1))))
-
-(defcoretest race-condition-between-requests
-  [ch1]
-  (start
-   (fn [dn _]
-     (fn [evt val]
-       (enqueue ch1 [evt val])
-       (when (= :request evt)
-         (future
-           (dn :response [200 {"content-length" "5"} (buffer "Hello")])))
-       (when (= :done nil)
-         (Thread/sleep 50)))))
-
-  (with-socket
-    (dotimes [_ 2]
-      (write-socket "GET / HTTP/1.1\r\n\r\n")
-
-      (is (receiving
-           "HTTP/1.1 200 OK\r\n"
-           "content-length: 5\r\n\r\n"
-           "Hello")))
-
-    (is (next-msgs
-         ch1
-         :request :dont-care
-         :done    nil
-         :request :dont-care
-         :done    nil))
+         :close   nil))
 
     (is (no-msgs ch1))))
 
@@ -1219,43 +1180,11 @@
 
     (is (next-msgs
          ch1
+         :open    :dont-care
          :request :dont-care
-         :done    nil))
+         :close   nil))
 
     (is (no-msgs ch1))))
-
-;; TODO: Figure out if this functionality should be removed. It
-;; probably should.
-;; ===
-;; (defcoretest  pausing-te-chunked-request
-;;   [ch1 ch2]
-;;   (start
-;;    (fn [dn _]
-;;      (receive ch2 #(dn % nil))
-;;      (fn [evt val]
-;;        (enqueue ch1 [evt val])
-;;        (when (= :request evt)
-;;          (dn :pause nil))
-;;        (when (= [:body nil] [evt val])
-;;          (dn :response [204 {} ""])))))
-
-;;   (with-socket
-;;     (write-socket
-;;      "POST / HTTP/1.1\r\n"
-;;      "Transfer-Encoding: chunked\r\n\r\n"
-;;      "5\r\nHello\r\n5\r\nWorld\r\n0\r\n\r\n")
-
-;;     (is (next-msgs ch1 :request :dont-care))
-;;     (is (no-msgs ch1))
-
-;;     (enqueue ch2 :resume)
-
-;;     (is (next-msgs
-;;          ch1
-;;          :body "Hello"
-;;          :body "World"
-;;          :body  nil
-;;          :done  nil))))
 
 (defcoretest hard-closing-socket-before-response
   [ch1]
@@ -1272,7 +1201,11 @@
      "Host: localhost\r\n"
      "\r\n")
 
-    (is (next-msgs ch1 :request :dont-care :done nil))
+    (is (next-msgs
+         ch1
+         :open    :dont-care
+         :request :dont-care
+         :close   nil))
 
     (is (closed-socket?))))
 
@@ -1297,9 +1230,12 @@
 
     (is (next-msgs
          ch1
+         :open    :dont-care
          :request :dont-care
          :body    "Hello"
-         :done    nil))
+         :body    "World"
+         :body    nil
+         :close   nil))
 
     (is (closed-socket?))))
 
@@ -1320,7 +1256,11 @@
      "Host: localhost\r\n"
      "\r\n")
 
-    (is (next-msgs ch1 :request :dont-care :done nil))
+    (is (next-msgs
+         ch1
+         :open    :dont-care
+         :request :dont-care
+         :close   nil))
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
@@ -1336,6 +1276,9 @@
   (start
    (fn [dn _]
      (fn [evt val]
+       (when (= :abort evt)
+         (println (.getMessage val))
+         (.printStackTrace val))
        (enqueue ch1 [evt val])
        (when (= :request evt)
          (dn :response [101 {"connection" "upgrade" "upgrade" "echo"} :upgraded]))
@@ -1352,6 +1295,7 @@
 
     (is (next-msgs
          ch1
+         :open    :dont-care
          :request [#(includes-hdrs {"connection" "upgrade"
                                     "upgrade" "echo"} %) :upgraded]))
 
@@ -1391,6 +1335,7 @@
 
     (is (next-msgs
          ch1
+         :open    :dont-care
          :request [#(includes-hdrs {"connection" "upgrade"} %) :upgraded]))
 
     (is (receiving
@@ -1400,5 +1345,3 @@
          "FAIL!"))
 
     (is (closed-socket?))))
-
-;; (defcoretest upgraded-connections-do-not-timeout)

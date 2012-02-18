@@ -26,10 +26,11 @@
 
 (defn- stop-servers
   [servers]
-  (if (sequential? servers)
-    (doseq [server servers]
-      (server/stop server))
-    (server/stop servers)))
+  (when servers
+    (if (sequential? servers)
+      (doseq [server servers]
+        (server/stop server))
+      (server/stop servers))))
 
 (defn- close-channels
   []

@@ -29,4 +29,5 @@
 
 (defn cancel
   [timeout]
-  (.cancel timeout))
+  (when timeout
+    (.cancel timeout)))

@@ -86,7 +86,8 @@
     ^ChannelGroup channel-group ::channel-group}]
   ;; Add the server channel to the channel group, this
   ;; way we can shutdown everything at once
-  (.add channel-group server-channel)
-  (let [close-future (.close channel-group)]
-    (.awaitUninterruptibly close-future)
-    (.releaseExternalResources bootstrap)))
+  (when channel-group
+    (.add channel-group server-channel)
+    (let [close-future (.close channel-group)]
+      (.awaitUninterruptibly close-future)
+      (.releaseExternalResources bootstrap))))
