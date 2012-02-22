@@ -1546,4 +1546,54 @@
          "HTTP/1.1 204 No Content\r\n\r\n"
          "HTTP/1.1 204 No Content\r\n\r\n"))))
 
+(defcoretest upstream-close-events-get-fanned-out
+  [ch1]
+  (start
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt val]))))
+
+  (with-socket
+    (write-socket
+     "GET /foo HTTP/1.1\r\n\r\n"
+     "GET /bar HTTP/1.1\r\n\r\n"
+     "GET /baz HTTP/1.1\r\n\r\n")
+
+    (close-socket)
+
+    (is (next-msgs
+         ch1
+         :request :dont-care
+         :request :dont-care
+         :request :dont-care
+         :close   nil
+         :close   nil
+         :close   nil))))
+
+(defcoretest upstream-abort-events-get-fanned-out
+  [ch1]
+  (start
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :request evt)
+         (let [[{path-info :path-info} _] val]
+           (when (= "/foo" path-info)
+             (future (Thread/sleep 50)
+                     (dn :abort (Exception.)))))))))
+
+  (with-socket
+    (write-socket
+     "GET /foo HTTP/1.1\r\n\r\n"
+     "GET /bar HTTP/1.1\r\n\r\n")
+
+    (is (next-msgs
+         ch1
+         :request :dont-care
+         :request :dont-care
+         :abort   :dont-care
+         :close   :dont-care))))
+
+;; (defcoretest aborts-in-pending-pipelined-handlers-are-postponed)
+
 ;; Handling close events

@@ -197,7 +197,7 @@
         (f evt val)))))
 
 ;;
-;; ==== HTTP pipelining
+;; ==== HTTP Pipelining ====
 ;;
 
 (defrecord Pipeliner
@@ -211,9 +211,7 @@
 (defrecord PipelinerState
     [addrs
      handling
-     last-handler
-     bufferered
-     last-buffered])
+     last-handler])
 
 (defrecord PipelinedExchange
     [upstream
@@ -224,8 +222,7 @@
   (Pipeliner.
    app dn env gate opts
    (atom
-    (PipelinerState.
-     nil empty-queue nil empty-queue nil))))
+    (PipelinerState. nil empty-queue nil))))
 
 (defn- max-pipeline-depth
   [pipeliner]
@@ -240,6 +237,13 @@
 
    (= :body evt)
    (nil? val)))
+
+(defn- finalize-pipeliner
+  [pipeliner]
+  (swap!
+   (.state pipeliner)
+   (fn [conn]
+     (assoc conn :handling empty-queue :last-handler nil))))
 
 (defn- throttle-pipelined-conn
   [pipeliner conn]
@@ -316,6 +320,33 @@
           (recur @(.state pipeliner))))
       (forward-pipelined-event (.last-handler conn) :body chunk))))
 
+(defn- fan-out-close
+  [handling]
+  (doseq [exchange handling]
+    (let [upstream (.upstream exchange)]
+      (try (upstream :close nil)
+           (catch Exception _)))))
+
+(defn- handle-pipelined-close
+  [pipeliner]
+  ;; Proxy the close to all pending handlers
+  (let [handling (.handling @(.state pipeliner))]
+    (finalize-pipeliner pipeliner)
+    (fan-out-close handling)))
+
+(defn- handle-pipelined-abort
+  [pipeliner err]
+  (let [handling (.handling @(.state pipeliner))]
+    (finalize-pipeliner pipeliner)
+    (when-let [exchange (peek handling)]
+      ;; Forward abort to the first exchange
+      (let [upstream (.upstream exchange)]
+        (try (upstream :abort err)
+             (catch Exception _)))
+
+      ;; Send close to all the others
+      (fan-out-close (pop handling)))))
+
 (defn- handle-pipelined-event
   [pipeliner evt val]
   (let [conn @(.state pipeliner)]
@@ -345,16 +376,11 @@
           (= :body evt)
           (handle-pipelined-request-body pipeliner val)
 
-          ;; Current HTTP exchange is done, move on to the next one.
-          ;; (= :done evt)
-          ;; (handle-exchange-done pipeliner)
+          (= :close evt)
+          (handle-pipelined-close pipeliner)
 
           (= :abort evt)
-          (do (println val)
-              (.printStackTrace val))
-
-          (= :close evt)
-          (println "LOL : " evt val)
+          (handle-pipelined-abort pipeliner val)
 
           :else
           (handle-pipelined-event pipeliner evt val)))))))
