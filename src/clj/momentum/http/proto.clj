@@ -25,7 +25,6 @@
   (handle-response-head      [_ msg final?])
   (handle-response-chunk     [_ chunk encoded? final?])
   (handle-response-message   [_ msg])
-  (handle-exchange-complete  [_])
   (handle-exchange-timeout   [_])
   (handle-keep-alive-timeout [_]))
 
@@ -349,13 +348,7 @@
 
          (handle-response-head
           handler [status hdrs (when-not head? body)]
-          (connection-final? new-conn))
-
-         ;; Check if the exchange is complete
-         (when (and (not (.response-body new-conn))
-                    (or (not (.request-body new-conn))
-                        (< 0 (depth new-conn))))
-           (handle-exchange-complete handler)))))))
+          (connection-final? new-conn)))))))
 
 (defn request-chunk
   [state chunk]
@@ -393,12 +386,7 @@
        (handle-request-chunk
         handler
         chunk (= :chunked (.request-body old-conn))
-        (connection-final? new-conn))
-
-       (when (and (not (.response-body new-conn))
-                  (not (.request-body new-conn))
-                  (= 0 (depth new-conn)))
-         (handle-exchange-complete handler))))))
+        (connection-final? new-conn))))))
 
 (defn response-chunk
   [state chunk]
@@ -439,13 +427,7 @@
        (handle-response-chunk
         (.handler new-conn)
         chunk (= :chunked (.response-body old-conn))
-        (connection-final? new-conn))
-
-       ;; First check if the exchange is complete
-       (when (and (not (.response-body new-conn))
-                  (or (not (.request-body new-conn))
-                      (< 0 (depth new-conn))))
-         (handle-exchange-complete handler))))))
+        (connection-final? new-conn))))))
 
 (defn request-message
   [state msg]

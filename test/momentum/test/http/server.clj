@@ -1462,7 +1462,8 @@
              (when (= "/foo" path-info)
                (Thread/sleep 50))
              (dn :response [200 {"content-length" "20"} :chunked])
-             (dotimes [_ 5] (dn :body (buffer path-info)))))))))
+             (dotimes [_ 5] (dn :body (buffer path-info)))
+             (dn :body nil)))))))
 
   (with-socket
     (write-socket

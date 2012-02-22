@@ -32,14 +32,14 @@
     (doseq [[evt val] (take 10 event-seq)]
       (gated evt val))
 
-    (close! gated)
+    (pause! gated)
 
     (doseq [[evt val] (window event-seq 10 10)]
       (gated evt val))
 
     (is (= @received (take 10 event-seq)))
 
-    (open! gated)
+    (resume! gated)
 
     (is (= @received (take 20 event-seq)))))
 
@@ -50,8 +50,8 @@
         (dotimes [_ 1000]
           (Thread/sleep 1)
           (if (> (rand 2) 1)
-            (open! gated)
-            (close! gated)))))
+            (resume! gated)
+            (pause! gated)))))
 
     @(future
        (doseq [[evt val] (take 1000 event-seq)]
@@ -62,10 +62,17 @@
     (Thread/sleep 50)
 
     ;; Ensure the gate is open
-    (open! gated)
+    (resume! gated)
 
     (let [actual @received]
       (dotimes [i 1000]
         (when-not (= (second (get actual i)) i)
           (println "Count @ " i " == " (get actual i))))
       (is (= actual (take 1000 event-seq))))))
+
+(deftest exception-thrown-when-gate-closed
+  (let [[gated received] (init-tracked-gate)]
+    (close! gated)
+
+    (is (thrown? Exception (gated :foo 1)))
+    (is (empty? @received))))

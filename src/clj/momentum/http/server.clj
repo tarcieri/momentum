@@ -165,10 +165,6 @@
     (handle-response-message [_ msg]
       (dn :message msg))
 
-    (handle-exchange-complete [_]
-      (when (opts :pipeline)
-        (up :done nil)))
-
     (handle-exchange-timeout [_]
       (dn :abort (Exception. "The exchange took too long")))
 
@@ -200,7 +196,9 @@
         (p val)
         (f evt val)))))
 
+;;
 ;; ==== HTTP pipelining
+;;
 
 (defrecord Pipeliner
     [app
@@ -229,26 +227,52 @@
     (PipelinerState.
      nil empty-queue nil empty-queue nil))))
 
-(defn- max-depth
+(defn- max-pipeline-depth
   [pipeliner]
   (get (.opts pipeliner) :pipeline))
+
+(defn- final-response-event?
+  [evt val]
+  (cond
+   (= :response evt)
+   (let [[_ _ body] val]
+     (not (keyword? body)))
+
+   (= :body evt)
+   (nil? val)))
+
+(defn- throttle-pipelined-conn
+  [pipeliner conn]
+  (if (= (count (.handling conn)) (max-pipeline-depth pipeliner))
+    (gate/pause!  (.gate pipeliner))
+    (gate/resume! (.gate pipeliner))))
+
+(defn- mk-pipelined-dn
+  [pipeliner]
+  (let [dn (.dn pipeliner)]
+    (fn [evt val]
+      ;; First send the event downstream
+      (dn evt val)
+      (when (final-response-event? evt val)
+        (get-swap-then!
+         (.state pipeliner)
+         (fn [conn]
+           (assoc conn :handling (pop (.handling conn))))
+         (fn [old-conn new-conn]
+           ;; If there is a pending response, release it
+           (when-let [exchange (first (.handling new-conn))]
+             (gate/resume! (.gate exchange)))
+
+           ;; If the exchange is done, release the requests
+           (when (nil? (.last-handler old-conn))
+             (throttle-pipelined-conn pipeliner new-conn))))))))
 
 (defn- bind-pipeliner-upstream
   [pipeliner]
   (let [app      (.app pipeliner)
-        gate     (gate/init (.dn pipeliner))
+        gate     (gate/init (mk-pipelined-dn pipeliner))
         upstream (app gate (.env pipeliner))]
     (PipelinedExchange. upstream gate)))
-
-(defn- throttle-pipelined-conn
-  [pipeliner conn]
-  (when (= (count (.handling conn)) (max-depth pipeliner))
-    (gate/close! (.gate pipeliner))))
-
-(defn- release-pipelined-conn
-  [pipeliner conn]
-  (when (< (count (.handling conn)) (max-depth pipeliner))
-    (gate/open! (.gate pipeliner))))
 
 (defn- handle-pipelined-request
   [pipeliner [hdrs body :as request]]
@@ -260,11 +284,13 @@
      (fn [conn]
        (assoc conn
          :handling (conj (.handling conn) exchange)
-         :last-handler exchange))
+         ;; Only set the last-handler when there will be further
+         ;; events for the request.
+         :last-handler (when (keyword? body) exchange)))
 
      (fn [old-conn conn]
        (when (< 1 (count (.handling conn)))
-         (gate/close! (.gate exchange)))
+         (gate/pause! (.gate exchange)))
 
        (when-not (keyword? body)
          (throttle-pipelined-conn pipeliner conn))
@@ -272,31 +298,28 @@
        (let [upstream (.upstream exchange)]
          (upstream :request [(merge (.addrs conn) hdrs) body]))))))
 
-(defn- handle-exchange-done
-  [pipeliner]
-  (get-swap-then!
-   (.state pipeliner)
-
-   (fn [conn]
-     (let [handling (pop (.handling conn))]
-       (if (seq handling)
-         (assoc conn :handling handling)
-         (assoc conn :handling handling :last-handler nil))))
-
-   (fn [old-conn conn]
-     (release-pipelined-conn pipeliner conn)
-     (when-let [exchange (first (.handling conn))]
-       (gate/open! (.gate exchange))))))
-
 (defn- forward-pipelined-event
+  [exchange evt val]
+  (if exchange
+    (let [upstream (.upstream exchange)]
+      (upstream evt val))
+    (throw (Exception. (str "No upstream : " evt val)))))
+
+(defn- handle-pipelined-request-body
+  [pipeliner chunk]
+  (loop [conn @(.state pipeliner)]
+    (if (nil? chunk)
+      (let [new-conn (assoc conn :last-handler nil)]
+        (if (compare-and-set! (.state pipeliner) conn new-conn)
+          (do (throttle-pipelined-conn pipeliner new-conn)
+              (forward-pipelined-event new-conn :body nil))
+          (recur @(.state pipeliner))))
+      (forward-pipelined-event conn :body chunk))))
+
+(defn- handle-pipelined-event
   [pipeliner evt val]
   (let [conn @(.state pipeliner)]
-    (if-let [exchange (.last-handler conn)]
-      (let [upstream (.upstream exchange)]
-        (when (and (= :body evt) (nil? val))
-          (throttle-pipelined-conn pipeliner conn))
-        (upstream evt val))
-      (throw (Exception. (str "No upstream : " evt val))))))
+    (forward-pipelined-event (.last-handler conn) evt val)))
 
 (defn- set-pipeliner-addrs!
   [pipeliner addrs]
@@ -319,15 +342,18 @@
           (= :request evt)
           (handle-pipelined-request pipeliner val)
 
+          (= :body evt)
+          (handle-pipelined-request-body pipeliner val)
+
           ;; Current HTTP exchange is done, move on to the next one.
-          (= :done evt)
-          (handle-exchange-done pipeliner)
+          ;; (= :done evt)
+          ;; (handle-exchange-done pipeliner)
 
           (#{:close :abort} evt)
           (println "LOL : " evt val)
 
           :else
-          (forward-pipelined-event pipeliner evt val)))))))
+          (handle-pipelined-event pipeliner evt val)))))))
 
 ;; ==== Basic HTTP protocol
 
