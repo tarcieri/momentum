@@ -7,20 +7,21 @@
        this is ok as the primary use case for the :pause event is to
        throttle messages. However, sometimes there are semantic
        reasons to dealy further events."}
-  momentum.util.gate)
+  momentum.util.gate
+  (:use momentum.core.atomic))
 
 (def empty-queue clojure.lang.PersistentQueue/EMPTY)
 
-(deftype State [status buffer])
+(deftype State [converging? open? buffer final?])
 
-(deftype Gate [upstream state skippable]
+(deftype Gate [upstream downstream state skippable]
 
   clojure.lang.IFn
   (invoke [this evt val]
     (let [state (.state this)]
       (loop [cs @(.state this)]
         (cond
-         (= :closed (.status cs))
+         (.final? cs)
          (throw (Exception. "Not expecting any further messages"))
 
          ((.skippable this) evt)
@@ -28,97 +29,109 @@
 
          :else
          (if-let [buffer (.buffer cs)]
-           (let [ns (State. (.status cs) (conj (.buffer cs) [evt val]))]
+           (let [ns (State. (.converging? cs) (.open? cs) (conj (.buffer cs) [evt val]) false)]
              (when-not (compare-and-set! state cs ns)
                (recur @state)))
-           ;; Make sure the gate isn't closed
-           (if (= :closed (.status cs))
-             (throw (Exception. "Not expecting any further messages"))
-             (.invoke ^clojure.lang.IFn @(.upstream this) evt val))))))))
+           (.invoke ^clojure.lang.IFn @(.upstream this) evt val)))))))
 
-(defn resume!
-  "Resumes the gate. Buffered events will be sent upstream one at a time
-  as long as the gate remains open."
-  [^Gate gate]
-  (let [upstream @(.upstream gate)
-        state    (.state gate)]
-    (loop [cs @state]
-      (when (= :paused (.status cs))
-        ;; First get a lock on the opening process. This prevents any
-        ;; other parellel threads from concurrently opening the same
-        ;; gate.
-        (let [new-cs (State. :resuming (.buffer cs))]
-          (if (compare-and-set! state cs new-cs)
-            ;; The lock as been acquired, so atomically pop off
-            ;; messages and send them upstream. At each step, the gate
-            ;; must be verified as still open since each message could
-            ;; cause the gate to close.
-            (loop [cs new-cs]
-              ;; Ensure the gate is still open.
-              (if (= :resuming (.status cs))
-                ;; When there are no more remaining messages in the
-                ;; buffer to send upstream, attempt to nullify the
-                ;; queue. This indicates that it is safe for any
-                ;; further received messages to be sent upstream
-                ;; directly instead of buffering them.
-                (if (seq (.buffer cs))
-                  (let [new-cs (State. :resuming (pop (.buffer cs)))]
+(defn- converge
+  [state upstream downstream cs open?]
+  (when-not (or (= open? (.open? cs)) (.final? cs))
+    (loop [cs cs]
+      (if (.converging? cs)
+        ;; The lock has already been acquired. Another thread is doing the
+        ;; work of converging towards the appropriate state. So, just
+        ;; update the end goal.
+        (let [ns (State. true open? (.buffer cs) false)]
+          (when-not (compare-and-set! state cs ns)
+            (recur @state)))
+
+        ;; No other thread is currently attempting to converge the state,
+        ;; so attempt to get the lock.
+        (let [ns (State. true open? (.buffer cs) false)]
+          (if (compare-and-set! state cs ns)
+            ;; The lock has been acquired. Start converging.
+            (loop [cs ns upstream-open? (.open? cs)]
+              (when-not (.final? cs)
+                ;; Since any parallel thread that does not obtain the lock
+                ;; is able to change the value of open?, each iteration,
+                ;; the latest value is checked and an action is taken
+                ;; based on what it currently is.
+                (if (.open? cs)
+                  (if (seq (.buffer cs))
                     ;; There are still messages to send upstream, so
-                    ;; attempt to pop the first event to send up. If
-                    ;; unsuccessful, something has changed, so read
-                    ;; the atom again and try over. When successful,
-                    ;; recur with current value of state without
-                    ;; reading from the atom again (since in theory we
-                    ;; have the most up to date version).
-                    (if (compare-and-set! state cs new-cs)
-                      (let [[evt val] (peek (.buffer cs))]
-                        (upstream evt val)
-                        (recur new-cs))
-                      (recur @state)))
-                  (when-not (compare-and-set! state cs (State. :open nil))
-                    (recur @state)))
-                ;; Otherwise, the gate has been marked to be closed,
-                ;; so we should close it.
-                (when-not (compare-and-set! state cs (State. :paused (.buffer cs)))
-                  (recur @state))))
-            ;; Retry establishing the open lock.
+                    ;; attempt to pop off the first event.
+                    (let [ns (State. true (.open? cs) (pop (.buffer cs)) false)]
+                      (if (compare-and-set! state cs ns)
+                        (let [[evt val] (peek (.buffer cs))]
+                          (upstream evt val)
+                          (recur ns upstream-open?))
+                        (recur @state upstream-open?)))
+                    ;; There are no more buffered events, so start the
+                    ;; process of releasing the converge lock.
+                    (do
+                      ;; If there is a downstream fn, send a :resume event.
+                      (when (and downstream (not upstream-open?))
+                        (downstream :resume nil))
+
+                      ;; Attempt releasing the lock
+                      (when-not (compare-and-set! state cs (State. false true nil false))
+                        (recur @state true))))
+
+                  ;; Handling closing the gate is much easier.
+                  (do
+                    ;; First send a :pause event downstream if needed
+                    (when (and downstream upstream-open?)
+                      (downstream :pause nil))
+
+                    ;; Then attempt to close the gate and release the
+                    ;; lock
+                    (when-not (compare-and-set! state cs (State. false false (or (.buffer cs) empty-queue) false))
+                      (recur @state false))))))
+
+            ;; If the the CAS to acquire the lock failed, just recur.
             (recur @state)))))))
 
-(defn pause!
-  "Pauses the gate. Any received events will be buffered."
+(defn resume!
   [gate]
-  (swap!
+  (converge
    (.state gate)
-   (fn [cs]
-     (cond
-      (= :open (.status cs))
-      (State. :paused empty-queue)
+   @(.upstream gate)
+   @(.downstream gate)
+   @(.state gate)
+   true))
 
-      (= :resuming (.status cs))
-      (State. :pausing (.buffer cs))
-
-      :else
-      cs))))
+(defn pause!
+  [gate]
+  (converge
+   (.state gate)
+   @(.upstream gate)
+   @(.downstream gate)
+   @(.state gate)
+   false))
 
 (defn close!
   "Closes the gate."
-  [gate]
-  (reset! (.state gate) (State. :closed nil)))
+  [gate] (reset! (.state gate) (State. false false nil true)))
 
 (defn- init*
-  [upstream status queue]
+  [upstream open? queue]
   (Gate. (atom upstream)
-         (atom (State. status queue))
+         (atom nil)
+         (atom (State. false open? queue false))
          ;; Hardcode skippable events for now
          #{:pause :resume :close :abort}))
 
 (defn init
-  ([]         (init*      nil :open nil))
-  ([upstream] (init* upstream :open nil)))
+  ([]         (init*      nil true nil))
+  ([upstream] (init* upstream true nil)))
 
 (defn init-paused
-  ([]         (init*      nil :paused empty-queue))
-  ([upstream] (init* upstream :paused empty-queue)))
+  ([]         (init*      nil false empty-queue))
+  ([upstream] (init* upstream false empty-queue)))
 
 (defn set-upstream!
   [gate f] (reset! (.upstream gate) f) gate)
+
+(defn set-downstream!
+  [gate f] (reset! (.downstream gate) f) gate)

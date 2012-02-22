@@ -1592,8 +1592,53 @@
          :request :dont-care
          :request :dont-care
          :abort   :dont-care
-         :close   :dont-care))))
+         :abort   :dont-care))))
 
-;; (defcoretest aborts-in-pending-pipelined-handlers-are-postponed)
+(defcoretest exceptions-in-pending-pipelined-handlers-cancel-connection
+  [ch1]
+  (start
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :request evt)
+         (let [[{path-info :path-info} _] val]
+           (when (= "/bar" path-info)
+             (throw (Exception. "BOOM"))))))))
 
-;; Handling close events
+  (with-socket
+    (write-socket
+     "GET /foo HTTP/1.1\r\n\r\n"
+     "GET /bar HTTP/1.1\r\n\r\n")
+
+    (is (next-msgs
+         ch1
+         :request :dont-care
+         :request :dont-care
+         :abort   :dont-care
+         :abort   :dont-care))
+
+    (is (receiving ""))
+    (is (closed-socket?))))
+
+(defcoretest aborts-in-pending-pipelined-handlers-cancel-connection
+  [ch1]
+  (start
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :request evt)
+         (let [[{path-info :path-info} _] val]
+           (when (= "/bar" path-info)
+             (dn :abort (Exception. "BOOM"))))))))
+
+  (with-socket
+    (write-socket
+     "GET /foo HTTP/1.1\r\n\r\n"
+     "GET /bar HTTP/1.1\r\n\r\n")
+
+    (is (next-msgs
+         ch1
+         :request :dont-care
+         :request :dont-care
+         :abort   :dont-care
+         :abort   :dont-care))))

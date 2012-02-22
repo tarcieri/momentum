@@ -8,6 +8,9 @@
    [momentum.http.proto  :as proto]
    [momentum.util.gate   :as gate]))
 
+;; TODO:
+;; - Pipelined requests receive pause / resume events.
+
 (def default-opts
   {
    ;; Support up to 20 simultaneous pipelined exchanges. Once the
@@ -320,32 +323,24 @@
           (recur @(.state pipeliner))))
       (forward-pipelined-event (.last-handler conn) :body chunk))))
 
-(defn- fan-out-close
-  [handling]
-  (doseq [exchange handling]
-    (let [upstream (.upstream exchange)]
-      (try (upstream :close nil)
-           (catch Exception _)))))
-
 (defn- handle-pipelined-close
   [pipeliner]
   ;; Proxy the close to all pending handlers
   (let [handling (.handling @(.state pipeliner))]
     (finalize-pipeliner pipeliner)
-    (fan-out-close handling)))
+    (doseq [exchange handling]
+      (let [upstream (.upstream exchange)]
+        (try (upstream :close nil)
+             (catch Exception _))))))
 
 (defn- handle-pipelined-abort
   [pipeliner err]
   (let [handling (.handling @(.state pipeliner))]
     (finalize-pipeliner pipeliner)
-    (when-let [exchange (peek handling)]
-      ;; Forward abort to the first exchange
+    (doseq [exchange handling]
       (let [upstream (.upstream exchange)]
         (try (upstream :abort err)
-             (catch Exception _)))
-
-      ;; Send close to all the others
-      (fan-out-close (pop handling)))))
+             (catch Exception _))))))
 
 (defn- handle-pipelined-event
   [pipeliner evt val]
