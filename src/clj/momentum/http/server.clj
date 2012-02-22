@@ -3,24 +3,38 @@
    momentum.core
    momentum.core.atomic)
   (:require
-   [momentum.net.server :as net]
+   [momentum.net.server  :as net]
    [momentum.http.parser :as parser]
-   [momentum.http.proto :as proto]))
+   [momentum.http.proto  :as proto]
+   [momentum.util.gate   :as gate]))
 
 (def default-opts
-  {:keepalive 60
-   :timeout   5})
+  {
+   ;; Support up to 20 simultaneous pipelined exchanges. Once the
+   ;; number is reached, the server will send a pause event downstream
+   ;; which will tell the server to stop reading requests off of the
+   ;; socket. Once the exchanges fall below the threshold, a
+   ;; resume event will be fired.
+   :pipeline  20
+   ;; Keep the connection open for 60 seconds between exchanges.
+   :keepalive 60
+   ;; The max number of seconds between events of a given exchange. If
+   ;; this timeout is reached, the connection will be forcibly closed.
+   :timeout 5})
+
+(def cas! compare-and-set!)
 
 (def http-version-bytes
   {[1 0] (buffer "HTTP/1.0")
    [1 1] (buffer "HTTP/1.1")})
 
-(def SP         (buffer " "))
-(def QM         (buffer "?"))
-(def CRLF       (buffer "\r\n"))
-(def http-1-0   [1 0])
-(def http-1-1   [1 1])
-(def last-chunk (buffer "0\r\n\r\n"))
+(def SP          (buffer " "))
+(def QM          (buffer "?"))
+(def CRLF        (buffer "\r\n"))
+(def http-1-0    [1 0])
+(def http-1-1    [1 1])
+(def last-chunk  (buffer "0\r\n\r\n"))
+(def empty-queue clojure.lang.PersistentQueue/EMPTY)
 (def response-status-reasons
   {100 "100 Continue"
    101 "101 Switching Protocols"
@@ -106,7 +120,7 @@
   (write buf CRLF))
 
 (defn- mk-handler
-  [dn up]
+  [dn up opts]
   (reify proto/HttpHandler
     (handle-request-head [_ request _]
       (up :request request))
@@ -151,6 +165,10 @@
     (handle-response-message [_ msg]
       (dn :message msg))
 
+    (handle-exchange-complete [_]
+      (when (opts :pipeline)
+        (up :done nil)))
+
     (handle-exchange-timeout [_]
       (dn :abort (Exception. "The exchange took too long")))
 
@@ -165,11 +183,7 @@
      (proto/response state val)
 
      (= :body evt)
-     (try
-       (proto/response-chunk state val)
-       (catch Exception e
-         (println (.getMessage e))
-         (.printStackTrace e)))
+     (proto/response-chunk state val)
 
      (= :message evt)
      (proto/response-message state val)
@@ -186,32 +200,166 @@
         (p val)
         (f evt val)))))
 
+;; ==== HTTP pipelining
+
+(defrecord Pipeliner
+    [app
+     dn
+     env
+     gate
+     opts
+     state])
+
+(defrecord PipelinerState
+    [addrs
+     handling
+     last-handler
+     bufferered
+     last-buffered])
+
+(defrecord PipelinedExchange
+    [upstream
+     gate])
+
+(defn- init-pipeliner
+  [app dn env gate opts]
+  (Pipeliner.
+   app dn env gate opts
+   (atom
+    (PipelinerState.
+     nil empty-queue nil empty-queue nil))))
+
+(defn- max-depth
+  [pipeliner]
+  (get (.opts pipeliner) :pipeline))
+
+(defn- bind-pipeliner-upstream
+  [pipeliner]
+  (let [app      (.app pipeliner)
+        gate     (gate/init (.dn pipeliner))
+        upstream (app gate (.env pipeliner))]
+    (PipelinedExchange. upstream gate)))
+
+(defn- throttle-pipelined-conn
+  [pipeliner conn]
+  (when (= (count (.handling conn)) (max-depth pipeliner))
+    (gate/close! (.gate pipeliner))))
+
+(defn- release-pipelined-conn
+  [pipeliner conn]
+  (when (< (count (.handling conn)) (max-depth pipeliner))
+    (gate/open! (.gate pipeliner))))
+
+(defn- handle-pipelined-request
+  [pipeliner [hdrs body :as request]]
+  (let [exchange (bind-pipeliner-upstream pipeliner)]
+
+    ;; Track the upstream handler
+    (get-swap-then!
+     (.state pipeliner)
+     (fn [conn]
+       (assoc conn
+         :handling (conj (.handling conn) exchange)
+         :last-handler exchange))
+
+     (fn [old-conn conn]
+       (when (< 1 (count (.handling conn)))
+         (gate/close! (.gate exchange)))
+
+       (when-not (keyword? body)
+         (throttle-pipelined-conn pipeliner conn))
+
+       (let [upstream (.upstream exchange)]
+         (upstream :request [(merge (.addrs conn) hdrs) body]))))))
+
+(defn- handle-exchange-done
+  [pipeliner]
+  (get-swap-then!
+   (.state pipeliner)
+
+   (fn [conn]
+     (let [handling (pop (.handling conn))]
+       (if (seq handling)
+         (assoc conn :handling handling)
+         (assoc conn :handling handling :last-handler nil))))
+
+   (fn [old-conn conn]
+     (release-pipelined-conn pipeliner conn)
+     (when-let [exchange (first (.handling conn))]
+       (gate/open! (.gate exchange))))))
+
+(defn- forward-pipelined-event
+  [pipeliner evt val]
+  (let [conn @(.state pipeliner)]
+    (if-let [exchange (.last-handler conn)]
+      (let [upstream (.upstream exchange)]
+        (when (and (= :body evt) (nil? val))
+          (throttle-pipelined-conn pipeliner conn))
+        (upstream evt val))
+      (throw (Exception. (str "No upstream : " evt val))))))
+
+(defn- set-pipeliner-addrs!
+  [pipeliner addrs]
+  (swap! (.state pipeliner) #(assoc % :addrs addrs)))
+
+(defn pipeliner
+  "Handles HTTP pipelining"
+  [app opts]
+  (fn [dn env]
+    (let [gate (gate/init)
+          pipeliner (init-pipeliner app dn env gate opts)]
+
+      (gate/set-upstream!
+       gate
+       (fn [evt val]
+         (cond
+          (= :open evt)
+          (set-pipeliner-addrs! pipeliner val)
+
+          (= :request evt)
+          (handle-pipelined-request pipeliner val)
+
+          ;; Current HTTP exchange is done, move on to the next one.
+          (= :done evt)
+          (handle-exchange-done pipeliner)
+
+          (#{:close :abort} evt)
+          (println "LOL : " evt val)
+
+          :else
+          (forward-pipelined-event pipeliner evt val)))))))
+
+;; ==== Basic HTTP protocol
+
 (defn proto
+  "Middleware that implements the HTTP protocol."
   ([app] (proto app {}))
   ([app opts]
-     (fn [dn env]
-       (let [state (proto/init opts)
-             up    (app (mk-downstream state dn) env)]
+     (let [opts (merge default-opts opts)
+           app  (if (opts :pipeline) (pipeliner app opts) app)]
+       (fn [dn env]
+         (let [state (proto/init opts)
+               up (app (mk-downstream state dn) env)]
 
-         (proto/set-handler state (mk-handler dn up))
+           (proto/set-handler state (mk-handler dn up opts))
 
-         (request-parser
-          (fn [evt val]
-            (cond
-             (= :request evt)
-             (proto/request state val)
+           (request-parser
+            (fn [evt val]
+              (cond
+               (= :request evt)
+               (proto/request state val)
 
-             (= :body evt)
-             (proto/request-chunk state val)
+               (= :body evt)
+               (proto/request-chunk state val)
 
-             (= :message evt)
-             (proto/request-message state val)
+               (= :message evt)
+               (proto/request-message state val)
 
-             :else
-             (do
-               (when (#{:close :abort} evt)
-                 (proto/cleanup state))
-               (up evt val)))))))))
+               :else
+               (do
+                 (when (#{:close :abort} evt)
+                   (proto/cleanup state))
+                 (up evt val))))))))))
 
 (defn start
   ([app] (start app {}))

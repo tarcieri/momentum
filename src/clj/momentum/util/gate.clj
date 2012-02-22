@@ -13,22 +13,29 @@
 
 (deftype State [status buffer])
 
-(deftype Gate [f state]
+(deftype Gate [upstream state skippable]
+
   clojure.lang.IFn
   (invoke [this evt val]
-    (let [state (.state this)]
-      (loop [cs @(.state this)]
-        (if-let [buffer (.buffer cs)]
-          (let [ns (State. (.status cs) (conj (.buffer cs) [evt val]))]
-            (when-not (compare-and-set! state cs ns)
-              (recur @state)))
-          (.invoke ^clojure.lang.IFn @(.f this) evt val))))))
+    (if ((.skippable this) evt)
+      ;; Skip the gate
+      (.invoke ^clojure.lang.IFn @(.upstream this) evt val)
+
+      ;; If the gate is open, forward the message, otherwise buffer
+      ;; it.
+      (let [state (.state this)]
+        (loop [cs @(.state this)]
+          (if-let [buffer (.buffer cs)]
+            (let [ns (State. (.status cs) (conj (.buffer cs) [evt val]))]
+              (when-not (compare-and-set! state cs ns)
+                (recur @state)))
+            (.invoke ^clojure.lang.IFn @(.upstream this) evt val)))))))
 
 (defn open!
   "Opens the gate. Buffered events will be sent upstream one at a time
   as long as the gate remains open."
   [^Gate gate]
-  (let [upstream @(.f gate)
+  (let [upstream @(.upstream gate)
         state    (.state gate)]
     (loop [cs @state]
       (when (= :closed (.status cs))
@@ -88,6 +95,20 @@
       :else
       cs))))
 
+(defn- init*
+  [upstream status queue]
+  (Gate. (atom upstream)
+         (atom (State. status queue))
+         ;; Hardcode skippable events for now
+         #{:pause :resume :close :abort :done}))
+
 (defn init
-  ([]  (init nil))
-  ([f] (Gate. (atom f) (atom (State. :open nil)))))
+  ([]         (init*      nil :open nil))
+  ([upstream] (init* upstream :open nil)))
+
+(defn init-closed
+  ([]         (init*      nil :closed empty-queue))
+  ([upstream] (init* upstream :closed empty-queue)))
+
+(defn set-upstream!
+  [gate f] (reset! (.upstream gate) f) gate)

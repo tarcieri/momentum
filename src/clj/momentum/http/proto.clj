@@ -25,6 +25,7 @@
   (handle-response-head      [_ msg final?])
   (handle-response-chunk     [_ chunk encoded? final?])
   (handle-response-message   [_ msg])
+  (handle-exchange-complete  [_])
   (handle-exchange-timeout   [_])
   (handle-keep-alive-timeout [_]))
 
@@ -345,9 +346,16 @@
        (bump-timer state new-conn)
        (let [handler (.handler new-conn)
              head?   (= :head (peek (.response-queue old-conn)))]
+
          (handle-response-head
           handler [status hdrs (when-not head? body)]
-          (connection-final? new-conn)))))))
+          (connection-final? new-conn))
+
+         ;; Check if the exchange is complete
+         (when (and (not (.response-body new-conn))
+                    (or (not (.request-body new-conn))
+                        (< 0 (depth new-conn))))
+           (handle-exchange-complete handler)))))))
 
 (defn request-chunk
   [state chunk]
@@ -380,10 +388,17 @@
       (throw (Exception. "Not a valid body chunk type"))))
    (fn [old-conn new-conn]
      (bump-timer state new-conn)
-     (handle-request-chunk
-      (.handler new-conn)
-      chunk (= :chunked (.request-body old-conn))
-      (connection-final? new-conn)))))
+
+     (let [handler (.handler new-conn)]
+       (handle-request-chunk
+        handler
+        chunk (= :chunked (.request-body old-conn))
+        (connection-final? new-conn))
+
+       (when (and (not (.response-body new-conn))
+                  (not (.request-body new-conn))
+                  (= 0 (depth new-conn)))
+         (handle-exchange-complete handler))))))
 
 (defn response-chunk
   [state chunk]
@@ -417,10 +432,20 @@
 
    (fn [old-conn new-conn]
      (bump-timer state new-conn)
-     (handle-response-chunk
-      (.handler new-conn)
-      chunk (= :chunked (.response-body old-conn))
-      (connection-final? new-conn)))))
+
+     (let [handler (.handler new-conn)]
+
+       ;; Then invoke the specific handler
+       (handle-response-chunk
+        (.handler new-conn)
+        chunk (= :chunked (.response-body old-conn))
+        (connection-final? new-conn))
+
+       ;; First check if the exchange is complete
+       (when (and (not (.response-body new-conn))
+                  (or (not (.request-body new-conn))
+                      (< 0 (depth new-conn))))
+         (handle-exchange-complete handler))))))
 
 (defn request-message
   [state msg]
