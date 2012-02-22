@@ -312,9 +312,9 @@
       (let [new-conn (assoc conn :last-handler nil)]
         (if (compare-and-set! (.state pipeliner) conn new-conn)
           (do (throttle-pipelined-conn pipeliner new-conn)
-              (forward-pipelined-event new-conn :body nil))
+              (forward-pipelined-event (.last-handler conn) :body nil))
           (recur @(.state pipeliner))))
-      (forward-pipelined-event conn :body chunk))))
+      (forward-pipelined-event (.last-handler conn) :body chunk))))
 
 (defn- handle-pipelined-event
   [pipeliner evt val]
@@ -349,7 +349,11 @@
           ;; (= :done evt)
           ;; (handle-exchange-done pipeliner)
 
-          (#{:close :abort} evt)
+          (= :abort evt)
+          (do (println val)
+              (.printStackTrace val))
+
+          (= :close evt)
           (println "LOL : " evt val)
 
           :else

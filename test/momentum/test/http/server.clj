@@ -1508,4 +1508,42 @@
          "HTTP/1.1 204 No Content\r\n\r\n"
          "HTTP/1.1 204 No Content\r\n\r\n"))))
 
+(defcoretest pausing-pipelined-chunked-requests
+  [ch1]
+  (start
+   (fn [dn _]
+     (enqueue ch1 [:binding nil])
+     (fn [evt val]
+       (when (= [:body nil] [evt val])
+         (future
+           (Thread/sleep 250)
+           (dn :response [204 {} nil])))))
+   {:pipeline 1})
+
+  (with-socket
+    (write-socket
+     "POST /foo HTTP/1.1\r\n"
+     "Transfer-Encoding: chunked\r\n\r\n"
+     "3\r\nfoo\r\n"
+     "3\r\nbar\r\n"
+     "3\r\nbaz\r\n"
+     "0\r\n\r\n"
+     "POST /bar HTTP/1.1\r\n"
+     "Transfer-encoding: chunked\r\n\r\n"
+     "3\r\nFOO\r\n"
+     "3\r\nBAR\r\n"
+     "3\r\nBAZ\r\n"
+     "0\r\n\r\n")
+
+    (is (next-msgs ch1 :binding nil))
+    (is (no-msgs ch1))
+
+    (Thread/sleep 400)
+
+    (is (next-msgs ch1 :binding nil))
+
+    (is (receiving
+         "HTTP/1.1 204 No Content\r\n\r\n"
+         "HTTP/1.1 204 No Content\r\n\r\n"))))
+
 ;; Handling close events
