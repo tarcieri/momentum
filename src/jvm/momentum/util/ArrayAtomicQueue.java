@@ -19,9 +19,10 @@ public class ArrayAtomicQueue<T> {
   final AtomicReferenceArray<T> nodes;
 
   /*
-   * The array offset that contains the head of the queue.
+   * The array offset that contains the head of the queue. It is only used the
+   * poll method.
    */
-  final AtomicInteger head = new AtomicInteger();
+  int head;
 
   /*
    * The array offset that contains the tail of the queue.
@@ -42,35 +43,26 @@ public class ArrayAtomicQueue<T> {
       throw new NullPointerException("Can't insert null values");
     }
 
-    int pos;
+    int idx = tail.getAndIncrement() & mask;
 
-    while (true) {
-      pos = tail.get();
-
-      // If the queue is full, return false
-      if (pos - head.get() <= mask) {
-        return false;
-      }
-
-      if (tail.compareAndSet(pos, pos + 1)) {
-        nodes.set(pos & mask, val);
-        return true;
-      }
+    if (!nodes.compareAndSet(idx, null, val)) {
+      // Something is going very wrong
+      return false;
     }
+
+    return true;
   }
 
   public T poll() {
-    int idx = head.get();
-    T ret = nodes.get(idx);
+    int idx = head & mask;
+    T ret   = nodes.get(idx);
 
     if (ret == null) {
       return null;
     }
 
-    // Nullfify the array entry
     nodes.set(idx, null);
-
-    head.lazySet(idx + 1);
+    ++head;
 
     return ret;
   }
