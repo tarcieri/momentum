@@ -20,6 +20,12 @@ public final class ReactorDownstream {
     }
   }
 
+  final class CloseTask implements ReactorTask {
+    public void run() throws IOException {
+      channel.close();
+    }
+  }
+
   final Reactor reactor;
 
   final SocketChannel channel;
@@ -34,7 +40,16 @@ public final class ReactorDownstream {
       doSendMessage(msg);
     }
     else {
-      reactor.queueWrite(new WriteTask(msg));
+      reactor.pushWriteTask(new WriteTask(msg));
+    }
+  }
+
+  public void sendClose() throws IOException {
+    if (reactor.onReactorThread()) {
+      channel.close();
+    }
+    else {
+      reactor.pushCloseTask(new CloseTask());
     }
   }
 

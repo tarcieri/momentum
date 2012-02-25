@@ -10,6 +10,19 @@ import momentum.util.ArrayAtomicQueue;
 
 public final class Reactor implements Runnable {
 
+  class BindTask implements ReactorTask {
+
+    final TCPServer srv;
+
+    BindTask(TCPServer s) {
+      srv = s;
+    }
+
+    public void run() throws IOException {
+      doStartTcpServer(srv);
+    }
+  }
+
   /*
    * Reference to the reactor cluster that owns this reactor. This is used when
    * a new connection is established and the channel is sent to the least busy
@@ -30,7 +43,12 @@ public final class Reactor implements Runnable {
   /*
    * Queue of servers waiting to be bound
    */
-  final ArrayAtomicQueue<TCPServer> serverQueue = new ArrayAtomicQueue<TCPServer>(1024);
+  final ArrayAtomicQueue<ReactorTask> bindQueue = new ArrayAtomicQueue<ReactorTask>(1024);
+
+  /*
+   * Queue of channels to close
+   */
+  final ArrayAtomicQueue<ReactorTask> closeQueue = new ArrayAtomicQueue<ReactorTask>(8192);
 
   /*
    * Queue of writes that need to be scheduled
@@ -50,8 +68,21 @@ public final class Reactor implements Runnable {
     selector = Selector.open();
   }
 
-  public void run() {
+  /*
+   * Registers a new channel with this reactor
+   */
+  void register(SocketChannel ch, ReactorUpstreamFactory factory) throws IOException {
+    ReactorDownstream dn = new ReactorDownstream(this, ch);
+    ReactorUpstream   up = factory.getUpstream(dn);
 
+    ch.configureBlocking(false);
+    ch.register(selector, SelectionKey.OP_READ, up);
+
+    up.sendOpen(ch);
+  }
+
+  public void run() {
+    // Grab the current thread
     thread = Thread.currentThread();
 
     while (true) {
@@ -59,7 +90,10 @@ public final class Reactor implements Runnable {
         // Wait for an event on one of the registered channels
         selector.select();
 
-        bindNewServers();
+        processQueue(writeQueue);
+        processQueue(closeQueue);
+        processQueue(bindQueue);
+
         processIO();
       }
       catch (Throwable t) {
@@ -104,15 +138,43 @@ public final class Reactor implements Runnable {
     throw new ReactorApoptosis(msg);
   }
 
-  // Registers a new channel with this reactor
-  void register(SocketChannel ch, ReactorUpstreamFactory factory) throws IOException {
-    ReactorDownstream dn = new ReactorDownstream(this, ch);
-    ReactorUpstream   up = factory.getUpstream(dn);
+  /*
+   * Pops off all tasks from a queue and runs them.
+   */
+  void processQueue(ArrayAtomicQueue<ReactorTask> q) throws IOException {
+    while (true) {
+      ReactorTask curr = q.poll();
 
-    ch.configureBlocking(false);
-    ch.register(selector, SelectionKey.OP_READ, up);
+      if (curr == null)
+        return;
+
+      curr.run();
+    }
   }
 
+  /*
+   * Pushes a task on a queue and wakes up the reactor. If the queue overflows,
+   * kills the reactor.
+   */
+  void pushTask(ArrayAtomicQueue<ReactorTask> q, ReactorTask task) {
+    if (!q.offer(task)) {
+      apoptosis("Reactor queue overflow");
+    }
+
+    wakeup();
+  }
+
+  void pushWriteTask(ReactorTask task) {
+    pushTask(writeQueue, task);
+  }
+
+  void pushCloseTask(ReactorTask task) {
+    pushTask(closeQueue, task);
+  }
+
+  /*
+   * Processes all ready keys.
+   */
   void processIO() throws IOException {
     SelectionKey k;
     Iterator<SelectionKey> i;
@@ -138,6 +200,7 @@ public final class Reactor implements Runnable {
   }
 
   void close(SocketChannel ch) {
+    debug(" ++++ CLOSE ++++");
   }
 
   void acceptSocket(SelectionKey k) throws IOException {
@@ -157,25 +220,12 @@ public final class Reactor implements Runnable {
     register(sockCh, (TCPServer) k.attachment());
   }
 
-  void bindNewServers() throws IOException {
-    TCPServer srv = serverQueue.poll();
-
-    while (srv != null) {
-      doStartTcpServer(srv);
-      srv = serverQueue.poll();
-    }
-  }
-
   void startTcpServer(TCPServer srv) throws IOException {
     if (onReactorThread()) {
       doStartTcpServer(srv);
     }
     else {
-      if (!serverQueue.offer(srv)) {
-        apoptosis("New server queue overflow");
-      }
-
-      wakeup();
+      pushTask(bindQueue, new BindTask(srv));
     }
   }
 
@@ -192,14 +242,6 @@ public final class Reactor implements Runnable {
     // Register the channel and indicate an interest in accepting new
     // connections
     k = ch.register(selector, SelectionKey.OP_ACCEPT, srv);
-  }
-
-  void queueWrite(ReactorTask task) {
-    if (!writeQueue.offer(task)) {
-      apoptosis("Write queue overflow");
-    }
-
-    wakeup();
   }
 
   boolean read(SelectionKey k) {
