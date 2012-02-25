@@ -11,4 +11,8 @@ public interface ReactorUpstream {
 
   void sendClose();
 
+  void sendPause();
+
+  void sendResume();
+
 }

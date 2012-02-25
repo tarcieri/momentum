@@ -91,6 +91,12 @@ public final class ReactorChannelHandler {
     }
   }
 
+  public void sendPauseDownstream() throws IOException {
+  }
+
+  public void sendResumeDownstream() throws IOException {
+  }
+
   void doSendMessageDownstream(Buffer msg) throws IOException {
     ByteBuffer buf = msg.toByteBuffer();
 
