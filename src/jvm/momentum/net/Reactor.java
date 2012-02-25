@@ -72,13 +72,12 @@ public final class Reactor implements Runnable {
    * Registers a new channel with this reactor
    */
   void register(SocketChannel ch, ReactorUpstreamFactory factory) throws IOException {
-    ReactorDownstream dn = new ReactorDownstream(this, ch);
-    ReactorUpstream   up = factory.getUpstream(dn);
+    ReactorChannelHandler handler = ReactorChannelHandler.build(this, ch, factory);
 
     ch.configureBlocking(false);
-    ch.register(selector, SelectionKey.OP_READ, up);
+    ch.register(selector, SelectionKey.OP_READ, handler);
 
-    up.sendOpen(ch);
+    handler.sendOpenUpstream();
   }
 
   public void run() {
@@ -199,10 +198,6 @@ public final class Reactor implements Runnable {
     }
   }
 
-  void close(SocketChannel ch) {
-    debug(" ++++ CLOSE ++++");
-  }
-
   void acceptSocket(SelectionKey k) throws IOException {
     ServerSocketChannel srvCh;
     SocketChannel sockCh;
@@ -244,18 +239,18 @@ public final class Reactor implements Runnable {
     k = ch.register(selector, SelectionKey.OP_ACCEPT, srv);
   }
 
-  boolean read(SelectionKey k) {
+  boolean read(SelectionKey k) throws IOException {
     int num = 0;
     Buffer buf;
     byte [] arr;
     boolean fail = true;
     SocketChannel ch;
-    ReactorUpstream up;
+    ReactorChannelHandler handler;
 
     // Grab the channel
     ch = (SocketChannel) k.channel();
-    // Grab the upstream
-    up = (ReactorUpstream) k.attachment();
+    // Grab the handler
+    handler = (ReactorChannelHandler) k.attachment();
     // Prep the buffer
     readBuffer.clear();
 
@@ -276,12 +271,12 @@ public final class Reactor implements Runnable {
 
       buf = Buffer.wrap(arr);
 
-      up.sendMessage(buf);
+      handler.sendMessageUpstream(buf);
     }
     else if (num < 0 || fail) {
       // Some JDK implementations run into an infinite loop without this.
       k.cancel();
-      close(ch);
+      handler.doClose();
       return false;
     }
 
