@@ -24,6 +24,13 @@ public final class Reactor implements Runnable {
     }
   }
 
+  class ShutdownTask implements ReactorTask {
+
+    public void run() throws IOException {
+      doShutdown();
+    }
+  }
+
   /*
    * Reference to the reactor cluster that owns this reactor. This is used when
    * a new connection is established and the channel is sent to the least busy
@@ -52,6 +59,11 @@ public final class Reactor implements Runnable {
   final ArrayAtomicQueue<ReactorTask> closeQueue = new ArrayAtomicQueue<ReactorTask>(8192);
 
   /*
+   * Queue of interest op change requests
+   */
+  final ArrayAtomicQueue<ReactorTask> interestOpQueue = new ArrayAtomicQueue<ReactorTask>(1024);
+
+  /*
    * Queue of writes that need to be scheduled
    */
   final ArrayAtomicQueue<ReactorTask> writeQueue = new ArrayAtomicQueue<ReactorTask>(65536);
@@ -75,9 +87,27 @@ public final class Reactor implements Runnable {
    */
   Thread thread = null;
 
+  /*
+   * Flag that tracks whether the reactor should shutdown
+   */
+  boolean shutdown;
+
   Reactor(ReactorCluster c) throws IOException {
     cluster  = c;
     selector = Selector.open();
+  }
+
+  public void shutdown() {
+    if (onReactorThread()) {
+      doShutdown();
+    }
+    else {
+      pushCloseTask(new ShutdownTask());
+    }
+  }
+
+  void doShutdown() {
+    shutdown = true;
   }
 
   /*
@@ -95,11 +125,12 @@ public final class Reactor implements Runnable {
     // Grab the current thread
     thread = Thread.currentThread();
 
-    while (true) {
+    while (!shutdown) {
       try {
         // Wait for an event on one of the registered channels
         selector.select();
 
+        processQueue(interestOpQueue);
         processQueue(writeQueue);
         processQueue(closeQueue);
         processQueue(bindQueue);
@@ -107,6 +138,7 @@ public final class Reactor implements Runnable {
         processIO();
       }
       catch (Throwable t) {
+        debug(" ++++ ERROR : " + t.getClass().getName());
         debug(t.getMessage());
         t.printStackTrace();
         // Something wack is going on...
@@ -121,6 +153,8 @@ public final class Reactor implements Runnable {
         }
       }
     }
+
+    // TODO: Cleanup all open connections
   }
 
   boolean onReactorThread() {
@@ -182,6 +216,10 @@ public final class Reactor implements Runnable {
     pushTask(closeQueue, task);
   }
 
+  void pushInterestOpTask(ReactorTask task) {
+    pushTask(interestOpQueue, task);
+  }
+
   /*
    * Processes all ready keys.
    */
@@ -211,8 +249,14 @@ public final class Reactor implements Runnable {
   }
 
   void acceptSocket(SelectionKey k) throws IOException {
-    ReactorServerHandler handler = (ReactorServerHandler) k.attachment();
-    cluster.register(handler.accept(), true);
+    ReactorServerHandler srvHandler;
+    ReactorChannelHandler chHandler;
+
+    srvHandler = (ReactorServerHandler) k.attachment();
+    chHandler  = srvHandler.accept();
+
+    if (chHandler != null)
+      cluster.register(chHandler, true);
   }
 
   ReactorServerHandler startTcpServer(TCPServer srv) throws IOException {

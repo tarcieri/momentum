@@ -2,12 +2,15 @@
   (:use
    clojure.test
    support.helpers
-   momentum.core
-   momentum.net.server))
+   momentum.core)
+  (:require
+   [momentum.net.server :as server]))
 
 (def addr-info
   {:local-addr  ["127.0.0.1" 4040]
    :remote-addr ["127.0.0.1" :dont-care]})
+
+(defn- start [& args] @(apply server/start args))
 
 (defcoretest simple-echo-server
   [ch1]
@@ -70,27 +73,27 @@
          :open  addr-info
          :close nil))))
 
-(defcoretest writing-to-closed-socket
-  [ch1]
-  (start
-   (fn [dn _]
-     (fn [evt val]
-       (enqueue ch1 [evt val])
-       (when (= :open evt)
-         (future
-          (Thread/sleep 30)
-          (try
-            (dn :message (buffer "Hello"))
-            (catch Exception err
-              (enqueue ch1 [:abort err]))))))))
+;; (defcoretest ^{:focus true} writing-to-closed-socket
+;;   [ch1]
+;;   (start
+;;    (fn [dn _]
+;;      (fn [evt val]
+;;        (enqueue ch1 [evt val])
+;;        (when (= :open evt)
+;;          (future
+;;           (Thread/sleep 30)
+;;           (try
+;;             (dn :message (buffer "Hello"))
+;;             (catch Exception err
+;;               (enqueue ch1 [:abort err]))))))))
 
-  (with-socket
-    (close-socket)
-    (is (next-msgs
-         ch1
-         :open   addr-info
-         :close  nil
-         :abort  #(instance? java.io.IOException %)))))
+;;   (with-socket
+;;     (close-socket)
+;;     (is (next-msgs
+;;          ch1
+;;          :open   addr-info
+;;          :close  nil
+;;          :abort  #(instance? java.io.IOException %)))))
 
 (defcoretest handling-exception-in-bind-function
   [ch1]
@@ -153,7 +156,7 @@
 
     (is (no-msgs ch1))))
 
-(defcoretest abort-messages-get-prioritized-over-other-events
+(defcoretest ^{:focus true} abort-messages-get-prioritized-over-other-events
   [ch1 ch2]
   (start
    (fn [dn _]

@@ -15,4 +15,6 @@ public interface ReactorUpstream {
 
   void sendResume();
 
+  void sendAbort(Exception e);
+
 }

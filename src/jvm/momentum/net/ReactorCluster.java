@@ -3,6 +3,7 @@ package momentum.net;
 import java.io.IOException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /*
  * Manages a cluster of reactors. Ideally there would be one reactor per
@@ -13,7 +14,7 @@ public final class ReactorCluster {
   /*
    * The thread pool that the reactors run on.
    */
-  final ExecutorService threadPool;
+  volatile ExecutorService threadPool;
 
   /*
    * References to the reactors
@@ -25,20 +26,50 @@ public final class ReactorCluster {
   }
 
   public ReactorCluster(int count) throws IOException {
-    threadPool = Executors.newFixedThreadPool(count);
-    reactors   = new Reactor[count];
+    reactors = new Reactor[count];
+  }
 
-    for (int i = 0; i < count; ++i ) {
-      reactors[i] = new Reactor(this);
-    }
+  public boolean isStarted() {
+    return threadPool != null;
   }
 
   /*
    * Start all the reactors.
    */
-  public void start() {
+  public synchronized void start() throws IOException {
+    if (isStarted())
+      return;
+
+    ExecutorService tp = Executors.newFixedThreadPool(reactors.length);
+
     for (int i = 0; i < reactors.length; ++i) {
-      threadPool.submit(reactors[i]);
+      reactors[i] = new Reactor(this);
+    }
+
+    // Start the reactors once all of them have been initialized. This creates
+    // a proper happens-before relationship between all the reactor threads and
+    // the list of reactors.
+    for (int i = 0; i < reactors.length; ++i) {
+      tp.submit(reactors[i]);
+    }
+
+    threadPool = tp;
+  }
+
+  public synchronized void stop() throws IOException, InterruptedException {
+    if (!isStarted())
+      return;
+
+    for (int i = 0; i < reactors.length; ++i) {
+      reactors[i].shutdown();
+      reactors[i] = null;
+    }
+
+    try {
+      threadPool.awaitTermination(1000, TimeUnit.MILLISECONDS);
+    }
+    finally {
+      threadPool = null;
     }
   }
 
@@ -47,6 +78,9 @@ public final class ReactorCluster {
   }
 
   public ReactorServerHandler startTcpServer(TCPServer srv) throws IOException {
+    if (!isStarted())
+      start();
+
     return reactors[0].startTcpServer(srv);
   }
 }

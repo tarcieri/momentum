@@ -33,6 +33,34 @@ public final class ReactorChannelHandler {
     }
   }
 
+  final class AbortTask implements ReactorTask {
+
+    final Exception err;
+
+    AbortTask(Exception e) {
+      err = e;
+    }
+
+    public void run() throws IOException {
+      doAbort(err);
+    }
+  }
+
+  /*
+   * Schedule pause events
+   */
+  final class PauseTask implements ReactorTask {
+    public void run() throws IOException {
+      clearOpRead();
+    }
+  }
+
+  final class ResumeTask implements ReactorTask {
+    public void run() throws IOException {
+      setOpRead();
+    }
+  }
+
   /*
    * Queue of pending writes. Implemented as a linked list of arrays. The
    * arrays, represented by MessageQueueSegment are pooled per reactor.
@@ -163,12 +191,17 @@ public final class ReactorChannelHandler {
     channel = ch;
   }
 
-  void sendOpenUpstream() {
-    upstream.sendOpen(channel);
+  boolean isOpen() {
+    return key != null;
   }
 
   void sendMessageUpstream(Buffer msg) {
-    upstream.sendMessage(msg);
+    try {
+      upstream.sendMessage(msg);
+    }
+    catch (Exception e) {
+      doAbort(e);
+    }
   }
 
   void sendPauseUpstream() {
@@ -176,7 +209,13 @@ public final class ReactorChannelHandler {
       return;
 
     isPaused = true;
-    upstream.sendPause();
+
+    try {
+      upstream.sendPause();
+    }
+    catch (Exception e) {
+      doAbort(e);
+    }
   }
 
   void sendResumeUpstream() {
@@ -184,7 +223,13 @@ public final class ReactorChannelHandler {
       return;
 
     isPaused = false;
-    upstream.sendResume();
+
+    try {
+      upstream.sendResume();
+    }
+    catch (Exception e) {
+      doAbort(e);
+    }
   }
 
   public void sendMessageDownstream(Buffer msg) throws IOException {
@@ -206,14 +251,36 @@ public final class ReactorChannelHandler {
   }
 
   public void sendPauseDownstream() throws IOException {
-    clearOpRead();
+    if (reactor.onReactorThread()) {
+      clearOpRead();
+    }
+    else {
+      reactor.pushInterestOpTask(new PauseTask());
+    }
   }
 
   public void sendResumeDownstream() throws IOException {
-    setOpRead();
+    if (reactor.onReactorThread()) {
+      setOpRead();
+    }
+    else {
+      reactor.pushInterestOpTask(new ResumeTask());
+    }
+  }
+
+  public void sendAbortDownstream(Exception err) {
+    if (reactor.onReactorThread()) {
+      doAbort(err);
+    }
+    else {
+      reactor.pushCloseTask(new AbortTask(err));
+    }
   }
 
   void doSendMessageDownstream(Buffer msg) throws IOException {
+    if (!isOpen())
+      return;
+
     ByteBuffer buf = msg.toByteBuffer();
 
     if (!messageQueue.isEmpty()) {
@@ -232,8 +299,39 @@ public final class ReactorChannelHandler {
   }
 
   void doClose() throws IOException {
+    if (!isOpen())
+      return;
+
+    key = null;
     channel.close();
-    upstream.sendClose();
+
+    try {
+      upstream.sendClose();
+    }
+    catch (Exception e) {
+      // Ignore
+    }
+  }
+
+  void doAbort(Exception err) {
+    if (!isOpen())
+      return;
+
+    key = null;
+
+    try {
+      channel.close();
+    }
+    catch (IOException e) {
+      // Ignore
+    }
+
+    try {
+      upstream.sendAbort(err);
+    }
+    catch (Exception e) {
+      // Ignore
+    }
   }
 
   /*
@@ -247,8 +345,14 @@ public final class ReactorChannelHandler {
 
     key = channel.register(r.selector, SelectionKey.OP_READ, this);
 
-    if (sendOpen)
-      sendOpenUpstream();
+    if (sendOpen) {
+      try {
+        upstream.sendOpen(channel);
+      }
+      catch (Exception e) {
+        doAbort(e);
+      }
+    }
   }
 
   /*
@@ -302,6 +406,9 @@ public final class ReactorChannelHandler {
   }
 
   void processWrites() throws IOException {
+    if (!isOpen())
+      return;
+
     if (!key.isWritable())
       return;
 

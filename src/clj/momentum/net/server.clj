@@ -1,93 +1,103 @@
 (ns momentum.net.server
   (:use
-   momentum.core
-   momentum.net.core)
+   momentum.core)
   (:import
-   [org.jboss.netty.bootstrap
-    Bootstrap
-    ServerBootstrap]
-   [org.jboss.netty.channel
-    ChannelPipelineFactory]
-   [org.jboss.netty.channel.group
-    ChannelGroup]
-   [org.jboss.netty.channel.socket.nio
-    NioServerSocketChannelFactory]))
+   [momentum.net
+    ReactorChannelHandler
+    ReactorCluster
+    ReactorServerHandler
+    ReactorUpstream
+    ReactorUpstreamFactory
+    TCPServer]
+   [java.net
+    InetSocketAddress
+    Socket]
+   [java.nio.channels
+    SocketChannel]))
 
-(defn- ^ChannelPipelineFactory mk-pipeline-factory
-  [channel-group app {pipeline-fn :pipeline-fn :as opts}]
-  (let [pipeline-fn (or pipeline-fn (fn [p _] p))]
-      (reify ChannelPipelineFactory
-        (getPipeline [_]
-          (let [handler (mk-upstream-handler channel-group app opts)]
-            (doto (mk-channel-pipeline)
-              (pipeline-fn opts)
-              (.addLast "handler" handler)))))))
+(def reactor-cluster (ReactorCluster.))
 
-(defn- ^ServerBootstrap mk-bootstrap
-  [thread-pool]
-  (ServerBootstrap.
-   (NioServerSocketChannelFactory.
-    thread-pool thread-pool)))
+(defn- ^InetSocketAddress to-socket-addr
+  [[host port]]
+  (let [port (or port 80)]
+    (if host
+      (InetSocketAddress. host port)
+      (InetSocketAddress. port))))
 
-(def default-opts
-  {"reuseAddress"               true
-   "child.reuseAddres"          true,
-   "child.connectTimeoutMillis" 100})
+(defn- from-socket-addr
+  [^InetSocketAddress addr]
+  [(.. addr getAddress getHostAddress) (.getPort addr)])
 
-(defn- merge-netty-opts
-  [opts]
-  (merge
-   default-opts
-   (reduce
-    (fn [opts [k v]]
-      (cond
-       (= :keep-alive k)
-       (assoc opts "child.keepAlive" v)
-       (= :tcp-no-delay k)
-       (assoc opts "tcpNoDelay" v "child.tcpNoDelay" v)
-       (= :send-buffer-size k)
-       (assoc opts "child.sendBufferSize" v)
-       (= :receive-buffer-size k)
-       (assoc opts "child.receiveBufferSize" v)
-       (= :reuse-address k)
-       (assoc opts "reuseAddress" v "child.reuseAddress" v)
-       (= :connect-timeout k)
-       (assoc opts "child.connectTimeoutMillis" v)
-       :else
-       opts))
-    {}
-    opts)
-   (opts :netty)))
+(defn- channel-info
+  [^SocketChannel ch]
+  (let [sock (.socket ch)]
+    {:local-addr  (from-socket-addr (.getLocalSocketAddress sock))
+     :remote-addr (from-socket-addr (.getRemoteSocketAddress sock))}))
+
+(defn- mk-downstream
+  [^ReactorChannelHandler dn]
+  (fn [evt val]
+    (cond
+     (= :message evt)
+     (.sendMessageDownstream dn val)
+
+     (= :close evt)
+     (.sendCloseDownstream dn)
+
+     (= :pause evt)
+     (.sendPauseDownstream dn)
+
+     (= :resume evt)
+     (.sendResumeDownstream dn)
+
+     (= :abort evt)
+     (.sendAbortDownstream dn)
+
+     :else
+     (throw (Exception. (str "Unknown event : " evt))))))
+
+(defn- mk-upstream
+  [^ReactorChannelHandler downstream upstream]
+  (reify ReactorUpstream
+    (sendOpen [_ ch]
+      (upstream :open (channel-info ch)))
+
+    (sendMessage [_ buf]
+      (upstream :message buf))
+
+    (sendClose [_]
+      (upstream :close nil))
+
+    (sendPause [_]
+      (upstream :pause nil))
+
+    (sendResume [_]
+      (upstream :resume nil))
+
+    (sendAbort [_ err]
+      (upstream :abort err))))
+
+(defn- mk-tcp-server
+  [app {host :host port :port :as opts}]
+  (let [addr (to-socket-addr [host (or port 4040)])]
+    (reify TCPServer
+      (getBindAddr [_] addr)
+      (getUpstream [_ dn]
+        (mk-upstream dn (app (mk-downstream dn) {}))))))
 
 (defn start
   ([app] (start app {}))
-  ([app {host :host port :port :as opts}]
-     (let [thread-pool   (mk-thread-pool)
-           bootstrap     (mk-bootstrap thread-pool)
-           channel-group (mk-channel-group)
-           socket-addr   (mk-socket-addr [host (or port 4040)])]
+  ([app opts]
+     (let [srv    (mk-tcp-server app opts)
+           handle (.startTcpServer reactor-cluster srv)]
+       (reify
+         clojure.lang.IFn
+         (invoke [_]
+           (.close handle))
 
-       ;; Set the options
-       (doseq [[k v] (merge-netty-opts opts)]
-         (.setOption bootstrap k v))
+         clojure.lang.IDeref
+         (deref [this]
+           @(.bound handle)
+           this)))))
 
-       ;; Set the factory
-       (.setPipelineFactory
-        bootstrap
-        (mk-pipeline-factory channel-group app opts))
-
-       {::bootstrap      bootstrap
-        ::server-channel (.bind bootstrap socket-addr)
-        ::channel-group  channel-group})))
-
-(defn stop
-  [{^Bootstrap bootstrap        ::bootstrap
-    server-channel              ::server-channel
-    ^ChannelGroup channel-group ::channel-group}]
-  ;; Add the server channel to the channel group, this
-  ;; way we can shutdown everything at once
-  (when channel-group
-    (.add channel-group server-channel)
-    (let [close-future (.close channel-group)]
-      (.awaitUninterruptibly close-future)
-      (.releaseExternalResources bootstrap))))
+(defn stop [f] (f))

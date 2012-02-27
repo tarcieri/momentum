@@ -29,6 +29,14 @@ public class ReactorServerHandler {
     server  = s;
   }
 
+  public AsyncVal bound() {
+    return bound;
+  }
+
+  public AsyncVal closed() {
+    return closed;
+  }
+
   void open(Selector selector) throws IOException {
     if (channel != null)
       return;
@@ -51,18 +59,28 @@ public class ReactorServerHandler {
     ch.configureBlocking(false);
 
     handler = new ReactorChannelHandler(ch);
-    handler.upstream = server.getUpstream(handler);
+
+    try {
+      handler.upstream = server.getUpstream(handler);
+    }
+    catch (Throwable t) {
+      // TODO: Add logging
+      ch.close();
+      return null;
+    }
 
     return handler;
   }
 
-  public void close() throws IOException {
+  public AsyncVal close() throws IOException {
     if (reactor.onReactorThread()) {
       doClose();
     }
     else {
       reactor.pushCloseTask(new CloseTask());
     }
+
+    return closed;
   }
 
   void doClose() throws IOException {
