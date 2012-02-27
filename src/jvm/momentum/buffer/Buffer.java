@@ -38,6 +38,9 @@ public abstract class Buffer implements Seqable {
   // The byte order that any multibyte reads will use.
   boolean bigEndian;
 
+  // Whether the buffer is transient or not
+  boolean isTransient;
+
   public final static Buffer allocate(int cap) {
     return wrapArray(new byte[cap], 0, cap);
   }
@@ -498,9 +501,25 @@ public abstract class Buffer implements Seqable {
     return position(pos).limit(pos + len);
   }
 
+  /**
+   * Returns whether the buffer is transient or not. If a buffer is transient,
+   * it the contents of it can be mutated after the given run loop.
+   */
+  public boolean isTransient() {
+    return isTransient;
+  }
+
+  /**
+   * Sets the buffer as transient
+   */
+  public Buffer makeTransient() {
+    isTransient = true;
+    return this;
+  }
+
   /*
    *
-   *  Conversions
+   *  ===== Conversions =====
    *
    */
 

@@ -28,12 +28,14 @@ public final class CompositeBuffer extends Buffer {
 
     Buffer[] bufs = new Buffer[size];
     int[] indices = new int[size];
+    boolean trans = false;
 
     // Calculate the capacity of the buffer and make an array with the indexes.
     for (int i = 0; i < bufArr.length; ++i) {
       // Add the buffer to the array
       Buffer buf = bufArr[i];
       bufs[i]    = buf;
+      trans     |= buf.isTransient();
 
       // Update the index array
       indices[i + 1] = indices[i] + buf.capacity;
@@ -41,17 +43,30 @@ public final class CompositeBuffer extends Buffer {
 
     capacity = Math.max(capacity, indices[bufArr.length]);
 
-    return new CompositeBuffer(bufs, indices, bufArr.length, 0, capacity, capacity, true);
+    return new CompositeBuffer(bufs, indices, bufArr.length, 0, capacity, capacity, true, trans);
   }
 
-  protected CompositeBuffer(Buffer[] bs, int[] idxs, int cnt, int pos, int lim, int cap, boolean be) {
+  protected CompositeBuffer(Buffer[] bs, int[] idxs, int cnt, int pos, int lim, int cap, boolean be, boolean trans) {
     super(pos, lim, cap, be);
 
-    bufs     = bs;
-    indices  = idxs;
-    bufCount = cnt;
+    bufs        = bs;
+    indices     = idxs;
+    bufCount    = cnt;
+    isTransient = trans;
 
     currentCapacity = idxs[cnt];
+  }
+
+  public Buffer makeTransient() {
+    if (!isTransient) {
+      for (int i = 0; i < bufCount; ++i) {
+        bufs[i].makeTransient();
+      }
+
+      isTransient = true;
+    }
+
+    return this;
   }
 
   protected HashMap<String,String> toStringAttrs() {
@@ -109,7 +124,7 @@ public final class CompositeBuffer extends Buffer {
   protected Buffer _slice(int idx, int len) {
     // Quick check, is the range equal to the current buffer size?
     if (idx == 0 && len == capacity) {
-      new CompositeBuffer(dupBufs(), dupIndices(), bufCount, 0, len, len, bigEndian);
+      new CompositeBuffer(dupBufs(), dupIndices(), bufCount, 0, len, len, bigEndian, isTransient);
     }
     else if (idx >= currentCapacity) {
       // If the slice range is out of the currently allocated range,
@@ -158,7 +173,7 @@ public final class CompositeBuffer extends Buffer {
         newIndices[++cnt] = cap;
       }
 
-      return new CompositeBuffer(newBufs, newIndices, cnt, 0, len, len, bigEndian);
+      return new CompositeBuffer(newBufs, newIndices, cnt, 0, len, len, bigEndian, isTransient);
     }
   }
 
@@ -297,8 +312,12 @@ public final class CompositeBuffer extends Buffer {
     }
 
     // Update the buffer information
-    bufs[bufCount] = Buffer.allocate(newCapacity - currentCapacity);
+    Buffer curr           = Buffer.allocate(newCapacity - currentCapacity);
+    bufs[bufCount]        = curr;
     indices[bufCount + 1] = newCapacity;
+
+    if (isTransient())
+      curr.makeTransient();
 
     currentCapacity = newCapacity;
     lastBufferIdx   = bufCount;

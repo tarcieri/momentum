@@ -21,6 +21,14 @@ public final class BufferBackedBuffer extends Buffer {
     this.buf    = buf;
   }
 
+  public boolean isTransient() {
+    return buf.isTransient();
+  }
+
+  public Buffer makeTransient() {
+    return buf.makeTransient();
+  }
+
   protected Buffer _slice(int idx, int len) {
     return new BufferBackedBuffer(buf, offset + idx, 0, len, len, bigEndian);
   }

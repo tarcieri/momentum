@@ -28,6 +28,8 @@
 (import-fn #'buffer/to-string)
 (import-fn #'buffer/transfer!)
 (import-fn #'buffer/transfer)
+(import-fn #'buffer/transient!)
+(import-fn #'buffer/transient?)
 (import-fn #'buffer/wrap)
 (import-fn #'buffer/write)
 (import-fn #'buffer/write-byte)

@@ -171,61 +171,46 @@
   [^Buffer buf size]
   (.limit buf (+ size (.position buf))))
 
-;; (defn freeze
-;;   [^Buffer buf]
-;;   (.freeze buf))
-
-;; (defn frozen?
-;;   [^Buffer buf]
-;;   (.isFrozen buf))
-
-;; ;; Temporary
-;; (def frozen frozen?)
-
 (defn holds?
   [^Buffer dst ^Buffer src]
   (>= (.remaining dst)
       (.remaining src)))
 
 (defn limit
-  ([^Buffer buf]
-     (.limit buf))
-  ([^Buffer buf val]
-     (.limit buf val)))
+  ([^Buffer buf]     (.limit buf))
+  ([^Buffer buf val] (.limit buf val)))
 
 (defn position
-  ([^Buffer buf]
-     (.position buf))
-  ([^Buffer buf val]
-     (.position buf val)))
+  ([^Buffer buf]     (.position buf))
+  ([^Buffer buf val] (.position buf val)))
 
 (defn remaining
-  [buf]
-  (and buf (.remaining buf)))
+  [buf] (and buf (.remaining buf)))
 
 (defn remaining?
-  [buf]
-  (and buf (.hasRemaining buf)))
+  [buf] (and buf (.hasRemaining buf)))
 
 (defn reset
-  [^Buffer buf]
-  (.reset buf))
+  [^Buffer buf] (.reset buf))
 
 (defn rewind
-  [^Buffer buf]
-  (.rewind buf))
+  [^Buffer buf] (.rewind buf))
 
 (defn slice
-  ([buf]         (.slice buf))
-  ([buf idx len] (.slice buf idx len)))
+  ([^Buffer buf]         (.slice buf))
+  ([^Buffer buf idx len] (.slice buf idx len)))
+
+(defn transient!
+  [^Buffer buf] (.makeTransient buf))
+
+(defn transient?
+  [^Buffer buf] (.isTransient buf))
 
 (defn to-byte-array
-  [^Buffer buf]
-  (.toByteArray buf))
+  [^Buffer buf] (.toByteArray buf))
 
 (defn to-channel-buffer
-  [^Buffer buf]
-  (.toChannelBuffer buf))
+  [^Buffer buf] (.toChannelBuffer buf))
 
 (def EMPTY (buffer ""))
 
