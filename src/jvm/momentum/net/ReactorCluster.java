@@ -42,7 +42,7 @@ public final class ReactorCluster {
     }
   }
 
-  public void startTcpServer(TCPServer srv) {
+  public void startTcpServer(TCPServer srv) throws IOException {
     reactors[0].startTcpServer(srv);
   }
 }

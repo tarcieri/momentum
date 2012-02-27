@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.util.Iterator;
 import momentum.buffer.Buffer;
 import momentum.util.ArrayAtomicQueue;
+import momentum.util.LinkedArrayStack;
 
 public final class Reactor implements Runnable {
 
@@ -56,6 +57,17 @@ public final class Reactor implements Runnable {
   final ArrayAtomicQueue<ReactorTask> writeQueue = new ArrayAtomicQueue<ReactorTask>(65536);
 
   /*
+   * A pool of segments for the message queue.
+   *
+   * Each channel handler has a queue of outbound messages that are pending the
+   * channel becoming writable. This queue is growable and also uses arrays for
+   * each chunk of 1024 messages to improve cache locality. Also, we don't want
+   * to constantly be allocating arrays
+   */
+  final LinkedArrayStack<MessageQueueSegment> messageQueueSegmentPool =
+    new LinkedArrayStack<MessageQueueSegment>();
+
+  /*
    * Set on start, never set again. Used to determine if currently on the
    * reactor thread. There is no reason for synchronization around this
    * variable. If any thread sees the value as null, then it is not the reactor
@@ -75,8 +87,10 @@ public final class Reactor implements Runnable {
     ReactorChannelHandler handler = ReactorChannelHandler.build(this, ch, factory);
 
     ch.configureBlocking(false);
-    ch.register(selector, SelectionKey.OP_READ, handler);
 
+    handler.key = ch.register(selector, SelectionKey.OP_READ, handler);
+
+    // TODO: have sending open be guarded by an argument
     handler.sendOpenUpstream();
   }
 
@@ -189,11 +203,12 @@ public final class Reactor implements Runnable {
         continue;
       }
 
-      if (k.isReadable()) {
-        read(k);
-      }
-      else if (k.isAcceptable()) {
+      if (k.isAcceptable()) {
         acceptSocket(k);
+      }
+      else {
+        ReactorChannelHandler handler = (ReactorChannelHandler) k.attachment();
+        handler.processIO(readBuffer);
       }
     }
   }
