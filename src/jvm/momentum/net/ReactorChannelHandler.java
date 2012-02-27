@@ -159,18 +159,7 @@ public final class ReactorChannelHandler {
    */
   boolean isPaused;
 
-  /*
-   * Returns a ReactorChannelHandler instance that is ready to start accepting
-   * events.
-   */
-  static ReactorChannelHandler build(Reactor r, SocketChannel ch, ReactorUpstreamFactory factory) {
-    ReactorChannelHandler handler = new ReactorChannelHandler(r, ch);
-    handler.upstream = factory.getUpstream(handler);
-    return handler;
-  }
-
-  private ReactorChannelHandler(Reactor r, SocketChannel ch) {
-    reactor = r;
+  ReactorChannelHandler(SocketChannel ch) {
     channel = ch;
   }
 
@@ -245,6 +234,21 @@ public final class ReactorChannelHandler {
   void doClose() throws IOException {
     channel.close();
     upstream.sendClose();
+  }
+
+  /*
+   * Registers the handler with a given reactor
+   */
+  void register(Reactor r, boolean sendOpen) throws IOException {
+    if (reactor != null)
+      return;
+
+    reactor = r;
+
+    key = channel.register(r.selector, SelectionKey.OP_READ, this);
+
+    if (sendOpen)
+      sendOpenUpstream();
   }
 
   /*

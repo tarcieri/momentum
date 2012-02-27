@@ -83,15 +83,12 @@ public final class Reactor implements Runnable {
   /*
    * Registers a new channel with this reactor
    */
-  void register(SocketChannel ch, ReactorUpstreamFactory factory) throws IOException {
-    ReactorChannelHandler handler = ReactorChannelHandler.build(this, ch, factory);
+  void register(ReactorChannelHandler handler, boolean sendOpen) throws IOException {
+    doRegister(handler, sendOpen);
+  }
 
-    ch.configureBlocking(false);
-
-    handler.key = ch.register(selector, SelectionKey.OP_READ, handler);
-
-    // TODO: have sending open be guarded by an argument
-    handler.sendOpenUpstream();
+  void doRegister(ReactorChannelHandler handler, boolean sendOpen) throws IOException {
+    handler.register(this, sendOpen);
   }
 
   public void run() {
@@ -214,15 +211,8 @@ public final class Reactor implements Runnable {
   }
 
   void acceptSocket(SelectionKey k) throws IOException {
-    SocketChannel sockCh;
-
-
     ReactorServerHandler handler = (ReactorServerHandler) k.attachment();
-    sockCh = handler.channel.accept();
-
-    // Register the new SocketChannel with the selector indicating that we'd
-    // like to be notified when there is data waiting to be read.
-    register(sockCh, handler.server);
+    cluster.register(handler.accept(), true);
   }
 
   ReactorServerHandler startTcpServer(TCPServer srv) throws IOException {

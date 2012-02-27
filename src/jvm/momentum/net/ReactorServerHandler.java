@@ -43,6 +43,19 @@ public class ReactorServerHandler {
     bound.put(this);
   }
 
+  ReactorChannelHandler accept() throws IOException {
+    SocketChannel ch;
+    ReactorChannelHandler handler;
+
+    ch = channel.accept();
+    ch.configureBlocking(false);
+
+    handler = new ReactorChannelHandler(ch);
+    handler.upstream = server.getUpstream(handler);
+
+    return handler;
+  }
+
   public void close() throws IOException {
     if (reactor.onReactorThread()) {
       doClose();

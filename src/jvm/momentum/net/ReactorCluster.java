@@ -42,6 +42,10 @@ public final class ReactorCluster {
     }
   }
 
+  void register(ReactorChannelHandler handler, boolean sendOpen) throws IOException {
+    reactors[0].register(handler, sendOpen);
+  }
+
   public ReactorServerHandler startTcpServer(TCPServer srv) throws IOException {
     return reactors[0].startTcpServer(srv);
   }
