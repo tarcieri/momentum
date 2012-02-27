@@ -51,7 +51,7 @@
      (.sendResumeDownstream dn)
 
      (= :abort evt)
-     (.sendAbortDownstream dn)
+     (.sendAbortDownstream dn val)
 
      :else
      (throw (Exception. (str "Unknown event : " evt))))))

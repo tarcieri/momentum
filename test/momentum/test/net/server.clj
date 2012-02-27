@@ -73,28 +73,6 @@
          :open  addr-info
          :close nil))))
 
-;; (defcoretest ^{:focus true} writing-to-closed-socket
-;;   [ch1]
-;;   (start
-;;    (fn [dn _]
-;;      (fn [evt val]
-;;        (enqueue ch1 [evt val])
-;;        (when (= :open evt)
-;;          (future
-;;           (Thread/sleep 30)
-;;           (try
-;;             (dn :message (buffer "Hello"))
-;;             (catch Exception err
-;;               (enqueue ch1 [:abort err]))))))))
-
-;;   (with-socket
-;;     (close-socket)
-;;     (is (next-msgs
-;;          ch1
-;;          :open   addr-info
-;;          :close  nil
-;;          :abort  #(instance? java.io.IOException %)))))
-
 (defcoretest handling-exception-in-bind-function
   [ch1]
   (start
@@ -156,7 +134,7 @@
 
     (is (no-msgs ch1))))
 
-(defcoretest ^{:focus true} abort-messages-get-prioritized-over-other-events
+(defcoretest abort-messages-get-prioritized-over-other-events
   [ch1 ch2]
   (start
    (fn [dn _]
@@ -169,6 +147,7 @@
            (when (= :open evt)
              (dn :close nil)
              (dn :abort (Exception. "TROLLOLOL")))
+
            (swap! depth dec))))))
 
   (with-socket
@@ -182,7 +161,24 @@
          :depth 1
          :depth 1))))
 
-(defcoretest thrown-exceptions-get-prioritized-over-other-events
+(defcoretest thrown-exceptions-on-open-get-prioritized-over-other-events
+  [ch1 ch2]
+  (start
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+
+       (when (= :open evt)
+         (dn :close nil)
+         (throw (Exception. "TROLLOLOL"))))))
+
+  (with-socket
+    (is (next-msgs
+         ch1
+         :open  addr-info
+         :abort #(instance? Exception %)))))
+
+(defcoretest thrown-exceptions-on-message-get-prioritized-over-other-events
   [ch1]
   (start
    (fn [dn _]
@@ -359,28 +355,3 @@
          ch1
          :open  addr-info
          :abort #(instance? Exception %)))))
-
-;; ==== Core tests
-
-(defcoretest scheduling-fn-in-reactor
-  [ch1]
-  (start
-   (fn [dn _]
-     (fn [evt val]
-       (when (= :open evt)
-         (dn :schedule
-             (fn []
-               (Thread/sleep 50)
-               (enqueue ch1 [:scheduled nil])))
-         (enqueue ch1 [:schedule nil]))
-       (when (= :message evt)
-         (enqueue ch1 [:message nil])))))
-
-  (with-socket
-    (write-socket "Hello")
-
-    (is (next-msgs
-         ch1
-         :schedule  nil
-         :scheduled nil
-         :message   nil))))

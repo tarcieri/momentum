@@ -20,6 +20,7 @@ public final class ReactorChannelHandler {
 
     public void run() throws IOException {
       doSendMessageDownstream(msg);
+      handlePendingUpstreamEvents();
     }
   }
 
@@ -58,6 +59,7 @@ public final class ReactorChannelHandler {
   final class ResumeTask implements ReactorTask {
     public void run() throws IOException {
       setOpRead();
+      handlePendingUpstreamEvents();
     }
   }
 
@@ -187,6 +189,11 @@ public final class ReactorChannelHandler {
    */
   boolean isPaused;
 
+  /*
+   * The exception that the channel was aborted with
+   */
+  Exception err;
+
   ReactorChannelHandler(SocketChannel ch) {
     channel = ch;
   }
@@ -195,16 +202,33 @@ public final class ReactorChannelHandler {
     return key != null;
   }
 
-  void sendMessageUpstream(Buffer msg) {
+  void sendOpenUpstream() throws IOException {
     try {
-      upstream.sendMessage(msg);
+      upstream.sendOpen(channel);
+      handlePendingUpstreamEvents();
     }
     catch (Exception e) {
       doAbort(e);
     }
   }
 
-  void sendPauseUpstream() {
+  void sendMessageUpstream(Buffer msg) throws IOException {
+    if (upstream == null)
+      return;
+
+    try {
+      upstream.sendMessage(msg);
+      handlePendingUpstreamEvents();
+    }
+    catch (Exception e) {
+      doAbort(e);
+    }
+  }
+
+  void sendPauseUpstream() throws IOException {
+    if (upstream == null)
+      return;
+
     if (isPaused)
       return;
 
@@ -218,7 +242,10 @@ public final class ReactorChannelHandler {
     }
   }
 
-  void sendResumeUpstream() {
+  void sendResumeUpstream() throws IOException {
+    if (upstream == null)
+      return;
+
     if (!isPaused)
       return;
 
@@ -226,9 +253,36 @@ public final class ReactorChannelHandler {
 
     try {
       upstream.sendResume();
+      handlePendingUpstreamEvents();
     }
     catch (Exception e) {
       doAbort(e);
+    }
+  }
+
+  void sendCloseUpstream() {
+    if (upstream == null)
+      return;
+
+    try {
+      upstream.sendClose();
+      upstream = null;
+    }
+    catch (Exception e) {
+      // Ignore
+    }
+  }
+
+  void sendAbortUpstream(Exception e) {
+    if (upstream == null)
+      return;
+
+    try {
+      upstream.sendAbort(e);
+      upstream = null;
+    }
+    catch (Exception e2) {
+      // Ignore
     }
   }
 
@@ -243,7 +297,7 @@ public final class ReactorChannelHandler {
 
   public void sendCloseDownstream() throws IOException {
     if (reactor.onReactorThread()) {
-      doClose();
+      markClosed();
     }
     else {
       reactor.pushCloseTask(new CloseTask());
@@ -268,9 +322,9 @@ public final class ReactorChannelHandler {
     }
   }
 
-  public void sendAbortDownstream(Exception err) {
+  public void sendAbortDownstream(Exception err) throws IOException {
     if (reactor.onReactorThread()) {
-      doAbort(err);
+      markAborted(err);
     }
     else {
       reactor.pushCloseTask(new AbortTask(err));
@@ -294,43 +348,46 @@ public final class ReactorChannelHandler {
       // The socket is full!
       messageQueue.push(buf);
       setOpWrite();
-      sendPauseUpstream();
     }
   }
 
-  void doClose() throws IOException {
+  void markClosed() throws IOException {
     if (!isOpen())
       return;
 
     key = null;
     channel.close();
-
-    try {
-      upstream.sendClose();
-    }
-    catch (Exception e) {
-      // Ignore
-    }
   }
 
-  void doAbort(Exception err) {
-    if (!isOpen())
+  void markAborted(Exception e) throws IOException {
+    if (err != null)
       return;
 
-    key = null;
+    err = e;
+    markClosed();
+  }
 
-    try {
-      channel.close();
-    }
-    catch (IOException e) {
-      // Ignore
-    }
+  void doClose() throws IOException {
+    markClosed();
+    sendCloseUpstream();
+  }
 
-    try {
-      upstream.sendAbort(err);
-    }
-    catch (Exception e) {
-      // Ignore
+  void doAbort(Exception e) throws IOException {
+    markAborted(e);
+    sendAbortUpstream(e);
+  }
+
+  void handlePendingUpstreamEvents() throws IOException {
+    if (isOpen() && !messageQueue.isEmpty())
+      sendPauseUpstream();
+
+    if (!isOpen()) {
+      if (err != null) {
+        sendAbortUpstream(err);
+      }
+      else {
+        sendCloseUpstream();
+      }
     }
   }
 
@@ -345,14 +402,8 @@ public final class ReactorChannelHandler {
 
     key = channel.register(r.selector, SelectionKey.OP_READ, this);
 
-    if (sendOpen) {
-      try {
-        upstream.sendOpen(channel);
-      }
-      catch (Exception e) {
-        doAbort(e);
-      }
-    }
+    if (sendOpen)
+      sendOpenUpstream();
   }
 
   /*

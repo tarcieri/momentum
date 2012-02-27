@@ -61,7 +61,7 @@ public final class Reactor implements Runnable {
   /*
    * Queue of interest op change requests
    */
-  final ArrayAtomicQueue<ReactorTask> interestOpQueue = new ArrayAtomicQueue<ReactorTask>(1024);
+  final ArrayAtomicQueue<ReactorTask> interestOpQueue = new ArrayAtomicQueue<ReactorTask>(8192);
 
   /*
    * Queue of writes that need to be scheduled
