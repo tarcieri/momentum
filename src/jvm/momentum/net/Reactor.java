@@ -254,50 +254,6 @@ public final class Reactor implements Runnable {
     k = ch.register(selector, SelectionKey.OP_ACCEPT, srv);
   }
 
-  boolean read(SelectionKey k) throws IOException {
-    int num = 0;
-    Buffer buf;
-    byte [] arr;
-    boolean fail = true;
-    SocketChannel ch;
-    ReactorChannelHandler handler;
-
-    // Grab the channel
-    ch = (SocketChannel) k.channel();
-    // Grab the handler
-    handler = (ReactorChannelHandler) k.attachment();
-    // Prep the buffer
-    readBuffer.clear();
-
-    try {
-      num  = ch.read(readBuffer);
-      fail = false;
-    }
-    catch (IOException e) {
-      // Don't need to do anything about this.
-    }
-
-    if (num > 0) {
-      readBuffer.flip();
-
-      // Create an array.
-      arr = new byte[readBuffer.remaining()];
-      readBuffer.get(arr);
-
-      buf = Buffer.wrap(arr);
-
-      handler.sendMessageUpstream(buf);
-    }
-    else if (num < 0 || fail) {
-      // Some JDK implementations run into an infinite loop without this.
-      k.cancel();
-      handler.doClose();
-      return false;
-    }
-
-    return true;
-  }
-
   void debug(String msg) {
     System.out.println(msg);
   }

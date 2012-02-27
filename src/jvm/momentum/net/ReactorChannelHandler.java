@@ -252,13 +252,13 @@ public final class ReactorChannelHandler {
    */
 
   void processIO(ByteBuffer readBuffer) throws IOException {
-    processReads(readBuffer);
-    processWrites();
+    if (processReads(readBuffer))
+      processWrites();
   }
 
-  void processReads(ByteBuffer readBuffer) throws IOException {
+  boolean processReads(ByteBuffer readBuffer) throws IOException {
     if (!key.isReadable())
-      return;
+      return true;
 
     int num = 0;
     Buffer buf;
@@ -291,7 +291,10 @@ public final class ReactorChannelHandler {
       // Some JDK implementations run into an infinite loop without this.
       key.cancel();
       doClose();
+      return false;
     }
+
+    return true;
   }
 
   void processWrites() throws IOException {
