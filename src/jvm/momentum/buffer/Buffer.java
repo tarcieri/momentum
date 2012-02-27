@@ -1,11 +1,9 @@
 package momentum.buffer;
 
 import java.io.UnsupportedEncodingException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.BufferOverflowException;
-import java.nio.BufferUnderflowException;
-import java.nio.ReadOnlyBufferException;
+import java.io.IOException;
+import java.nio.*;
+import java.nio.channels.SocketChannel;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -14,9 +12,7 @@ import java.util.Iterator;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 
-import clojure.lang.ISeq;
-import clojure.lang.PersistentList;
-import clojure.lang.Seqable;
+import clojure.lang.*;
 
 /*
  * TODO: Add unsigned accessors
@@ -517,6 +513,27 @@ public abstract class Buffer implements Seqable {
     return this;
   }
 
+  /**
+   * Makes a deep copy of the buffer
+   */
+  final public Buffer copy() {
+    byte[] arr = new byte[capacity];
+    _get(0, arr, 0, capacity);
+
+    return new HeapBuffer(arr, 0, position, limit, capacity);
+  }
+
+  /**
+   * If the buffer is transient, return a deep copy, otherwise return the
+   * current buffer.
+   */
+  final public Buffer retain() {
+    if (!isTransient())
+      return this;
+
+    return copy();
+  }
+
   /*
    *
    *  ===== Conversions =====
@@ -569,7 +586,42 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   *  Unchecked internal accessors
+   * ==== SocketChannel helpers
+   *
+   */
+
+
+  /*
+   * Transfer data from a SocketChannel into the buffer
+   */
+  public int transferFrom(SocketChannel chan) throws IOException {
+    ByteBuffer buf = ByteBuffer.allocate(remaining());
+    int ret = chan.read(buf);
+
+    buf.flip();
+
+    // Obviously not efficient but overridden in subclasses.
+    while (buf.hasRemaining())
+      put(buf.get());
+
+    return ret;
+  }
+
+  /*
+   * Transfer data from the buffer to the SocketChannel
+   */
+  public int transferTo(SocketChannel chan) throws IOException {
+    // Obviously not efficient but overridden in subclasses.
+    int ret = chan.write(toByteBuffer());
+
+    position += ret;
+
+    return ret;
+  }
+
+  /*
+   *
+   *  ==== Unchecked internal accessors ====
    *
    */
 
@@ -597,7 +649,7 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   *  BUFFER based accessors
+   *  ==== BUFFER based accessors ====
    *
    */
 
@@ -706,7 +758,7 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   *  BYTE accessors
+   *  ==== BYTE accessors ====
    *
    */
 
@@ -830,7 +882,7 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   *  CHAR accessors
+   *  ==== CHAR accessors ====
    *
    */
 
@@ -897,7 +949,7 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   *  DOUBLE accessors
+   *  ==== DOUBLE accessors ====
    *
    */
 
@@ -951,7 +1003,7 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   *  FLOAT accessors
+   *  ==== FLOAT accessors ====
    *
    */
 
@@ -1005,7 +1057,7 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   *  INT accessors
+   *  ==== INT accessors ====
    *
    */
 
@@ -1129,7 +1181,7 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   *  LONG accessors
+   *  ==== LONG accessors ====
    *
    */
 
@@ -1236,7 +1288,7 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   *  SHORT accessors
+   *  ==== SHORT accessors ====
    *
    */
 

@@ -1,7 +1,6 @@
 package momentum.net;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import momentum.buffer.Buffer;
 
@@ -77,11 +76,11 @@ public final class ReactorChannelHandler {
       return head == null;
     }
 
-    ByteBuffer peek() {
+    Buffer peek() {
       MessageQueueSegment curr;
 
       while ((curr = head) != null) {
-        ByteBuffer ret = curr.peek();
+        Buffer ret = curr.peek();
 
         if (ret != null)
           return ret;
@@ -96,11 +95,11 @@ public final class ReactorChannelHandler {
       return null;
     }
 
-    ByteBuffer pop() {
+    Buffer pop() {
       MessageQueueSegment curr;
 
       while ((curr = head) != null) {
-        ByteBuffer ret = curr.pop();
+        Buffer ret = curr.pop();
 
         if (ret != null)
           return ret;
@@ -115,7 +114,7 @@ public final class ReactorChannelHandler {
       return null;
     }
 
-    void push(ByteBuffer b) {
+    void push(Buffer b) {
       if (tail == null) {
         head = tail = acquire();
       }
@@ -335,18 +334,17 @@ public final class ReactorChannelHandler {
     if (!isOpen())
       return;
 
-    ByteBuffer buf = msg.toByteBuffer();
-
     if (!messageQueue.isEmpty()) {
-      messageQueue.push(buf);
+      // Retain the buffer in case it is transient.
+      messageQueue.push(msg.retain());
       return;
     }
 
-    channel.write(buf);
+    msg.transferTo(channel);
 
-    if (buf.remaining() > 0) {
+    if (msg.remaining() > 0) {
       // The socket is full!
-      messageQueue.push(buf);
+      messageQueue.push(msg.slice().retain());
       setOpWrite();
     }
   }
@@ -410,12 +408,12 @@ public final class ReactorChannelHandler {
    * ==== Handling key ready events ====
    */
 
-  void processIO(ByteBuffer readBuffer) throws IOException {
+  void processIO(Buffer readBuffer) throws IOException {
     if (processReads(readBuffer))
       processWrites();
   }
 
-  boolean processReads(ByteBuffer readBuffer) throws IOException {
+  boolean processReads(Buffer readBuffer) throws IOException {
     if (!key.isReadable())
       return true;
 
@@ -428,7 +426,7 @@ public final class ReactorChannelHandler {
     readBuffer.clear();
 
     try {
-      num  = channel.read(readBuffer);
+      num  = readBuffer.transferFrom(channel);
       fail = false;
     }
     catch (IOException e) {
@@ -437,14 +435,7 @@ public final class ReactorChannelHandler {
 
     if (num > 0) {
       readBuffer.flip();
-
-      // Create an array.
-      arr = new byte[readBuffer.remaining()];
-      readBuffer.get(arr);
-
-      buf = Buffer.wrap(arr);
-
-      sendMessageUpstream(buf);
+      sendMessageUpstream(readBuffer);
     }
     else if (num < 0 || fail) {
       // Some JDK implementations run into an infinite loop without this.
@@ -463,10 +454,10 @@ public final class ReactorChannelHandler {
     if (!key.isWritable())
       return;
 
-    ByteBuffer curr;
+    Buffer curr;
 
     while ((curr = messageQueue.peek()) != null) {
-      channel.write(curr);
+      curr.transferTo(channel);
 
       // Socket still full
       if (curr.remaining() > 0) {

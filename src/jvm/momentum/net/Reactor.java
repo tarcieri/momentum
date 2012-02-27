@@ -1,7 +1,6 @@
 package momentum.net;
 
 import java.net.SocketAddress;
-import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.io.IOException;
 import java.util.Iterator;
@@ -46,7 +45,7 @@ public final class Reactor implements Runnable {
   /*
    * Used to read data directly off of sockets.
    */
-  final ByteBuffer readBuffer = ByteBuffer.allocate(65536);
+  final Buffer readBuffer = Buffer.allocate(65536).makeTransient();
 
   /*
    * Queue of servers waiting to be bound
@@ -92,6 +91,10 @@ public final class Reactor implements Runnable {
    */
   boolean shutdown;
 
+  /*
+   * Reactor gets initialized with the cluster that owns it. Starting the
+   * reactor happens when the cluster submits the reactor to a thread pool.
+   */
   Reactor(ReactorCluster c) throws IOException {
     cluster  = c;
     selector = Selector.open();
@@ -121,13 +124,21 @@ public final class Reactor implements Runnable {
     handler.register(this, sendOpen);
   }
 
+  boolean onReactorThread() {
+    return Thread.currentThread() == thread;
+  }
+
+  void wakeup() {
+    // TODO: Wakeup is an expensive operation.
+    selector.wakeup();
+  }
+
   public void run() {
     // Grab the current thread
     thread = Thread.currentThread();
 
     while (!shutdown) {
       try {
-        // Wait for an event on one of the registered channels
         selector.select();
 
         processQueue(interestOpQueue);
@@ -155,15 +166,6 @@ public final class Reactor implements Runnable {
     }
 
     // TODO: Cleanup all open connections
-  }
-
-  boolean onReactorThread() {
-    return Thread.currentThread() == thread;
-  }
-
-  void wakeup() {
-    // TODO: Wakeup is an expensive operation.
-    selector.wakeup();
   }
 
   /*

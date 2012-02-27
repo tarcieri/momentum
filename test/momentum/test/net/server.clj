@@ -12,12 +12,18 @@
 
 (defn- start [& args] @(apply server/start args))
 
+(defn- retain*
+  [maybe-buffer]
+  (if (buffer? maybe-buffer)
+    (retain maybe-buffer)
+    maybe-buffer))
+
 (defcoretest simple-echo-server
   [ch1]
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :message evt)
          (dn :message val)))))
 
@@ -38,7 +44,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val]))))
+       (enqueue ch1 [evt (retain* val)]))))
 
   (with-socket
     (write-socket "Hello world")
@@ -59,7 +65,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :open evt)
          (dn :message (buffer "Hello world"))
          (dn :close nil)))))
@@ -87,7 +93,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :open evt)
          (throw (Exception. "TROLLOLOL"))))))
 
@@ -102,7 +108,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :message evt)
          (throw (Exception. "TROLLOLOL"))))))
 
@@ -120,7 +126,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (#{:open :abort} evt)
          (throw (Exception. "TROLLOLOL"))))))
 
@@ -141,7 +147,7 @@
      (let [depth (atom 0)]
        (fn [evt val]
          (let [count (swap! depth inc)]
-           (enqueue ch1 [evt val])
+           (enqueue ch1 [evt (retain* val)])
            (enqueue ch2 [:depth count])
 
            (when (= :open evt)
@@ -166,7 +172,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
 
        (when (= :open evt)
          (dn :close nil)
@@ -183,7 +189,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :message evt)
          (dn :close nil)
          (throw (Exception. "LULZ"))))))
@@ -203,7 +209,7 @@
    (fn [dn _]
      (let [latch (atom true)]
        (fn [evt val]
-         (enqueue ch1 [evt val])
+         (enqueue ch1 [evt (retain* val)])
          (when (= :open evt)
            (future
              (loop [continue? @latch]
@@ -233,7 +239,7 @@
    (fn [dn _]
      (let [latch (atom true)]
        (fn [evt val]
-         (enqueue ch1 [evt val])
+         (enqueue ch1 [evt (retain* val)])
          (when (= :open evt)
            (future
              (loop [continue? @latch]
@@ -262,7 +268,7 @@
    (fn [dn _]
      (let [latch (atom true)]
        (fn [evt val]
-         (enqueue ch1 [evt val])
+         (enqueue ch1 [evt (retain* val)])
          (when (= :open evt)
            (future
              (loop [continue? @latch]
@@ -299,7 +305,7 @@
      (let [latch (atom true)]
        (fn [evt val]
          (when-not (#{:pause :resume} evt)
-           (enqueue ch1 [evt val]))
+           (enqueue ch1 [evt (retain* val)]))
          (when (and (= :message evt) @latch)
            (dn :pause nil)
            (reset! latch false))))))
@@ -330,7 +336,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (dn :abort (Exception. "TROLLOLOL")))))
 
   (with-socket
@@ -346,7 +352,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :open evt)
          (dn :zomg 1)))))
 

@@ -1104,6 +1104,7 @@
 
   (are [a] (transient? a)
        (transient! (buffer "Hello"))
+       (slice (transient! (buffer "Hello")) 1 3)
        (transient! (direct-buffer 10))
        (transient! (Buffer/wrap (buffer 10) (buffer 10)))
        (slice

@@ -1,13 +1,13 @@
 package momentum.net;
 
-import java.nio.ByteBuffer;
+import momentum.buffer.Buffer;
 
 class MessageQueueSegment {
 
   /*
    * The buffers in the current segment
    */
-  final ByteBuffer[] buffers = new ByteBuffer[1024];
+  final Buffer[] buffers = new Buffer[1024];
 
   /*
    * The current head offset. Starts at -1.
@@ -27,7 +27,7 @@ class MessageQueueSegment {
   /*
    * Returns the first element without removing it
    */
-  ByteBuffer peek() {
+  Buffer peek() {
     if (headOffset == tailOffset)
       return null;
 
@@ -37,7 +37,7 @@ class MessageQueueSegment {
   /*
    * Pops an element
    */
-  ByteBuffer pop() {
+  Buffer pop() {
     if (headOffset == tailOffset)
       return null;
 
@@ -47,7 +47,7 @@ class MessageQueueSegment {
   /*
    * Pushes an element, returns false if the segment is full
    */
-  boolean push(ByteBuffer b) {
+  boolean push(Buffer b) {
     if (tailOffset == buffers.length - 1)
       return false;
 

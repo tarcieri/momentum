@@ -21,6 +21,7 @@
 (import-fn #'buffer/remaining)
 (import-fn #'buffer/remaining?)
 (import-fn #'buffer/reset)
+(import-fn #'buffer/retain)
 (import-fn #'buffer/rewind)
 (import-fn #'buffer/slice)
 (import-fn #'buffer/to-byte-array)

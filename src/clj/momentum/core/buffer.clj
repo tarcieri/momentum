@@ -193,6 +193,9 @@
 (defn reset
   [^Buffer buf] (.reset buf))
 
+(defn retain
+  [^Buffer buf] (.retain buf))
+
 (defn rewind
   [^Buffer buf] (.rewind buf))
 

@@ -23,7 +23,12 @@ public final class HeapBuffer extends Buffer {
   }
 
   protected Buffer _slice(int idx, int len) {
-    return new HeapBuffer(arr, offset + idx, 0, len, len, bigEndian);
+    HeapBuffer ret = new HeapBuffer(arr, offset + idx, 0, len, len, bigEndian);
+
+    if (isTransient)
+      ret.isTransient = true;
+
+    return ret;
   }
 
   protected ByteBuffer _toByteBuffer() {

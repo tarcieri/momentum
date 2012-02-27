@@ -32,7 +32,12 @@ public final class ByteBufferBackedBuffer extends Buffer {
 
     buf.limit(capacity);
 
-    return new ByteBufferBackedBuffer(newBuf, 0, len, len, bigEndian);
+    ByteBufferBackedBuffer ret = new ByteBufferBackedBuffer(newBuf, 0, len, len, bigEndian);
+
+    if (isTransient)
+      ret.isTransient = true;
+
+    return ret;
   }
 
   protected HashMap<String,String> toStringAttrs() {
