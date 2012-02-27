@@ -13,14 +13,14 @@ public final class Reactor implements Runnable {
 
   class BindTask implements ReactorTask {
 
-    final TCPServer srv;
+    final ReactorServerHandler handler;
 
-    BindTask(TCPServer s) {
-      srv = s;
+    BindTask(ReactorServerHandler h) {
+      handler = h;
     }
 
     public void run() throws IOException {
-      doStartTcpServer(srv);
+      doStartTcpServer(handler);
     }
   }
 
@@ -214,44 +214,32 @@ public final class Reactor implements Runnable {
   }
 
   void acceptSocket(SelectionKey k) throws IOException {
-    ServerSocketChannel srvCh;
     SocketChannel sockCh;
 
-    // For an accept to be pending, the channel must be a server socket channel
-    srvCh = (ServerSocketChannel) k.channel();
 
-    // Accept the connection and make it non-blocking
-    sockCh = srvCh.accept();
-
-    debug("Registering accepted socket");
+    ReactorServerHandler handler = (ReactorServerHandler) k.attachment();
+    sockCh = handler.channel.accept();
 
     // Register the new SocketChannel with the selector indicating that we'd
     // like to be notified when there is data waiting to be read.
-    register(sockCh, (TCPServer) k.attachment());
+    register(sockCh, handler.server);
   }
 
-  void startTcpServer(TCPServer srv) throws IOException {
+  ReactorServerHandler startTcpServer(TCPServer srv) throws IOException {
+    ReactorServerHandler handler = new ReactorServerHandler(this, srv);
+
     if (onReactorThread()) {
-      doStartTcpServer(srv);
+      doStartTcpServer(handler);
     }
     else {
-      pushTask(bindQueue, new BindTask(srv));
+      pushTask(bindQueue, new BindTask(handler));
     }
+
+    return handler;
   }
 
-  void doStartTcpServer(TCPServer srv) throws IOException {
-    SelectionKey k;
-    ServerSocketChannel ch;
-
-    ch = ServerSocketChannel.open();
-    ch.configureBlocking(false);
-
-    // Bind the socket to the specified address and port
-    ch.socket().bind(srv.getBindAddr());
-
-    // Register the channel and indicate an interest in accepting new
-    // connections
-    k = ch.register(selector, SelectionKey.OP_ACCEPT, srv);
+  void doStartTcpServer(ReactorServerHandler h) throws IOException {
+    h.open(selector);
   }
 
   void debug(String msg) {
