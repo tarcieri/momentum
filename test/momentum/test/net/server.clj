@@ -10,7 +10,9 @@
   {:local-addr  ["127.0.0.1" 4040]
    :remote-addr ["127.0.0.1" :dont-care]})
 
-(defn- start [& args] @(apply server/start args))
+(defn- start [& args]
+  (doto (apply server/start args)
+    deref))
 
 (defn- retain*
   [maybe-buffer]

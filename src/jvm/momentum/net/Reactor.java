@@ -30,6 +30,37 @@ public final class Reactor implements Runnable {
     }
   }
 
+  class ScheduleTimeoutTask implements ReactorTask {
+
+    final Timeout timeout;
+
+    final long milliseconds;
+
+    ScheduleTimeoutTask(Timeout t, long ms) {
+      timeout = t;
+      milliseconds = ms;
+    }
+
+    public void run() throws IOException {
+      doScheduleTimeout(timeout, milliseconds);
+    }
+  }
+
+  class CancelTimeoutTask implements ReactorTask {
+
+    final Timeout timeout;
+
+    CancelTimeoutTask(Timeout t) {
+      timeout = t;
+    }
+
+    public void run() throws IOException {
+      doCancelTimeout(timeout);
+    }
+  }
+
+  static final int TICKS_PER_WHEEL = 1024;
+
   /*
    * Reference to the reactor cluster that owns this reactor. This is used when
    * a new connection is established and the channel is sent to the least busy
@@ -41,6 +72,16 @@ public final class Reactor implements Runnable {
    * The reactor's selector.
    */
   final Selector selector;
+
+  /*
+   * The channel on which tick events arrive
+   */
+  final Pipe.SourceChannel tickerChannel;
+
+  /*
+   * The timer that handles all timeouts on the current reactor
+   */
+  ReactorTimer timer;
 
   /*
    * Used to read data directly off of sockets.
@@ -61,6 +102,11 @@ public final class Reactor implements Runnable {
    * Queue of interest op change requests
    */
   final ArrayAtomicQueue<ReactorTask> interestOpQueue = new ArrayAtomicQueue<ReactorTask>(8192);
+
+  /*
+   * Queue of incoming timer events
+   */
+  final ArrayAtomicQueue<ReactorTask> timerQueue = new ArrayAtomicQueue<ReactorTask>(8192);
 
   /*
    * Queue of writes that need to be scheduled
@@ -95,9 +141,13 @@ public final class Reactor implements Runnable {
    * Reactor gets initialized with the cluster that owns it. Starting the
    * reactor happens when the cluster submits the reactor to a thread pool.
    */
-  Reactor(ReactorCluster c) throws IOException {
-    cluster  = c;
-    selector = Selector.open();
+  Reactor(ReactorCluster c, Pipe.SourceChannel ch, long timerInterval) throws IOException {
+    cluster       = c;
+    selector      = Selector.open();
+    tickerChannel = ch;
+
+    // The ticker channel needs to be non blocking
+    tickerChannel.configureBlocking(false);
   }
 
   public void shutdown() {
@@ -117,11 +167,41 @@ public final class Reactor implements Runnable {
    * Registers a new channel with this reactor
    */
   void register(ReactorChannelHandler handler, boolean sendOpen) throws IOException {
+    // TODO, pass this off to the cluster
     doRegister(handler, sendOpen);
   }
 
   void doRegister(ReactorChannelHandler handler, boolean sendOpen) throws IOException {
     handler.register(this, sendOpen);
+  }
+
+  /*
+   * Schedules a timeout
+   */
+  void scheduleTimeout(Timeout timeout, long ms) {
+    if (onReactorThread()) {
+      doScheduleTimeout(timeout, ms);
+    }
+    else {
+      pushTask(timerQueue, new ScheduleTimeoutTask(timeout, ms));
+    }
+  }
+
+  void doScheduleTimeout(Timeout timeout, long ms) {
+    timer.schedule(timeout, ms);
+  }
+
+  void cancelTimeout(Timeout timeout) {
+    if (onReactorThread()) {
+      doCancelTimeout(timeout);
+    }
+    else {
+      pushTask(timerQueue, new CancelTimeoutTask(timeout));
+    }
+  }
+
+  void doCancelTimeout(Timeout timeout) {
+    timer.cancel(timeout);
   }
 
   boolean onReactorThread() {
@@ -134,19 +214,30 @@ public final class Reactor implements Runnable {
   }
 
   public void run() {
+    SelectionKey tickerKey = null;
+
     // Grab the current thread
     thread = Thread.currentThread();
+    timer  = new ReactorTimer(this, TICKS_PER_WHEEL);
+
+    try {
+      tickerKey = tickerChannel.register(selector, SelectionKey.OP_READ);
+    }
+    catch (ClosedChannelException e) {
+      // TODO: Seeeeems bad bro
+    }
 
     while (!shutdown) {
       try {
         selector.select();
 
         processQueue(interestOpQueue);
+        processQueue(timerQueue);
         processQueue(writeQueue);
         processQueue(closeQueue);
         processQueue(bindQueue);
 
-        processIO();
+        processIO(tickerKey);
       }
       catch (Throwable t) {
         debug(" ++++ ERROR : " + t.getClass().getName());
@@ -225,7 +316,7 @@ public final class Reactor implements Runnable {
   /*
    * Processes all ready keys.
    */
-  void processIO() throws IOException {
+  void processIO(SelectionKey tickerKey) throws IOException {
     SelectionKey k;
     Iterator<SelectionKey> i;
 
@@ -244,9 +335,29 @@ public final class Reactor implements Runnable {
         acceptSocket(k);
       }
       else {
-        ReactorChannelHandler handler = (ReactorChannelHandler) k.attachment();
-        handler.processIO(readBuffer);
+        if (k == tickerKey) {
+          processTimerTicks();
+        }
+        else {
+          ReactorChannelHandler handler = (ReactorChannelHandler) k.attachment();
+          handler.processIO(readBuffer);
+        }
       }
+    }
+  }
+
+  void processTimerTicks() throws IOException {
+    // Prep the buffer
+    readBuffer.clear();
+
+    int num = readBuffer.transferFrom(tickerChannel);
+
+    if (num > 0) {
+      while (num-- > 0)
+        timer.tick();
+    }
+    else if (num < 0) {
+      // TODO: Something went wrong.
     }
   }
 

@@ -11,6 +11,9 @@ import java.util.concurrent.TimeUnit;
  */
 public final class ReactorCluster {
 
+  // In milliseconds
+  static final long TIMER_INTERVAL = 100;
+
   /*
    * The thread pool that the reactors run on.
    */
@@ -21,7 +24,18 @@ public final class ReactorCluster {
    */
   final Reactor [] reactors;
 
-  public ReactorCluster() throws IOException {
+  ReactorTicker ticker;
+
+  static ReactorCluster instance;
+
+  public static ReactorCluster getInstance() throws IOException {
+    if (instance == null)
+      instance = new ReactorCluster();
+
+    return instance;
+  }
+
+  ReactorCluster() throws IOException {
     this(Runtime.getRuntime().availableProcessors());
   }
 
@@ -40,10 +54,13 @@ public final class ReactorCluster {
     if (isStarted())
       return;
 
-    ExecutorService tp = Executors.newFixedThreadPool(reactors.length);
+    // Need an extra spot for the ticker thread
+    ExecutorService tp = Executors.newFixedThreadPool(reactors.length + 1);
+
+    ticker = new ReactorTicker(reactors.length, TIMER_INTERVAL);
 
     for (int i = 0; i < reactors.length; ++i) {
-      reactors[i] = new Reactor(this);
+      reactors[i] = new Reactor(this, ticker.sources[i], TIMER_INTERVAL);
     }
 
     // Start the reactors once all of them have been initialized. This creates
@@ -52,6 +69,8 @@ public final class ReactorCluster {
     for (int i = 0; i < reactors.length; ++i) {
       tp.submit(reactors[i]);
     }
+
+    tp.submit(ticker);
 
     threadPool = tp;
   }
@@ -74,13 +93,20 @@ public final class ReactorCluster {
   }
 
   void register(ReactorChannelHandler handler, boolean sendOpen) throws IOException {
+    // TODO: Do this right
     reactors[0].register(handler, sendOpen);
+  }
+
+  void scheduleTimeout(Timeout timeout, long ms) {
+    // TODO: Do this right
+    reactors[0].scheduleTimeout(timeout, ms);
   }
 
   public ReactorServerHandler startTcpServer(TCPServer srv) throws IOException {
     if (!isStarted())
       start();
 
+    // TODO: Do this right
     return reactors[0].startTcpServer(srv);
   }
 }

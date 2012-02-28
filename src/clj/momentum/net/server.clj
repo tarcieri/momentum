@@ -15,7 +15,7 @@
    [java.nio.channels
     SocketChannel]))
 
-(def reactor-cluster (ReactorCluster.))
+(def reactor-cluster (ReactorCluster/getInstance))
 
 (defn- ^InetSocketAddress to-socket-addr
   [[host port]]
@@ -98,6 +98,6 @@
          clojure.lang.IDeref
          (deref [this]
            @(.bound handle)
-           this)))))
+           true)))))
 
 (defn stop [f] (f))

@@ -2,7 +2,8 @@ package momentum.buffer;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.SocketChannel;
+import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.WritableByteChannel;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -264,7 +265,7 @@ public final class CompositeBuffer extends Buffer {
     }
   }
 
-  protected int _transferFrom(SocketChannel chan, int off, int len) throws IOException {
+  protected int _transferFrom(ReadableByteChannel chan, int off, int len) throws IOException {
     if (off + len > currentCapacity)
       growTo(off, len);
 
@@ -293,7 +294,7 @@ public final class CompositeBuffer extends Buffer {
     return ret;
   }
 
-  protected int _transferTo(SocketChannel chan, int off, int len) throws IOException {
+  protected int _transferTo(WritableByteChannel chan, int off, int len) throws IOException {
     if (off + len > currentCapacity)
       growTo(off, len);
 

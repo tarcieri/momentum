@@ -3,7 +3,8 @@ package momentum.buffer;
 import java.io.UnsupportedEncodingException;
 import java.io.IOException;
 import java.nio.*;
-import java.nio.channels.SocketChannel;
+import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.WritableByteChannel;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -599,11 +600,11 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   * ==== SocketChannel helpers
+   * ==== ByteChannel helpers
    *
    */
 
-  protected int _transferFrom(SocketChannel chan, int off, int len) throws IOException {
+  protected int _transferFrom(ReadableByteChannel chan, int off, int len) throws IOException {
     ByteBuffer buf = ByteBuffer.allocate(len);
     int ret = chan.read(buf), i = 0;
 
@@ -617,23 +618,23 @@ public abstract class Buffer implements Seqable {
 
 
   /*
-   * Transfer data from a SocketChannel into the buffer
+   * Transfer data from a ReadableByteChannel into the buffer
    */
-  public final int transferFrom(SocketChannel chan) throws IOException {
+  public final int transferFrom(ReadableByteChannel chan) throws IOException {
     int ret = _transferFrom(chan, position, remaining());
 
     position += ret;
     return ret;
   }
 
-  protected int _transferTo(SocketChannel chan, int off, int len) throws IOException {
+  protected int _transferTo(WritableByteChannel chan, int off, int len) throws IOException {
     return chan.write(_slice(off, len).toByteBuffer());
   }
 
   /*
-   * Transfer data from the buffer to the SocketChannel
+   * Transfer data from the buffer to the WritableByteChannel
    */
-  public final int transferTo(SocketChannel chan) throws IOException {
+  public final int transferTo(WritableByteChannel chan) throws IOException {
     // Obviously not efficient but overridden in subclasses.
     int ret = _transferTo(chan, position, remaining());
 

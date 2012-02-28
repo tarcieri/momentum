@@ -3,7 +3,8 @@ package momentum.buffer;
 import java.io.UnsupportedEncodingException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.SocketChannel;
+import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.WritableByteChannel;
 import java.util.Arrays;
 
 import org.jboss.netty.buffer.ChannelBuffer;
@@ -81,11 +82,11 @@ public final class HeapBuffer extends Buffer {
     }
   }
 
-  protected int _transferFrom(SocketChannel chan, int off, int len) throws IOException {
+  protected int _transferFrom(ReadableByteChannel chan, int off, int len) throws IOException {
     return chan.read(ByteBuffer.wrap(arr, offset + off, len));
   }
 
-  protected int _transferTo(SocketChannel chan, int off, int len) throws IOException {
+  protected int _transferTo(WritableByteChannel chan, int off, int len) throws IOException {
     return chan.write(ByteBuffer.wrap(arr, offset + off, len));
   }
 }
