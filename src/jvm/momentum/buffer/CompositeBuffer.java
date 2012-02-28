@@ -1,6 +1,8 @@
 package momentum.buffer;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -260,6 +262,64 @@ public final class CompositeBuffer extends Buffer {
 
       ++bufIdx;
     }
+  }
+
+  protected int _transferFrom(SocketChannel chan, int off, int len) throws IOException {
+    if (off + len > currentCapacity)
+      growTo(off, len);
+
+    int bufIdx = bufferIndex(off), ret = 0;
+    Buffer curr;
+
+    while (len > 0) {
+      int nextIdx = indices[bufIdx + 1];
+      int chunk   = Math.min(nextIdx - off, len);
+
+      curr = bufs[bufIdx];
+
+      int read = curr._transferFrom(chan, off - indices[bufIdx], chunk);
+
+      ret += read;
+
+      if (read < chunk)
+        return ret;
+
+      off  = nextIdx;
+      len -= chunk;
+
+      ++bufIdx;
+    }
+
+    return ret;
+  }
+
+  protected int _transferTo(SocketChannel chan, int off, int len) throws IOException {
+    if (off + len > currentCapacity)
+      growTo(off, len);
+
+    int bufIdx = bufferIndex(off), ret = 0;
+    Buffer curr;
+
+    while (len > 0) {
+      int nextIdx = indices[bufIdx + 1];
+      int chunk   = Math.min(nextIdx - off, len);
+
+      curr = bufs[bufIdx];
+
+      int wrote = curr._transferTo(chan, off - indices[bufIdx], chunk);
+
+      ret += wrote;
+
+      if (wrote < chunk)
+        return ret;
+
+      off  = nextIdx;
+      len -= chunk;
+
+      ++bufIdx;
+    }
+
+    return ret;
   }
 
   private int bufferIndex(int idx) {

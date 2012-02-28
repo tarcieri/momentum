@@ -590,29 +590,39 @@ public abstract class Buffer implements Seqable {
    *
    */
 
+  protected int _transferFrom(SocketChannel chan, int off, int len) throws IOException {
+    ByteBuffer buf = ByteBuffer.allocate(len);
+    int ret = chan.read(buf), i = 0;
+
+    buf.flip();
+
+    while (buf.hasRemaining())
+      put(off + i++, buf.get());
+
+    return ret;
+  }
+
 
   /*
    * Transfer data from a SocketChannel into the buffer
    */
-  public int transferFrom(SocketChannel chan) throws IOException {
-    ByteBuffer buf = ByteBuffer.allocate(remaining());
-    int ret = chan.read(buf);
+  public final int transferFrom(SocketChannel chan) throws IOException {
+    int ret = _transferFrom(chan, position, remaining());
 
-    buf.flip();
-
-    // Obviously not efficient but overridden in subclasses.
-    while (buf.hasRemaining())
-      put(buf.get());
-
+    position += ret;
     return ret;
+  }
+
+  protected int _transferTo(SocketChannel chan, int off, int len) throws IOException {
+    return chan.write(_slice(off, len).toByteBuffer());
   }
 
   /*
    * Transfer data from the buffer to the SocketChannel
    */
-  public int transferTo(SocketChannel chan) throws IOException {
+  public final int transferTo(SocketChannel chan) throws IOException {
     // Obviously not efficient but overridden in subclasses.
-    int ret = chan.write(toByteBuffer());
+    int ret = _transferTo(chan, position, remaining());
 
     position += ret;
 

@@ -1,6 +1,8 @@
 package momentum.buffer;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
 import java.util.Arrays;
 import java.util.HashMap;
 
@@ -93,5 +95,19 @@ public final class ByteBufferBackedBuffer extends Buffer {
   protected void _put(int idx, byte[] src, int off, int len) {
     buf.position(idx);
     buf.put(src, off, len);
+  }
+
+  protected int _transferFrom(SocketChannel chan, int off, int len) throws IOException {
+    buf.position(off);
+    buf.limit(off + len);
+
+    return chan.read(buf);
+  }
+
+  protected int _transferTo(SocketChannel chan, int off, int len) throws IOException {
+    buf.position(off);
+    buf.limit(off + len);
+
+    return chan.write(buf);
   }
 }
