@@ -170,6 +170,16 @@
 
   (is (parsed
        ["GET / HTTP/1.1\r\n"
+        "zomg: HI \t " "2U\r\n\r\n"]
+       :request [(assoc get-request "zomg" "HI \t 2U") nil]))
+
+  (is (parsed
+       ["GET / HTTP/1.1\r\n"
+        "zomg: HI" "\t" "2U\r\n\r\n"]
+       :request [(assoc get-request "zomg" "HI\t2U") nil]))
+
+  (is (parsed
+       ["GET / HTTP/1.1\r\n"
         "zomg: HI " " " " 2U\r\n\r\n"]
        :request [(assoc get-request "zomg" "HI   2U") nil]))
 
@@ -217,6 +227,11 @@
        :request [(assoc get-request "zomg" "HI 2U") nil]))
 
   (is (parsed
+       (str "GET / HTTP/1.1\r\n"
+            "zomg: HI" "\r\n 2U\r\n\r\n")
+       :request [(assoc get-request "zomg" "HI 2U") nil]))
+
+  (is (parsed
        ["GET / HTTP/1.1\r\n"
         "zomg: HI " "\r\n 2U\r\n\r\n"]
        :request [(assoc get-request "zomg" "HI 2U") nil]))
@@ -252,7 +267,8 @@
        (str "GET / HTTP/1.1\r\n"
             "Zomg: \"ssdp:discover\"\r\n"
             "\r\n")
-       :request [(assoc get-request "zomg" "\"ssdp:discover\"") nil])))
+       :request [(assoc get-request "zomg" "\"ssdp:discover\"") nil]))
+  )
 
 (def header-to-test-val
   {"content-length" "1000"})
@@ -606,7 +622,7 @@
                    :path-info "/blah"
                    "content-length" "5") "Hello"])))
 
-(deftest insanity-requests
+(deftest ^{:focus true} insanity-requests
   (is (thrown?
        HttpParserException
        (parsing (repeat "\r\n"))))
@@ -618,7 +634,7 @@
              (apply str (repeat 102400 "a")) ":X\r\n\r\n"))))
 
   (is (thrown?
-       HttpParserException
+       Exception
        (parsing
         (concat
          ["GET / HTTP/1.1\r\n"]
@@ -629,22 +645,7 @@
        (parsing
         (concat
          ["GET / HTTP/1.1\r\n"]
-         (repeat "Zomg: HI2U\r\n")))))
-
-  (is (thrown?
-       HttpParserException
-       (parsing
-        (concat
-         ["GET / HTTP/1.1\r\n"
-          "Zomg: "] (repeat 15 "a")))))
-
-  (is (thrown?
-       HttpParserException
-       (parsing (concat ["GET /"] (repeat 15 "a")))))
-
-  (is (thrown?
-       HttpParserException
-       (parsing (concat ["GET / HTTP/1.1\r\n"] (repeat 15 "a"))))))
+         (repeat "Zomg: HI2U\r\n"))))))
 
 (deftest http-responses
   (let [q (LinkedBlockingQueue.)]

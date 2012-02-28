@@ -21,6 +21,7 @@ public final class HttpParser extends AFn {
   public static final byte SP = (byte) 0x20; // Space
   public static final byte HT = (byte) 0x09; // Horizontal tab
   public static final String SLASH = new String("/").intern();
+  public static final String UTF_8 = new String("UTF-8").intern();
   public static final String EMPTY_STRING = new String("").intern();
   public static final byte[] EMPTY_BUFFER = new byte[0];
   public static final Buffer SPACE = Buffer.wrap(new byte[] { SP });
@@ -287,13 +288,23 @@ public final class HttpParser extends AFn {
     }
 
     action start_uri {
-      uriMark = new ChunkedValue(buf, fpc);
+      mark = fpc;
     }
 
     action end_uri {
-      uriMark.push(fpc);
+      String uriStr;
 
-      String uriStr = uriMark.materializeStr();
+      if (tmpBuf.position() > 0) {
+        tmpBuf.put(buf, mark, fpc - mark);
+        tmpBuf.flip();
+
+        uriStr = tmpBuf.toString(UTF_8);
+
+        tmpBuf.clear();
+      }
+      else {
+        uriStr = buf.toString(mark, fpc - mark, UTF_8);
+      }
 
       try {
         uri = new URI(uriStr);
@@ -302,7 +313,7 @@ public final class HttpParser extends AFn {
         throw new HttpParserException("The URI is not valid: " + uriStr);
       }
 
-      uriMark = null;
+      mark = -1;
     }
 
     action count_content_length {
@@ -328,9 +339,8 @@ public final class HttpParser extends AFn {
 
       flags |= IDENTITY_BODY;
 
-      headerName  = null;
-      headerValue = null;
-      headers     = callback.header(headers, HDR_CONTENT_LENGTH, String.valueOf(contentLength));
+      headerName = null;
+      headers = callback.header(headers, HDR_CONTENT_LENGTH, String.valueOf(contentLength));
     }
 
     action end_transfer_encoding_chunked {
@@ -340,25 +350,22 @@ public final class HttpParser extends AFn {
 
       flags |= CHUNKED_BODY;
 
-      headerName  = null;
-      headerValue = null;
-      headers     = callback.header(headers, HDR_TRANSFER_ENCODING, VAL_CHUNKED);
+      headerName = null;
+      headers = callback.header(headers, HDR_TRANSFER_ENCODING, VAL_CHUNKED);
     }
 
     action end_connection_close {
       flags |= CONN_CLOSE;
 
-      headerName  = null;
-      headerValue = null;
-      headers     = callback.header(headers, HDR_CONNECTION, VAL_CLOSE);
+      headerName = null;
+      headers = callback.header(headers, HDR_CONNECTION, VAL_CLOSE);
     }
 
     action end_connection_upgrade {
       flags |= UPGRADE;
 
-      headerName  = null;
-      headerValue = null;
-      headers     = callback.header(headers, HDR_CONNECTION, VAL_UPGRADE);
+      headerName = null;
+      headers = callback.header(headers, HDR_CONNECTION, VAL_UPGRADE);
     }
 
     action end_expect_continue {
@@ -366,9 +373,8 @@ public final class HttpParser extends AFn {
         flags |= EXPECT_CONTINUE;
       }
 
-      headerName  = null;
-      headerValue = null;
-      headers     = callback.header(headers, HDR_EXPECT, VAL_100_CONTINUE);
+      headerName = null;
+      headers = callback.header(headers, HDR_EXPECT, VAL_100_CONTINUE);
     }
 
     action start_head {
@@ -405,6 +411,8 @@ public final class HttpParser extends AFn {
           }
           // If the entire body is less than a set maximum (default 4kb), just
           // allocate a new buffer and copy the chunks into it.
+          //
+          // TODO: Just use tmpBuf
           else if (contentLength <= MAX_BUFFERED && !isExpectingContinue()) {
             body   = Buffer.allocate((int) contentLength);
             toRead = remaining - 1;
@@ -643,13 +651,19 @@ public final class HttpParser extends AFn {
   private short status;
 
   /*
+   * Temporary buffer.
+   */
+  private Buffer tmpBuf = Buffer.allocate(1024);
+
+  /*
    * Tracks the various message information
    */
-  private URI          uri;
-  private ChunkedValue uriMark;
-  private String       headerName;
-  private ChunkedValue headerNameChunks;
-  private HeaderValue  headerValue;
+  private int mark = -1;
+  private int headerValueMark = -1;
+  private int maybeHeaderValueEnd = -1;
+
+  private URI    uri;
+  private String headerName;
 
   /*
    * Track the content length of the HTTP message
@@ -792,7 +806,7 @@ public final class HttpParser extends AFn {
     return qs;
   }
 
-  public int execute(Buffer buf) {
+  public int execute(Buffer buf) throws Exception {
     // First make sure that the parser isn't in an error state
     if (isError()) {
       throw new HttpParserException("The parser is in an error state.");
@@ -803,19 +817,25 @@ public final class HttpParser extends AFn {
     int pe  = buf.limit();
     int eof = pe + 1;
 
-    if (isParsingHead()) {
-      bridge(buf, uriMark);
-      bridge(buf, headerNameChunks);
-      bridge(buf, headerValue);
-    }
-
     try {
       parseLoop: {
         %% getkey buf.getUnsigned(p);
         %% write exec;
       }
+
+      // If a point in the buffer is marked, then we must save it to the
+      // temporary buffer
+      if (mark >= 0) {
+        if (headerValueMark >= 0) {
+          maybeHeaderValueEnd = tmpBuf.position() + (headerValueMark - mark);
+          headerValueMark = -1;
+        }
+
+        tmpBuf.put(buf, mark, pe - mark);
+        mark = 0;
+      }
     }
-    catch (RuntimeException e) {
+    catch (Exception e) {
       flags |= ERROR;
       throw e;
     }
@@ -824,14 +844,7 @@ public final class HttpParser extends AFn {
   }
 
   private void setHeaderName(String name) {
-    headerName       = name;
-    headerNameChunks = null;
-  }
-
-  private void bridge(Buffer buf, ChunkedValue chunk) {
-    if (chunk != null) {
-      chunk.bridge(buf);
-    }
+    headerName = name;
   }
 
   private void reset() {
@@ -841,16 +854,17 @@ public final class HttpParser extends AFn {
     httpMajor     = 0;
     httpMinor     = 9;
     contentLength = 0;
+
+    tmpBuf.clear();
   }
 
   private void resetHeadState() {
-    headers          = null;
-    method           = null;
-    uri              = null;
-    uriMark          = null;
-    headerName       = null;
-    headerNameChunks = null;
-    headerValue      = null;
+    headers         = null;
+    method          = null;
+    uri             = null;
+    headerName      = null;
+    mark            = -1;
+    headerValueMark = -1;
   }
 
   private Buffer slice(Buffer buf, int from, int to) {

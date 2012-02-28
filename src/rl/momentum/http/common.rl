@@ -5,50 +5,86 @@
   # ==== COMMON HEADER ACTIONS ====
 
   action start_header_name {
-      headerNameChunks = new ChunkedValue(buf, fpc);
+    mark = fpc;
   }
 
   action end_header_name {
-      if (headerNameChunks != null) {
-          headerNameChunks.push(fpc);
+    if (headerName == null) {
+      if (tmpBuf.position() > 0) {
+        tmpBuf.put(buf, mark, fpc - mark);
+        tmpBuf.flip();
 
-          headerName       = headerNameChunks.materializeStr().toLowerCase();
-          headerNameChunks = null;
+        headerName = tmpBuf.toString(UTF_8).toLowerCase();
+
+        tmpBuf.clear();
       }
+      else {
+        headerName = buf.toString(mark, fpc - mark, UTF_8).toLowerCase();
+      }
+    }
+
+    mark = -1;
   }
 
   action start_header_value_line {
-      if (headerValue == null) {
-          headerValue = new HeaderValue(buf, fpc);
-      }
-      else {
-          headerValue.startLine(buf, fpc);
-      }
+    if (headerValueMark >= mark) {
+      if (headerValueMark > mark)
+        tmpBuf.put(buf, mark, headerValueMark - mark);
+
+      maybeHeaderValueEnd = -1;
+    }
+
+    if (tmpBuf.position() > 0) {
+      if (maybeHeaderValueEnd >= 0)
+        tmpBuf.position(maybeHeaderValueEnd);
+
+      tmpBuf.put(HttpParser.SP);
+    }
+
+    mark = fpc;
+    headerValueMark = -1;
   }
 
   action end_header_value_no_ws {
-      if (headerValue != null) {
-          headerValue.mark(fpc);
-      }
+    headerValueMark = fpc;
   }
 
   action end_header_value_line {
-      if (headerValue != null) {
-          headerValue.push();
-      }
   }
 
   action end_header_value {
-      if (headerValue != null) {
-          headers = callback.header(headers, headerName, headerValue.materializeStr());
+    if (headerName != null) {
+      String val;
 
-          headerName  = null;
-          headerValue = null;
+      if (tmpBuf.position() > 0) {
+        if (headerValueMark >= mark) {
+          // if (mark == -1)
+          //   mark = 0;
+          if (headerValueMark > mark)
+            tmpBuf.put(buf, mark, headerValueMark - mark);
+        }
+        else if (maybeHeaderValueEnd >= 0) {
+          tmpBuf.position(maybeHeaderValueEnd);
+        }
+
+        tmpBuf.flip();
+        val = tmpBuf.toString(UTF_8);
+
+        tmpBuf.clear();
       }
-      else if (headerName != null) {
-          headers = callback.header(headers, headerName, HttpParser.EMPTY_STRING);
-          headerName = null;
+      else if (headerValueMark > mark) {
+        val = buf.toString(mark, headerValueMark - mark, UTF_8);
       }
+      else {
+        val = HttpParser.EMPTY_STRING;
+      }
+
+      headers = callback.header(headers, headerName, val);
+      headerName = null;
+    }
+
+    mark = -1;
+    headerValueMark = -1;
   }
 
   # ==== TOKENS ====

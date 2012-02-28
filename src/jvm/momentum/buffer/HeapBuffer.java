@@ -1,5 +1,6 @@
 package momentum.buffer;
 
+import java.io.UnsupportedEncodingException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
@@ -47,6 +48,11 @@ public final class HeapBuffer extends Buffer {
     }
 
     return Arrays.copyOfRange(arr, offset, offset + capacity);
+  }
+
+  protected String _toString(int off, int len, String charsetName)
+    throws UnsupportedEncodingException {
+    return new String(arr, offset + off, len, charsetName);
   }
 
   public byte _get(int idx) {

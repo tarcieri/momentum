@@ -574,14 +574,27 @@ public abstract class Buffer implements Seqable {
     return _toByteArray();
   }
 
-  public final String toString(String charsetName)
+  protected String _toString(int off, int len, String charsetName)
       throws UnsupportedEncodingException {
-
-    byte[] arr = new byte[remaining()];
-
-    _get(position, arr, 0, arr.length);
+    byte [] arr = new byte[len];
+    _get(off, arr, 0, len);
 
     return new String(arr, charsetName);
+  }
+
+  public final String toString(String charsetName)
+      throws UnsupportedEncodingException {
+    return _toString(position, remaining(), charsetName);
+  }
+
+  public final String toString(int off, int len, String charsetName)
+      throws UnsupportedEncodingException {
+
+    if (capacity < off + len) {
+      throw new BufferUnderflowException();
+    }
+
+    return _toString(off, len, charsetName);
   }
 
   /*
