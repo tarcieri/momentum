@@ -20,7 +20,7 @@
  write)
 
 (defprotocol Conversion
-  (^{:private true} to-buffer [_]))
+  (^{:private true} ^Buffer to-buffer [_]))
 
 (extend-protocol Conversion
   (class (byte-array 0))
@@ -53,11 +53,11 @@
 (extend-protocol Manipulation
   (class (byte-array 0))
   (into-buffer* [arr dst _]
-    (.put dst arr))
+    (.put ^Buffer dst ^bytes arr))
 
   Buffer
   (into-buffer* [src dst _]
-    (.put dst src (.position src) (.remaining src)))
+    (.put ^Buffer dst src (.position src) (.remaining src)))
 
   Collection
   (into-buffer* [coll dst type-f]
@@ -72,16 +72,16 @@
 
   String
   (into-buffer* [str dst _]
-    (.put dst (.getBytes str "UTF-8")))
+    (.put ^Buffer dst (.getBytes str "UTF-8")))
 
   nil
   (into-buffer* [_ dst _] dst)
 
   Object
   (into-buffer* [o dst _]
-    (.put dst (Buffer/wrap o))))
+    (.put ^Buffer dst (Buffer/wrap o))))
 
-(defn buffer*
+(defn ^Buffer buffer*
   ([]    (dynamic-buffer))
   ([val] (to-buffer val)))
 
@@ -143,18 +143,18 @@
   (instance? Buffer maybe-buffer))
 
 (defn capacity
-  [buf]
+  [^Buffer buf]
   (.capacity buf))
 
 (defn collapsed?
-  [buf]
+  [^Buffer buf]
   (not (remaining? buf)))
 
 (defn direct-buffer
   [size]
   (Buffer/allocateDirect size))
 
-(defn dynamic-buffer
+(defn ^Buffer dynamic-buffer
   ([]        (Buffer/dynamic))
   ([est]     (Buffer/dynamic est))
   ([est max] (Buffer/dynamic est max)))
@@ -185,13 +185,10 @@
   ([^Buffer buf val] (.position buf val)))
 
 (defn remaining
-  [buf] (and buf (.remaining buf)))
+  [^Buffer buf] (and buf (.remaining buf)))
 
 (defn remaining?
-  [buf] (and buf (.hasRemaining buf)))
-
-(defn reset
-  [^Buffer buf] (.reset buf))
+  [^Buffer buf] (and buf (.hasRemaining buf)))
 
 (defn retain
   [^Buffer buf] (.retain buf))
@@ -219,7 +216,7 @@
 
 (defn to-string
   ([buf] (to-string buf "UTF-8"))
-  ([buf ^String encoding]
+  ([^Buffer buf ^String encoding]
      (cond
       (string? buf)
       buf
@@ -231,7 +228,7 @@
       (.toString (buffer buf) encoding)
 
       :else
-      (.toString EMPTY encoding))))
+      (.toString ^Buffer EMPTY encoding))))
 
 ;; TODO: Revisit the transfer helper
 (defn transfer!
@@ -256,31 +253,31 @@
   (into-buffer* srcs dst nil))
 
 (defn write-byte
-  [buf b]
+  [^Buffer buf b]
   (.put buf (byte b)))
 
 (defn write-ubyte
-  [buf b]
+  [^Buffer buf b]
   (.putUnsigned buf b))
 
 (defn write-short
-  [buf s]
+  [^Buffer buf s]
   (.putShort buf s))
 
 (defn write-ushort
-  [buf s]
+  [^Buffer buf s]
   (.putShortUnsigned buf s))
 
 (defn write-int
-  [buf i]
+  [^Buffer buf i]
   (.putInt buf i))
 
 (defn write-uint
-  [buf i]
+  [^Buffer buf i]
   (.putIntUnsigned buf i))
 
 (defn write-long
-  [buf l]
+  [^Buffer buf l]
   (.putLong buf l))
 
 ;; ==== Misc helpers

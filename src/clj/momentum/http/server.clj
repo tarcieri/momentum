@@ -228,7 +228,7 @@
     (PipelinerState. nil empty-queue nil))))
 
 (defn- max-pipeline-depth
-  [pipeliner]
+  [^Pipeliner pipeliner]
   (get (.opts pipeliner) :pipeline))
 
 (defn- final-response-event?
@@ -242,20 +242,20 @@
    (nil? val)))
 
 (defn- finalize-pipeliner
-  [pipeliner]
+  [^Pipeliner pipeliner]
   (swap!
    (.state pipeliner)
    (fn [conn]
      (assoc conn :handling empty-queue :last-handler nil))))
 
 (defn- throttle-pipelined-conn
-  [pipeliner conn]
+  [^Pipeliner pipeliner ^PipelinerState conn]
   (if (= (count (.handling conn)) (max-pipeline-depth pipeliner))
     (gate/pause!  (.gate pipeliner))
     (gate/resume! (.gate pipeliner))))
 
 (defn- mk-pipelined-dn
-  [pipeliner]
+  [^Pipeliner pipeliner]
   (let [dn (.dn pipeliner)]
     (fn [evt val]
       ;; First send the event downstream
@@ -263,11 +263,11 @@
       (when (final-response-event? evt val)
         (get-swap-then!
          (.state pipeliner)
-         (fn [conn]
+         (fn [^PipelinerState conn]
            (assoc conn :handling (pop (.handling conn))))
-         (fn [old-conn new-conn]
+         (fn [^PipelinerState old-conn ^PipelinerState new-conn]
            ;; If there is a pending response, release it
-           (when-let [exchange (first (.handling new-conn))]
+           (when-let [^PipelinedExchange exchange (first (.handling new-conn))]
              (gate/resume! (.gate exchange)))
 
            ;; If the exchange is done, release the requests
@@ -275,27 +275,27 @@
              (throttle-pipelined-conn pipeliner new-conn))))))))
 
 (defn- bind-pipeliner-upstream
-  [pipeliner]
+  [^Pipeliner pipeliner]
   (let [app      (.app pipeliner)
         gate     (gate/init (mk-pipelined-dn pipeliner))
         upstream (app gate (.env pipeliner))]
     (PipelinedExchange. upstream gate)))
 
 (defn- handle-pipelined-request
-  [pipeliner [hdrs body :as request]]
-  (let [exchange (bind-pipeliner-upstream pipeliner)]
+  [^Pipeliner pipeliner [hdrs body :as request]]
+  (let [exchange ^PipelinedExchange (bind-pipeliner-upstream pipeliner)]
 
     ;; Track the upstream handler
     (get-swap-then!
      (.state pipeliner)
-     (fn [conn]
+     (fn [^PipelinerState conn]
        (assoc conn
          :handling (conj (.handling conn) exchange)
          ;; Only set the last-handler when there will be further
          ;; events for the request.
          :last-handler (when (keyword? body) exchange)))
 
-     (fn [old-conn conn]
+     (fn [^PipelinerState old-conn ^PipelinerState conn]
        (when (< 1 (count (.handling conn)))
          (gate/pause! (.gate exchange)))
 
@@ -306,15 +306,15 @@
          (upstream :request [(merge (.addrs conn) hdrs) body]))))))
 
 (defn- forward-pipelined-event
-  [exchange evt val]
+  [^PipelinedExchange exchange evt val]
   (if exchange
     (let [upstream (.upstream exchange)]
       (upstream evt val))
     (throw (Exception. (str "No upstream : " evt val)))))
 
 (defn- handle-pipelined-request-body
-  [pipeliner chunk]
-  (loop [conn @(.state pipeliner)]
+  [^Pipeliner pipeliner chunk]
+  (loop [^PipelinerState conn @(.state pipeliner)]
     (if (nil? chunk)
       (let [new-conn (assoc conn :last-handler nil)]
         (if (compare-and-set! (.state pipeliner) conn new-conn)
@@ -324,31 +324,31 @@
       (forward-pipelined-event (.last-handler conn) :body chunk))))
 
 (defn- handle-pipelined-close
-  [pipeliner]
+  [^Pipeliner pipeliner]
   ;; Proxy the close to all pending handlers
-  (let [handling (.handling @(.state pipeliner))]
+  (let [handling (.handling ^PipelinerState @(.state pipeliner))]
     (finalize-pipeliner pipeliner)
-    (doseq [exchange handling]
+    (doseq [^PipelinedExchange exchange handling]
       (let [upstream (.upstream exchange)]
         (try (upstream :close nil)
              (catch Exception _))))))
 
 (defn- handle-pipelined-abort
-  [pipeliner err]
-  (let [handling (.handling @(.state pipeliner))]
+  [^Pipeliner pipeliner err]
+  (let [handling (.handling ^PipelinerState @(.state pipeliner))]
     (finalize-pipeliner pipeliner)
-    (doseq [exchange handling]
+    (doseq [^PipelinedExchange exchange handling]
       (let [upstream (.upstream exchange)]
         (try (upstream :abort err)
              (catch Exception _))))))
 
 (defn- handle-pipelined-event
-  [pipeliner evt val]
-  (let [conn @(.state pipeliner)]
+  [^Pipeliner pipeliner evt val]
+  (let [^PipelinerState conn @(.state pipeliner)]
     (forward-pipelined-event (.last-handler conn) evt val)))
 
 (defn- set-pipeliner-addrs!
-  [pipeliner addrs]
+  [^Pipeliner pipeliner addrs]
   (swap! (.state pipeliner) #(assoc % :addrs addrs)))
 
 (defn pipeliner

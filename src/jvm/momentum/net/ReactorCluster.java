@@ -97,7 +97,10 @@ public final class ReactorCluster {
     reactors[0].register(handler, sendOpen);
   }
 
-  void scheduleTimeout(Timeout timeout, long ms) {
+  public void scheduleTimeout(Timeout timeout, long ms) throws IOException {
+    if (!isStarted())
+      start();
+
     // TODO: Do this right
     reactors[0].scheduleTimeout(timeout, ms);
   }

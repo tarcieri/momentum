@@ -19,7 +19,7 @@
   clojure.lang.IFn
   (invoke [this evt val]
     (let [state (.state this)]
-      (loop [cs @(.state this)]
+      (loop [cs ^State @(.state this)]
         (cond
          (.final? cs)
          (throw (Exception. "Not expecting any further messages"))
@@ -35,7 +35,7 @@
            (.invoke ^clojure.lang.IFn @(.upstream this) evt val)))))))
 
 (defn- converge
-  [state upstream downstream cs open?]
+  [state upstream downstream ^State cs open?]
   (when-not (or (= open? (.open? cs)) (.final? cs))
     (loop [cs cs]
       (if (.converging? cs)
@@ -93,7 +93,7 @@
             (recur @state)))))))
 
 (defn resume!
-  [gate]
+  [^Gate gate]
   (converge
    (.state gate)
    @(.upstream gate)
@@ -102,7 +102,7 @@
    true))
 
 (defn pause!
-  [gate]
+  [^Gate gate]
   (converge
    (.state gate)
    @(.upstream gate)
@@ -112,7 +112,7 @@
 
 (defn close!
   "Closes the gate."
-  [gate] (reset! (.state gate) (State. false false nil true)))
+  [^Gate gate] (reset! (.state gate) (State. false false nil true)))
 
 (defn- init*
   [upstream open? queue]
@@ -131,7 +131,7 @@
   ([upstream] (init* upstream false empty-queue)))
 
 (defn set-upstream!
-  [gate f] (reset! (.upstream gate) f) gate)
+  [^Gate gate f] (reset! (.upstream gate) f) gate)
 
 (defn set-downstream!
-  [gate f] (reset! (.downstream gate) f) gate)
+  [^Gate gate f] (reset! (.downstream gate) f) gate)

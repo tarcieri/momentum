@@ -11,11 +11,11 @@
 (def BLANK "")
 
 (defn- http-version
-  [parser]
+  [^HttpParser parser]
   [(.getHttpMajor parser) (.getHttpMinor parser)])
 
 (defn- request-headers
-  [hdrs parser]
+  [hdrs ^HttpParser parser]
   (persistent!
    (assoc!
     hdrs
@@ -31,7 +31,7 @@
    (assoc! hdrs :http-version (http-version parser))))
 
 (defn- map-body
-  [body parser]
+  [body ^HttpParser parser]
   (cond
    body                body
    (.hasBody parser)   :chunked

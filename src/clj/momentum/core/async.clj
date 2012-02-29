@@ -509,20 +509,20 @@
 (declare
  toggle-availability)
 
-(deftype Channel [transfer head paused? depth f capacity]
+(deftype Channel [^AsyncTransferQueue transfer head paused? depth f capacity]
   clojure.lang.Seqable
   (seq [_]
     @head)
 
   Realizer
   (put [this val]
-    (let [ret (.put (.transfer this) val)]
+    (let [ret (.put ^AsyncTransferQueue (.transfer this) val)]
       (when (.f this)
         (toggle-availability this))
       ret))
 
   (abort [this err]
-    (.abort (.transfer this) err))
+    (.abort ^AsyncTransferQueue (.transfer this) err))
 
   clojure.lang.IFn
   (invoke [this v]
@@ -530,14 +530,14 @@
 
   clojure.lang.Counted
   (count [this]
-    (.count (.transfer this))))
+    (.count ^AsyncTransferQueue (.transfer this))))
 
 (defn- full?
-  [ch]
+  [^Channel ch]
   (>= (count ch) (.capacity ch)))
 
 (defn- toggle-availability
-  [ch]
+  [^Channel ch]
   ;; Atomically increment the depth counter
   (let [depth (swap! (.depth ch) inc)]
     ;; If the current value (after incrementing) is 1, then this
@@ -564,15 +564,15 @@
                 (recur new-paused? depth)))))))))
 
 (defn- abort-ch
-  [ch err]
+  [^Channel ch err]
   (when (abort ch err)
     (when-let [f (.f ch)]
       (f :abort err))))
 
 (defn- channel-seq
-  [ch]
+  [^Channel ch]
   (async-seq
-    (doasync (.. ch transfer take)
+    (doasync (.take ^AsyncTransferQueue (.transfer ch))
       (fn [v]
         (when-not (= ::close-channel v)
           (when (.f ch)
@@ -609,8 +609,8 @@
 (defn close
   "Close a channel. Closing a channel causes any associated
   asynchronous sequences to terminate."
-  [ch]
-  (.close (.transfer ch)))
+  [^Channel ch]
+  (.close ^AsyncTransferQueue (.transfer ch)))
 
 (defn- sink-seq
   [stream]

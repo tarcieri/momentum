@@ -65,13 +65,14 @@
   (get-swap-then!
    state
    #(assoc % :timeout nil)
-   (fn [conn _]
+   (fn [^HttpConnection conn _]
      (timer/cancel (.timeout conn)))))
 
 (defn set-handler
   "Sets the protocol handler as well as an initial keep alive timer"
   [state handler]
-  (let [timeout (mk-keep-alive-timer state (.options @state))]
+  (let [conn    ^HttpConnection @state
+        timeout (mk-keep-alive-timer state (.options conn))]
     (swap! state #(assoc % :handler handler :timeout timeout))))
 
 (defn- lower-case
@@ -131,17 +132,17 @@
     0))
 
 (defn- depth
-  [conn]
+  [^HttpConnection conn]
   (count (.response-queue conn)))
 
 (defn- processing-exchange?
-  [conn]
+  [^HttpConnection conn]
   (or (.request-body conn)
       (.response-body conn)
       (> (depth conn) 0)))
 
 (defn- connection-waiting?
-  [conn]
+  [^HttpConnection conn]
   (and (not (.request-body conn))
        (not (.response-body conn))
        (.response-queue conn)
@@ -149,7 +150,7 @@
 
 (defn- connection-final?
   "Returns true if the connection should be closed."
-  [conn]
+  [^HttpConnection conn]
   (and (not (.keep-alive? conn))
        (not (.request-body conn))
        (not (.response-body conn))
@@ -167,9 +168,9 @@
          :request-body   nil
          :response-body  nil
          :response-queue nil))
-     (fn [old-conn new-conn]
+     (fn [^HttpConnection old-conn ^HttpConnection new-conn]
        (when-not (connection-final? old-conn)
-         (.handle-exchange-timeout (.handler old-conn)))))))
+         (handle-exchange-timeout (.handler old-conn)))))))
 
 (defn- mk-keep-alive-timer
   [state opts]
@@ -177,7 +178,7 @@
    (* (opts :keepalive 60) 1000)
    #(get-swap-then!
      state
-     (fn [conn]
+     (fn [^HttpConnection conn]
        (cond
         ;; The connection was already closed somehow. In this case,
         ;; don't do anything.
@@ -192,15 +193,15 @@
 
         :else
         (assoc conn :keep-alive? false :response-queue nil)))
-     (fn [old-conn new-conn]
+     (fn [^HttpConnection old-conn ^HttpConnection new-conn]
        ;; If the timeout caused the connection to transition into a
        ;; final state, notify the handler; otherwise, just discard the
        ;; timer.
        (when (and (not (connection-final? old-conn)) (connection-final? new-conn))
-         (.handle-keep-alive-timeout (.handler old-conn)))))))
+         (handle-keep-alive-timeout (.handler old-conn)))))))
 
 (defn- bump-exchange-timer
-  [state conn]
+  [state ^HttpConnection conn]
   (let [timeout (mk-exchange-timer state (.options conn))]
     (get-swap-then!
      state
@@ -208,13 +209,13 @@
        (if (processing-exchange? conn)
          (assoc conn :timeout timeout)
          conn))
-     (fn [old-conn new-conn]
+     (fn [^HttpConnection old-conn ^HttpConnection new-conn]
        (timer/cancel
         (if (= (.timeout new-conn) timeout)
           (.timeout old-conn) timeout))))))
 
 (defn- bump-keep-alive-timer
-  [state conn]
+  [state ^HttpConnection  conn]
   (let [timeout (mk-keep-alive-timer state (.options conn))]
     (get-swap-then!
      state
@@ -222,13 +223,13 @@
        (if (connection-waiting? conn)
          (assoc conn :timeout timeout)
          conn))
-     (fn [old-conn new-conn]
+     (fn [^HttpConnection old-conn ^HttpConnection new-conn]
        (timer/cancel
         (if (= (.timeout new-conn) timeout)
           (.timeout old-conn) timeout))))))
 
 (defn- bump-timer
-  [state conn]
+  [state ^HttpConnection conn]
   (cond
    (.upgraded? conn)
    (timer/cancel (.timeout conn))
@@ -266,7 +267,7 @@
 
     (get-swap-then!
      state
-     (fn [conn]
+     (fn [^HttpConnection conn]
        (when (.request-body conn)
          (throw (Exception. "Still handling previous request body")))
 
@@ -280,7 +281,7 @@
          ;; accepted requests have been handled, so just discard the
          ;; request.
          conn))
-     (fn [old-conn new-conn]
+     (fn [^HttpConnection old-conn ^HttpConnection new-conn]
        (bump-timer state new-conn)
        (when (.keep-alive? old-conn)
          (let [handler (.handler new-conn)]
@@ -309,7 +310,7 @@
 
     (get-swap-then!
      state
-     (fn [conn]
+     (fn [^HttpConnection conn]
        (when (and (.response-body conn) (not= :pending (.response-body conn)))
          (throw (Exception. "Still handling previous response body")))
 
@@ -341,7 +342,7 @@
               :response-queue (when keep-alive? (pop (.response-queue conn)))
               :response-body  (and (not= :head requirements) response-body)
               :keep-alive?    keep-alive?)))))
-     (fn [old-conn new-conn]
+     (fn [^HttpConnection old-conn ^HttpConnection new-conn]
        (bump-timer state new-conn)
        (let [handler (.handler new-conn)
              head?   (= :head (peek (.response-queue old-conn)))]
@@ -355,7 +356,7 @@
 
   (get-swap-then!
    state
-   (fn [conn]
+   (fn [^HttpConnection conn]
      (cond
       (buffer? chunk)
       (cond
@@ -379,7 +380,7 @@
 
       :else
       (throw (Exception. "Not a valid body chunk type"))))
-   (fn [old-conn new-conn]
+   (fn [^HttpConnection old-conn ^HttpConnection new-conn]
      (bump-timer state new-conn)
 
      (let [handler (.handler new-conn)]
@@ -393,7 +394,7 @@
 
   (get-swap-then!
    state
-   (fn [conn]
+   (fn [^HttpConnection conn]
      (cond
       (buffer? chunk)
       (cond
@@ -418,7 +419,7 @@
       :else
       (throw (Exception. "Not a valid body chunk type"))))
 
-   (fn [old-conn new-conn]
+   (fn [^HttpConnection old-conn ^HttpConnection new-conn]
      (bump-timer state new-conn)
 
      (let [handler (.handler new-conn)]
@@ -431,14 +432,14 @@
 
 (defn request-message
   [state msg]
-  (let [conn @state]
+  (let [conn ^HttpConnection @state]
     (if (.upgraded? conn)
       (handle-request-message (.handler conn) msg)
       (throw (Exception. "Connection was not upgraded")))))
 
 (defn response-message
   [state msg]
-  (let [conn @state]
+  (let [conn ^HttpConnection @state]
     (if (.upgraded? conn)
       (handle-response-message (.handler conn) msg)
       (throw (Exception. "Connection was no upgraded")))))

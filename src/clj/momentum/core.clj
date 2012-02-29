@@ -20,7 +20,6 @@
 (import-fn #'buffer/position)
 (import-fn #'buffer/remaining)
 (import-fn #'buffer/remaining?)
-(import-fn #'buffer/reset)
 (import-fn #'buffer/retain)
 (import-fn #'buffer/rewind)
 (import-fn #'buffer/slice)

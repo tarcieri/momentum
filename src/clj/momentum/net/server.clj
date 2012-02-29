@@ -15,11 +15,11 @@
    [java.nio.channels
     SocketChannel]))
 
-(def reactor-cluster (ReactorCluster/getInstance))
+(def ^ReactorCluster reactor-cluster (ReactorCluster/getInstance))
 
 (defn- ^InetSocketAddress to-socket-addr
-  [[host port]]
-  (let [port (or port 80)]
+  [[^String host port]]
+  (let [port (int (or port 80))]
     (if host
       (InetSocketAddress. host port)
       (InetSocketAddress. port))))
