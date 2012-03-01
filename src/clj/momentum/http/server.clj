@@ -157,7 +157,7 @@
          (dn :message (wrap (buffer size CRLF) chunk CRLF)))
 
        encoded?
-       (dn :message last-chunk)
+       (dn :message (duplicate last-chunk))
 
        chunk
        (dn :message chunk))
@@ -189,6 +189,13 @@
 
      (= :message evt)
      (proto/response-message state val)
+
+     ;; If a :close event is send downstream, then the connection is
+     ;; being explicitly closed (maybe early) so we don't want to
+     ;; throw an exception once the :close event is sent upstream.
+     (= :close evt)
+     (do (proto/force-connection-closed state)
+         (dn evt val))
 
      :else
      (dn evt val))))

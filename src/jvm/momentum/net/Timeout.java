@@ -1,5 +1,7 @@
 package momentum.net;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 public class Timeout {
 
   private static final int INIT      = 0;
@@ -7,7 +9,7 @@ public class Timeout {
   private static final int CANCELLED = 2;
   private static final int EXPIRED   = 3;
 
-  volatile int cs = INIT;
+  final AtomicInteger cs = new AtomicInteger(INIT);
 
   Reactor reactor;
 
@@ -23,19 +25,19 @@ public class Timeout {
   }
 
   public boolean isReady() {
-    return cs == INIT;
+    return cs.get() == INIT;
   }
 
   public boolean isScheduled() {
-    return cs == SCHEDULED;
+    return cs.get() == SCHEDULED;
   }
 
   public boolean isCancelled() {
-    return cs == CANCELLED;
+    return cs.get() == CANCELLED;
   }
 
   public boolean isExpired() {
-    return cs == EXPIRED;
+    return cs.get() == EXPIRED;
   }
 
   public void reschedule(long ms) {
@@ -43,21 +45,20 @@ public class Timeout {
   }
 
   public void cancel() {
-    if (isReady())
-      throw new IllegalStateException("The timeout has not yet been scheduled");
+    cs.set(CANCELLED);
 
-    reactor.cancelTimeout(this);
+    if (reactor != null)
+      reactor.cancelTimeout(this);
   }
 
-  void schedule() {
-    cs = SCHEDULED;
+  boolean schedule(Reactor r) {
+    reactor = r;
+    return cs.compareAndSet(INIT, SCHEDULED);
   }
 
   void expire() {
-    if (cs != SCHEDULED)
+    if (!cs.compareAndSet(SCHEDULED, EXPIRED))
       return;
-
-    cs = EXPIRED;
 
     try {
       task.run();
@@ -65,10 +66,6 @@ public class Timeout {
     catch (Exception e) {
       // Do nothing
     }
-  }
-
-  void transitionCanceled() {
-    cs = CANCELLED;
   }
 
 }

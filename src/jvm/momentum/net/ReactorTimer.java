@@ -70,29 +70,19 @@ class ReactorTimer {
   }
 
   void schedule(Timeout timeout, long ms) {
-    if (timeout.reactor != null)
-      throw new IllegalArgumentException("The timeout has already been scheduled");
-
-    if (!timeout.isReady())
-      throw new IllegalArgumentException("The timeout has already been completed");
-
-    // TODO: handle this
-    if (timeout.targetTick > 0)
-      throw new IllegalArgumentException("The timeout has already been scheduled");
+    if (!timeout.schedule(reactor))
+      return;
 
     // The delay must be equal to or greater than tickDuration.
     if (ms < tickDuration)
       ms = tickDuration;
 
     timeout.targetTick = currentTick + (int) (ms / tickDuration);
-    timeout.reactor = reactor;
-    timeout.schedule();
 
     wheel[timeout.targetTick & mask].add(timeout);
   }
 
   void cancel(Timeout timeout) {
-    timeout.transitionCanceled();
     wheel[timeout.targetTick & mask].remove(timeout);
   }
 

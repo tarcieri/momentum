@@ -10,6 +10,12 @@
   (doto (apply server/start args)
     deref))
 
+(defn- retain*
+  [maybe-buffer]
+  (if (buffer? maybe-buffer)
+    (retain maybe-buffer)
+    maybe-buffer))
+
 ;; TODO:
 ;; - Basic chunked body request / responses
 
@@ -1274,8 +1280,6 @@
          :open    :dont-care
          :request :dont-care
          :body    "Hello"
-         :body    "World"
-         :body    nil
          :close   nil))
 
     (is (closed-socket?))))
@@ -1321,7 +1325,7 @@
        (when (= :abort evt)
          (println (.getMessage val))
          (.printStackTrace val))
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [101 {"connection" "upgrade" "upgrade" "echo"} :upgraded]))
        (when (= :message evt)
@@ -1557,6 +1561,33 @@
 
 (defcoretest upstream-close-events-get-fanned-out
   [ch1]
+  (let [cnt (atom 0)]
+    (start
+     (fn [dn _]
+       (fn [evt val]
+         (enqueue ch1 [evt val])
+         (when (and (= :request evt) (= 1 (swap! cnt inc)))
+           (future
+             (Thread/sleep 10)
+             (dn :close nil)))))))
+
+  (with-socket
+    (write-socket
+     "GET /foo HTTP/1.1\r\n\r\n"
+     "GET /bar HTTP/1.1\r\n\r\n"
+     "GET /baz HTTP/1.1\r\n\r\n")
+
+    (is (next-msgs
+         ch1
+         :request :dont-care
+         :request :dont-care
+         :request :dont-care
+         :close   nil
+         :close   nil
+         :close   nil))))
+
+(defcoretest upstream-closed-channel-exceptions-get-fanned-out
+  [ch1]
   (start
    (fn [dn _]
      (fn [evt val]
@@ -1575,9 +1606,9 @@
          :request :dont-care
          :request :dont-care
          :request :dont-care
-         :close   nil
-         :close   nil
-         :close   nil))))
+         :abort   :dont-care
+         :abort   :dont-care
+         :abort   :dont-care))))
 
 (defcoretest upstream-abort-events-get-fanned-out
   [ch1]

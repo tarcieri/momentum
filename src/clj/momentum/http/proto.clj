@@ -63,14 +63,17 @@
     nil         ;; timeout
     options)))  ;; options
 
+(defn- cleanup*
+  [^HttpConnection conn]
+  (timer/cancel (.timeout conn)))
 
 (defn cleanup
   [state]
   (get-swap-then!
    state
-   #(assoc % :timeout nil)
+   (constantly nil)
    (fn [^HttpConnection conn _]
-     (timer/cancel (.timeout conn)))))
+     (cleanup* conn))))
 
 (defn set-handler
   "Sets the protocol handler as well as an initial keep alive timer"
@@ -149,10 +152,11 @@
 
 (defn- connection-closable?
   [^HttpConnection conn]
-  (and (not (.request-body conn))
-       (not (.response-body conn))
-       (or (not (.response-queue conn))
-           (= (depth conn) 0))))
+  (or (.upgraded? conn)
+      (and (not (.request-body conn))
+           (not (.response-body conn))
+           (or (not (.response-queue conn))
+               (= (depth conn) 0)))))
 
 (defn- connection-waiting?
   [^HttpConnection conn]
@@ -281,24 +285,26 @@
     (get-swap-then!
      state
      (fn [^HttpConnection conn]
-       (when (.request-body conn)
-         (throw (Exception. "Still handling previous request body")))
+       (when conn
+         (when (.request-body conn)
+           (throw (Exception. "Still handling previous request body")))
 
-       (if (.keep-alive? conn)
-         (assoc conn
-           :keep-alive?    (and (.keep-alive? conn) keep-alive?)
-           :request-body   request-body
-           :response-queue (conj (.response-queue conn) requirement)
-           :request-bytes-remaining bytes-remaining)
-         ;; Otherwise, the connection will be closed after all
-         ;; accepted requests have been handled, so just discard the
-         ;; request.
-         conn))
+         (if (.keep-alive? conn)
+           (assoc conn
+             :keep-alive?    (and (.keep-alive? conn) keep-alive?)
+             :request-body   request-body
+             :response-queue (conj (.response-queue conn) requirement)
+             :request-bytes-remaining bytes-remaining)
+           ;; Otherwise, the connection will be closed after all
+           ;; accepted requests have been handled, so just discard the
+           ;; request.
+           conn)))
      (fn [^HttpConnection old-conn ^HttpConnection new-conn]
-       (bump-timer state new-conn)
-       (when (.keep-alive? old-conn)
-         (let [handler (.handler new-conn)]
-           (handle-request-head handler request false)))))))
+       (when old-conn
+         (bump-timer state new-conn)
+         (when (.keep-alive? old-conn)
+           (let [handler (.handler new-conn)]
+             (handle-request-head handler request false))))))))
 
 (defn response
   [state [status hdrs body :as response]]
@@ -324,83 +330,86 @@
     (get-swap-then!
      state
      (fn [^HttpConnection conn]
-       (when (and (.response-body conn) (not= :pending (.response-body conn)))
-         (throw (Exception. "Still handling previous response body")))
+       (when conn
+         (when (and (.response-body conn) (not= :pending (.response-body conn)))
+           (throw (Exception. "Still handling previous response body")))
 
-       (let [requirements (peek (.response-queue conn))]
-         (cond
-          (= 100 status)
-          (if (or (.continue-acked? conn) (not= :continue requirements))
-            (throw (Exception. "Not expecitng a 100 Continue response."))
-            (assoc conn
-              :continue-acked? true
-              :response-body   :pending))
+         (let [requirements (peek (.response-queue conn))]
+           (cond
+            (= 100 status)
+            (if (or (.continue-acked? conn) (not= :continue requirements))
+              (throw (Exception. "Not expecitng a 100 Continue response."))
+              (assoc conn
+                :continue-acked? true
+                :response-body   :pending))
 
-          (= 101 status)
-          (if (= :upgrade requirements)
-            (assoc conn
-              :keep-alive?   false
-              :request-body  :upgraded
-              :response-body :upgraded
-              :upgraded?     true)
-            (throw (Exception. "Not upgrading a connection")))
+            (= 101 status)
+            (if (= :upgrade requirements)
+              (assoc conn
+                :keep-alive?   false
+                :request-body  :upgraded
+                :response-body :upgraded
+                :upgraded?     true)
+              (throw (Exception. "Not upgrading a connection")))
 
-          :else
-          (let [keep-alive?
-                (and (.keep-alive? conn)
-                     (not= :upgrade requirements)
-                     (keepalive-response? response (= :head requirements)))]
-            (assoc conn
-              :response-bytes-remaining bytes-remaining
-              :response-queue (when keep-alive? (pop (.response-queue conn)))
-              :response-body  (and (not= :head requirements) response-body)
-              :keep-alive?    keep-alive?)))))
+            :else
+            (let [keep-alive?
+                  (and (.keep-alive? conn)
+                       (not= :upgrade requirements)
+                       (keepalive-response? response (= :head requirements)))]
+              (assoc conn
+                :response-bytes-remaining bytes-remaining
+                :response-queue (when keep-alive? (pop (.response-queue conn)))
+                :response-body  (and (not= :head requirements) response-body)
+                :keep-alive?    keep-alive?))))))
      (fn [^HttpConnection old-conn ^HttpConnection new-conn]
-       (bump-timer state new-conn)
-       (let [handler (.handler new-conn)
-             head?   (= :head (peek (.response-queue old-conn)))]
+       (when old-conn
+         (bump-timer state new-conn)
+         (let [handler (.handler new-conn)
+               head?   (= :head (peek (.response-queue old-conn)))]
 
-         (handle-response-head
-          handler [status hdrs (when-not head? body)]
-          (connection-final? new-conn)))))))
+           (handle-response-head
+            handler [status hdrs (when-not head? body)]
+            (connection-final? new-conn))))))))
 
 (defn request-chunk
   [state chunk]
-
   (get-swap-then!
    state
    (fn [^HttpConnection conn]
-     (cond
-      (buffer? chunk)
-      (cond
-       (= :chunked (.request-body conn))
-       conn
+     (when conn
+       (cond
+        (buffer? chunk)
+        (cond
+         (= :chunked (.request-body conn))
+         conn
 
-       (= :streaming (.request-body conn))
-       (let [bytes-remaining (- (.request-bytes-remaining conn) (remaining chunk))]
-         (when (< bytes-remaining 0)
-           (throw (Exception. "Sending more data than expected")))
+         (= :streaming (.request-body conn))
+         (let [bytes-remaining (- (.request-bytes-remaining conn) (remaining chunk))]
+           (when (< bytes-remaining 0)
+             (throw (Exception. "Sending more data than expected")))
 
-         (assoc conn
-           :request-bytes-remaining bytes-remaining
-           :request-body (when (< 0 bytes-remaining) (.response-body conn))))
+           (assoc conn
+             :request-bytes-remaining bytes-remaining
+             :request-body (when (< 0 bytes-remaining) (.response-body conn))))
 
-       :else
-       (throw (Exception. "Not expecting a chunk at this time")))
+         :else
+         (throw (Exception. "Not expecting a chunk at this time")))
 
-      (nil? chunk)
-      (assoc conn :request-body nil)
+        (nil? chunk)
+        (assoc conn :request-body nil)
 
-      :else
-      (throw (Exception. "Not a valid body chunk type"))))
+        :else
+        (throw (Exception. "Not a valid body chunk type")))))
    (fn [^HttpConnection old-conn ^HttpConnection new-conn]
-     (bump-timer state new-conn)
+     (when old-conn
+       (bump-timer state new-conn)
 
-     (let [handler (.handler new-conn)]
-       (handle-request-chunk
-        handler
-        chunk (= :chunked (.request-body old-conn))
-        (connection-final? new-conn))))))
+       (let [handler (.handler new-conn)]
+         (handle-request-chunk
+          handler
+          chunk (= :chunked (.request-body old-conn))
+          (connection-final? new-conn)))))))
 
 (defn response-chunk
   [state chunk]
@@ -408,62 +417,78 @@
   (get-swap-then!
    state
    (fn [^HttpConnection conn]
-     (cond
-      (buffer? chunk)
-      (cond
-       (#{:chunked :until-close} (.response-body conn))
-       conn
+     (when conn
+       (cond
+        (buffer? chunk)
+        (cond
+         (#{:chunked :until-close} (.response-body conn))
+         conn
 
-       (= :streaming (.response-body conn))
-       (let [bytes-remaining (- (.response-bytes-remaining conn) (remaining chunk))]
-         (when (< bytes-remaining 0)
-           (throw (Exception. "Sending more data than specified")))
+         (= :streaming (.response-body conn))
+         (let [bytes-remaining (- (.response-bytes-remaining conn) (remaining chunk))]
+           (when (< bytes-remaining 0)
+             (throw (Exception. "Sending more data than specified")))
 
-         (assoc conn
-           :response-bytes-remaining bytes-remaining
-           :response-body (when (< 0 bytes-remaining) (.response-body conn))))
+           (assoc conn
+             :response-bytes-remaining bytes-remaining
+             :response-body (when (< 0 bytes-remaining) (.response-body conn))))
 
-       :else
-       (throw (Exception. "Not expecting a chunk at this time")))
+         :else
+         (throw (Exception. "Not expecting a chunk at this time")))
 
-      (nil? chunk)
-      (assoc conn :response-body nil)
+        (nil? chunk)
+        (assoc conn :response-body nil)
 
-      :else
-      (throw (Exception. "Not a valid body chunk type"))))
+        :else
+        (throw (Exception. "Not a valid body chunk type")))))
 
    (fn [^HttpConnection old-conn ^HttpConnection new-conn]
-     (bump-timer state new-conn)
+     (when old-conn
+       (bump-timer state new-conn)
 
-     (let [handler (.handler new-conn)]
+       (let [handler (.handler new-conn)]
 
-       ;; Then invoke the specific handler
-       (handle-response-chunk
-        (.handler new-conn)
-        chunk (= :chunked (.response-body old-conn))
-        (connection-final? new-conn))))))
+         ;; Then invoke the specific handler
+         (handle-response-chunk
+          (.handler new-conn)
+          chunk (= :chunked (.response-body old-conn))
+          (connection-final? new-conn)))))))
 
 (defn request-message
   [state msg]
-  (let [conn ^HttpConnection @state]
+  (when-let [conn ^HttpConnection @state]
     (if (.upgraded? conn)
       (handle-request-message (.handler conn) msg)
       (throw (Exception. "Connection was not upgraded")))))
 
 (defn response-message
   [state msg]
-  (let [conn ^HttpConnection @state]
+  (when-let [conn ^HttpConnection @state]
     (if (.upgraded? conn)
       (handle-response-message (.handler conn) msg)
       (throw (Exception. "Connection was no upgraded")))))
 
+(defn force-connection-closed
+  [state]
+  (get-swap-then!
+   state
+   (constantly nil)
+   (fn [^HttpConnection conn _]
+     (when conn
+       (cleanup* conn)))))
+
 (defn connection-closed
   [state]
-  (let [conn ^HttpConnection @state]
-    (if-not (connection-closable? conn)
-      (let [handler (.handler conn)]
-        (cleanup state)
-        (handle-abort handler (ClosedChannelException.))
-        false)
-      (do (cleanup state)
-          true))))
+  (get-swap-then!
+   state
+   (constantly nil)
+   (fn [^HttpConnection conn _]
+     (if conn
+       (do
+         (cleanup* conn)
+         (if (connection-closable? conn)
+           true
+           (let [handler (.handler conn)]
+             (handle-abort handler (ClosedChannelException.))
+             false)))
+       true))))

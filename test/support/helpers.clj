@@ -167,7 +167,7 @@
   (loop [[segment & rest] segments str str]
     (if (and segment (seq str))
       (let [len (segment-len segment)]
-        (when (segment-match? segment (subs str 0 len))
+        (when (segment-match? segment (subs str 0 (min len (count str))))
           (recur rest (subs str len))))
       ;; Otherwise, make sure the segment is nil and the string is
       ;; empty, aka both the expected value and the actual value have
