@@ -1682,3 +1682,39 @@
          :request :dont-care
          :abort   :dont-care
          :abort   :dont-care))))
+
+(defcoretest ^{:focus true} upstream-pipelined-request-bodies-are-retained
+  [ch1]
+  (start
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt (retain* val)])
+       (future
+         (Thread/sleep 50)
+         (when (= :request evt)
+           (dn :response [204 {} nil])))))
+   {:pipeline 1})
+
+  (with-socket
+    (let [body-1 (apply str (repeat 5000 "a"))
+          body-2 (apply str (repeat 5000 "b"))]
+      (write-socket
+       "POST / HTTP/1.1\r\n"
+       "Content-Length: 5000\r\n\r\n"
+       body-1)
+
+      (Thread/sleep 10)
+
+      (write-socket
+       "POST / HTTP/1.1\r\n"
+       "Content-Length: 5000\r\n\r\n"
+       body-2)
+
+      (is (next-msgs
+           ch1
+           :request [:dont-care body-1]
+           :request [:dont-care body-2]))
+
+      (is (receiving
+           "HTTP/1.1 204 No Content\r\n\r\n"
+           "HTTP/1.1 204 No Content\r\n\r\n")))))
