@@ -8,12 +8,9 @@
 
 (defn register
   [ms f]
-  (.scheduleTimeout
-   reactor-cluster
-   (Timeout.
-    (reify Runnable
-      (run [_] (f))))
-   ms))
+  (let [timeout (Timeout. (reify Runnable (run [_] (f))))]
+    (.scheduleTimeout reactor-cluster timeout ms)
+    timeout))
 
 (defn cancel
   [^Timeout timeout]

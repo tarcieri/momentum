@@ -84,8 +84,8 @@ class ReactorTimer {
     if (ms < tickDuration)
       ms = tickDuration;
 
-    timeout.targetTick = currentTick + (int) (ms % tickDuration);
-    timeout.reactor    = reactor;
+    timeout.targetTick = currentTick + (int) (ms / tickDuration);
+    timeout.reactor = reactor;
     timeout.schedule();
 
     wheel[timeout.targetTick & mask].add(timeout);

@@ -54,7 +54,7 @@ public class Timeout {
   }
 
   void expire() {
-    if (cs != INIT)
+    if (cs != SCHEDULED)
       return;
 
     cs = EXPIRED;

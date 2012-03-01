@@ -3,7 +3,10 @@
    momentum.core
    momentum.core.atomic)
   (:require
-   [momentum.core.timer :as timer]))
+   [momentum.core.timer :as timer])
+  (:import
+   [java.nio.channels
+    ClosedChannelException]))
 
 ;; TODO:
 ;; - When pipelining, a no keepalive prevents further requests
@@ -26,7 +29,8 @@
   (handle-response-chunk     [_ chunk encoded? final?])
   (handle-response-message   [_ msg])
   (handle-exchange-timeout   [_])
-  (handle-keep-alive-timeout [_]))
+  (handle-keep-alive-timeout [_])
+  (handle-abort              [_ err]))
 
 (defrecord HttpConnection
     [handler
@@ -135,11 +139,20 @@
   [^HttpConnection conn]
   (count (.response-queue conn)))
 
+;; TODO: Figure out how to unify all of these
+
 (defn- processing-exchange?
   [^HttpConnection conn]
   (or (.request-body conn)
       (.response-body conn)
       (> (depth conn) 0)))
+
+(defn- connection-closable?
+  [^HttpConnection conn]
+  (and (not (.request-body conn))
+       (not (.response-body conn))
+       (or (not (.response-queue conn))
+           (= (depth conn) 0))))
 
 (defn- connection-waiting?
   [^HttpConnection conn]
@@ -443,3 +456,14 @@
     (if (.upgraded? conn)
       (handle-response-message (.handler conn) msg)
       (throw (Exception. "Connection was no upgraded")))))
+
+(defn connection-closed
+  [state]
+  (let [conn ^HttpConnection @state]
+    (if-not (connection-closable? conn)
+      (let [handler (.handler conn)]
+        (cleanup state)
+        (handle-abort handler (ClosedChannelException.))
+        false)
+      (do (cleanup state)
+          true))))

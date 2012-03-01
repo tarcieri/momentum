@@ -172,7 +172,10 @@
       (dn :abort (Exception. "The exchange took too long")))
 
     (handle-keep-alive-timeout [_]
-      (dn :close nil))))
+      (dn :close nil))
+
+    (handle-abort [_ err]
+      (up :abort err))))
 
 (defn- mk-downstream
   [state dn]
@@ -406,11 +409,16 @@
                (= :message evt)
                (proto/request-message state val)
 
+               (= :close evt)
+               (when (proto/connection-closed state)
+                 (up evt val))
+
+               (= :abort evt)
+               (do (proto/cleanup state)
+                   (up evt val))
+
                :else
-               (do
-                 (when (#{:close :abort} evt)
-                   (proto/cleanup state))
-                 (up evt val))))))))))
+               (up evt val)))))))))
 
 (defn start
   ([app] (start app {}))

@@ -19,7 +19,6 @@ public final class ReactorChannelHandler {
 
     public void run() throws IOException {
       doSendMessageDownstream(msg);
-      handlePendingUpstreamEvents();
     }
   }
 
@@ -58,7 +57,6 @@ public final class ReactorChannelHandler {
   final class ResumeTask implements ReactorTask {
     public void run() throws IOException {
       setOpRead();
-      handlePendingUpstreamEvents();
     }
   }
 
@@ -189,6 +187,11 @@ public final class ReactorChannelHandler {
   boolean isPaused;
 
   /*
+   * Are we currently in an upstream call?
+   */
+  boolean inUpstream;
+
+  /*
    * The exception that the channel was aborted with
    */
   Exception err;
@@ -203,11 +206,15 @@ public final class ReactorChannelHandler {
 
   void sendOpenUpstream() throws IOException {
     try {
+      inUpstream = true;
       upstream.sendOpen(channel);
       handlePendingUpstreamEvents();
     }
     catch (Exception e) {
       doAbort(e);
+    }
+    finally {
+      inUpstream = false;
     }
   }
 
@@ -216,11 +223,15 @@ public final class ReactorChannelHandler {
       return;
 
     try {
+      inUpstream = true;
       upstream.sendMessage(msg);
       handlePendingUpstreamEvents();
     }
     catch (Exception e) {
       doAbort(e);
+    }
+    finally {
+      inUpstream = false;
     }
   }
 
@@ -251,11 +262,15 @@ public final class ReactorChannelHandler {
     isPaused = false;
 
     try {
+      inUpstream = true;
       upstream.sendResume();
       handlePendingUpstreamEvents();
     }
     catch (Exception e) {
       doAbort(e);
+    }
+    finally {
+      inUpstream = false;
     }
   }
 
@@ -296,7 +311,12 @@ public final class ReactorChannelHandler {
 
   public void sendCloseDownstream() throws IOException {
     if (reactor.onReactorThread()) {
-      markClosed();
+      if (inUpstream) {
+        markClosed();
+      }
+      else {
+        doClose();
+      }
     }
     else {
       reactor.pushCloseTask(new CloseTask());
@@ -323,7 +343,12 @@ public final class ReactorChannelHandler {
 
   public void sendAbortDownstream(Exception err) throws IOException {
     if (reactor.onReactorThread()) {
-      markAborted(err);
+      if (inUpstream) {
+        markAborted(err);
+      }
+      else {
+        doAbort(err);
+      }
     }
     else {
       reactor.pushCloseTask(new AbortTask(err));
@@ -346,6 +371,9 @@ public final class ReactorChannelHandler {
       // The socket is full!
       messageQueue.push(msg.slice().retain());
       setOpWrite();
+
+      if (!inUpstream)
+        sendPauseUpstream();
     }
   }
 

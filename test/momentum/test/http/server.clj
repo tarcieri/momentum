@@ -2,8 +2,13 @@
   (:use
    clojure.test
    support.helpers
-   momentum.core
-   momentum.http.server))
+   momentum.core)
+  (:require
+   [momentum.http.server :as server]))
+
+(defn- start [& args]
+  (doto (apply server/start args)
+    deref))
 
 ;; TODO:
 ;; - Basic chunked body request / responses
@@ -778,7 +783,11 @@
 
 (defcoretest aborting-a-request
   [ch1]
-  (start-hello-world-app ch1)
+  (start
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt val])))
+   {:pipeline false})
 
   (with-socket
     (write-socket "POST / HTTP/1.1\r\n"
