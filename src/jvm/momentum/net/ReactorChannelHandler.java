@@ -305,7 +305,7 @@ public final class ReactorChannelHandler {
       doSendMessageDownstream(msg);
     }
     else {
-      reactor.pushWriteTask(new WriteTask(msg));
+      reactor.pushTask(new WriteTask(msg));
     }
   }
 
@@ -319,7 +319,7 @@ public final class ReactorChannelHandler {
       }
     }
     else {
-      reactor.pushCloseTask(new CloseTask());
+      reactor.pushTask(new CloseTask());
     }
   }
 
@@ -328,7 +328,7 @@ public final class ReactorChannelHandler {
       clearOpRead();
     }
     else {
-      reactor.pushInterestOpTask(new PauseTask());
+      reactor.pushTask(new PauseTask());
     }
   }
 
@@ -337,7 +337,7 @@ public final class ReactorChannelHandler {
       setOpRead();
     }
     else {
-      reactor.pushInterestOpTask(new ResumeTask());
+      reactor.pushTask(new ResumeTask());
     }
   }
 
@@ -351,7 +351,7 @@ public final class ReactorChannelHandler {
       }
     }
     else {
-      reactor.pushCloseTask(new AbortTask(err));
+      reactor.pushTask(new AbortTask(err));
     }
   }
 

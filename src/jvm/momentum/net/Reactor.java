@@ -89,29 +89,9 @@ public final class Reactor implements Runnable {
   final Buffer readBuffer = Buffer.allocate(65536).makeTransient();
 
   /*
-   * Queue of servers waiting to be bound
+   * Queue for all tasks submitted from other threads
    */
-  final ArrayAtomicQueue<ReactorTask> bindQueue = new ArrayAtomicQueue<ReactorTask>(1024);
-
-  /*
-   * Queue of channels to close
-   */
-  final ArrayAtomicQueue<ReactorTask> closeQueue = new ArrayAtomicQueue<ReactorTask>(8192);
-
-  /*
-   * Queue of interest op change requests
-   */
-  final ArrayAtomicQueue<ReactorTask> interestOpQueue = new ArrayAtomicQueue<ReactorTask>(8192);
-
-  /*
-   * Queue of incoming timer events
-   */
-  final ArrayAtomicQueue<ReactorTask> timerQueue = new ArrayAtomicQueue<ReactorTask>(8192);
-
-  /*
-   * Queue of writes that need to be scheduled
-   */
-  final ArrayAtomicQueue<ReactorTask> writeQueue = new ArrayAtomicQueue<ReactorTask>(65536);
+  final ArrayAtomicQueue<ReactorTask> taskQueue = new ArrayAtomicQueue<ReactorTask>(131072);
 
   /*
    * A pool of segments for the message queue.
@@ -155,7 +135,7 @@ public final class Reactor implements Runnable {
       doShutdown();
     }
     else {
-      pushCloseTask(new ShutdownTask());
+      pushTask(new ShutdownTask());
     }
   }
 
@@ -183,7 +163,7 @@ public final class Reactor implements Runnable {
       doScheduleTimeout(timeout, ms);
     }
     else {
-      pushTask(timerQueue, new ScheduleTimeoutTask(timeout, ms));
+      pushTask(new ScheduleTimeoutTask(timeout, ms));
     }
   }
 
@@ -196,7 +176,7 @@ public final class Reactor implements Runnable {
       doCancelTimeout(timeout);
     }
     else {
-      pushTask(timerQueue, new CancelTimeoutTask(timeout));
+      pushTask(new CancelTimeoutTask(timeout));
     }
   }
 
@@ -231,12 +211,7 @@ public final class Reactor implements Runnable {
       try {
         selector.select();
 
-        processQueue(interestOpQueue);
-        processQueue(timerQueue);
-        processQueue(writeQueue);
-        processQueue(closeQueue);
-        processQueue(bindQueue);
-
+        processTaskQueue();
         processIO(tickerKey);
       }
       catch (Throwable t) {
@@ -278,9 +253,9 @@ public final class Reactor implements Runnable {
   /*
    * Pops off all tasks from a queue and runs them.
    */
-  void processQueue(ArrayAtomicQueue<ReactorTask> q) throws IOException {
+  void processTaskQueue() throws IOException {
     while (true) {
-      ReactorTask curr = q.poll();
+      ReactorTask curr = taskQueue.poll();
 
       if (curr == null)
         return;
@@ -293,24 +268,12 @@ public final class Reactor implements Runnable {
    * Pushes a task on a queue and wakes up the reactor. If the queue overflows,
    * kills the reactor.
    */
-  void pushTask(ArrayAtomicQueue<ReactorTask> q, ReactorTask task) {
-    if (!q.offer(task)) {
+  void pushTask(ReactorTask task) {
+    if (!taskQueue.offer(task)) {
       apoptosis("Reactor queue overflow");
     }
 
     wakeup();
-  }
-
-  void pushWriteTask(ReactorTask task) {
-    pushTask(writeQueue, task);
-  }
-
-  void pushCloseTask(ReactorTask task) {
-    pushTask(closeQueue, task);
-  }
-
-  void pushInterestOpTask(ReactorTask task) {
-    pushTask(interestOpQueue, task);
   }
 
   /*
@@ -379,7 +342,7 @@ public final class Reactor implements Runnable {
       doStartTcpServer(handler);
     }
     else {
-      pushTask(bindQueue, new BindTask(handler));
+      pushTask(new BindTask(handler));
     }
 
     return handler;

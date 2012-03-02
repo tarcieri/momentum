@@ -77,7 +77,7 @@ public class ReactorServerHandler {
       doClose();
     }
     else {
-      reactor.pushCloseTask(new CloseTask());
+      reactor.pushTask(new CloseTask());
     }
 
     return closed;
