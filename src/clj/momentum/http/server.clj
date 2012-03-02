@@ -236,12 +236,12 @@
    (let [[hdrs body] val]
      (conj coll [evt [hdrs (retain body)]]))
 
-   ;; (= :response evt)
-   ;; (let [[status hdrs body] val]
-   ;;   (conj coll [evt [status hdrs (retain body)]]))
+   (= :response evt)
+   (let [[status hdrs body] val]
+     (conj coll [evt [status hdrs (retain body)]]))
 
-   ;; (= :body evt)
-   ;; (conj coll [evt [:body (retain body)]])
+   (= :body evt)
+   (conj coll [evt (retain val)])
 
    :else
    (conj coll [evt val])))

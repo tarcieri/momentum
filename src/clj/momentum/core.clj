@@ -9,6 +9,7 @@
 
 (import-fn #'buffer/buffer?)
 (import-fn #'buffer/capacity)
+(import-fn #'buffer/clear)
 (import-fn #'buffer/collapsed?)
 (import-fn #'buffer/direct-buffer)
 (import-fn #'buffer/dynamic-buffer)

@@ -143,12 +143,13 @@
   (instance? Buffer maybe-buffer))
 
 (defn capacity
-  [^Buffer buf]
-  (.capacity buf))
+  [^Buffer buf] (.capacity buf))
+
+(defn clear
+  [^Buffer buf] (.clear buf))
 
 (defn collapsed?
-  [^Buffer buf]
-  (not (remaining? buf)))
+  [^Buffer buf] (not (remaining? buf)))
 
 (defn direct-buffer
   [size]

@@ -1732,11 +1732,82 @@
            "HTTP/1.1 204 No Content\r\n\r\n"
            "HTTP/1.1 204 No Content\r\n\r\n")))))
 
-(deftest upstream-pipelined-chunked-bodies-are-retained
-  (is false))
+(defcoretest upstream-pipelined-chunked-bodies-are-retained
+  [ch1]
+  (start
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt (retain* val)])
+       (when (= :request evt)
+         (future
+           (Thread/sleep 150)
+           (dn :response [204 {} nil])))))
+   {:pipeline 1})
 
-(deftest downstream-pipelined-response-bodies-are-retained
-  (is false))
+  (let [body-1 (apply str (repeat 5000 "a"))
+        body-2 (apply str (repeat 5000 "b"))
+        body-3 (apply str (repeat 5000 "c"))]
+    (with-socket
+      (write-socket
+       "POST / HTTP/1.1\r\n"
+       "Transfer-Encoding: chunked\r\n\r\n"
+       "1388\r\n" body-1 "\r\n"
+       "0\r\n\r\n")
 
-(deftest downstream-pipelined-chunked-bodies-are-retained
-  (is false))
+      (Thread/sleep 40)
+
+      (write-socket
+       "POST / HTTP/1.1\r\n"
+       "Transfer-Encoding: chunked\r\n\r\n"
+       "1388\r\n" body-2 "\r\n"
+       "0\r\n\r\n")
+
+      (Thread/sleep 40)
+
+      (write-socket
+       "POST / HTTP/1.1\r\n"
+       "Transfer-Encoding: chunked\r\n\r\n"
+       "1388\r\n" body-3 "\r\n"
+       "0\r\n\r\n")
+
+      (is (next-msgs
+           ch1
+           :request :dont-care
+           :body    body-1
+           :body    nil
+           :request :dont-care
+           :body    body-2
+           :body    nil
+           :request :dont-care
+           :body    body-3
+           :body    nil)))))
+
+(defcoretest downstream-pipelined-response-bodies-are-retained
+  [ch1]
+  (start
+   (fn [dn _]
+     (fn [evt val]
+       (when (= :request evt)
+         (let [[{path-info :path-info}] val]
+           (if (= "/foo" path-info)
+             (future
+               (Thread/sleep 50)
+               (dn :response [200 {"content-length" "5"} (buffer "Hello")]))
+             (let [buf (transient! (buffer "HELLO"))]
+               (dn :response [200 {"content-length" "5"} buf])
+               (doto buf
+                 (write "FAIL!")
+                 (flip)))))))))
+
+  (with-socket
+    (write-socket
+     "GET /foo HTTP/1.1\r\n\r\n"
+     "GET /bar HTTP/1.1\r\n\r\n")
+
+    (is (receiving
+         "HTTP/1.1 200 OK\r\n"
+         "content-length: 5\r\n\r\n"
+         "Hello"
+         "HTTP/1.1 200 OK\r\n"
+         "content-length: 5\r\n\r\n"
+         "HELLO"))))
