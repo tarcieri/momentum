@@ -227,8 +227,24 @@
      last-handler])
 
 (defrecord PipelinedExchange
-    [upstream
-     gate])
+    [upstream gate])
+
+(defn- reduce-pipeline-buffer
+  [coll evt val]
+  (cond
+   (= :request evt)
+   (let [[hdrs body] val]
+     (conj coll [evt [hdrs (retain body)]]))
+
+   ;; (= :response evt)
+   ;; (let [[status hdrs body] val]
+   ;;   (conj coll [evt [status hdrs (retain body)]]))
+
+   ;; (= :body evt)
+   ;; (conj coll [evt [:body (retain body)]])
+
+   :else
+   (conj coll [evt val])))
 
 (defn- init-pipeliner
   [app dn env gate opts]
@@ -287,7 +303,7 @@
 (defn- bind-pipeliner-upstream
   [^Pipeliner pipeliner]
   (let [app      (.app pipeliner)
-        gate     (gate/init (mk-pipelined-dn pipeliner))
+        gate     (gate/init reduce-pipeline-buffer (mk-pipelined-dn pipeliner))
         upstream (app gate (.env pipeliner))]
     (PipelinedExchange. upstream gate)))
 
@@ -365,7 +381,7 @@
   "Handles HTTP pipelining"
   [app opts]
   (fn [dn env]
-    (let [gate (gate/init)
+    (let [gate (gate/init reduce-pipeline-buffer)
           pipeliner (init-pipeliner app dn env gate opts)]
 
       (gate/set-upstream!

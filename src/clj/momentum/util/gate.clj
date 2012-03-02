@@ -14,7 +14,7 @@
 
 (deftype State [converging? open? buffer final?])
 
-(deftype Gate [upstream downstream state skippable]
+(deftype Gate [reduce-fn upstream downstream state skippable]
 
   clojure.lang.IFn
   (invoke [this evt val]
@@ -29,7 +29,8 @@
 
          :else
          (if-let [buffer (.buffer cs)]
-           (let [ns (State. (.converging? cs) (.open? cs) (conj (.buffer cs) [evt val]) false)]
+           (let [reduce-fn (.reduce-fn this)
+                 ns (State. (.converging? cs) (.open? cs) (reduce-fn buffer evt val) false)]
              (when-not (compare-and-set! state cs ns)
                (recur @state)))
            (.invoke ^clojure.lang.IFn @(.upstream this) evt val)))))))
@@ -86,8 +87,9 @@
 
                     ;; Then attempt to close the gate and release the
                     ;; lock
-                    (when-not (compare-and-set! state cs (State. false false (or (.buffer cs) empty-queue) false))
-                      (recur @state false))))))
+                    (let [ns (State. false false (or (.buffer cs) empty-queue) false)]
+                      (when-not (compare-and-set! state cs ns)
+                        (recur @state false)))))))
 
             ;; If the the CAS to acquire the lock failed, just recur.
             (recur @state)))))))
@@ -115,20 +117,22 @@
   [^Gate gate] (reset! (.state gate) (State. false false nil true)))
 
 (defn- init*
-  [upstream open? queue]
-  (Gate. (atom upstream)
+  [reduce-fn upstream open? queue]
+  (Gate. reduce-fn
+         (atom upstream)
          (atom nil)
          (atom (State. false open? queue false))
          ;; Hardcode skippable events for now
          #{:pause :resume :close :abort}))
 
-(defn init
-  ([]         (init*      nil true nil))
-  ([upstream] (init* upstream true nil)))
+(defn default-reduce-fn
+  [coll evt val]
+  (conj coll [evt val]))
 
-(defn init-paused
-  ([]         (init*      nil false empty-queue))
-  ([upstream] (init* upstream false empty-queue)))
+(defn init
+  ([]                   (init* default-reduce-fn nil true nil))
+  ([reduce-fn]          (init* reduce-fn nil true nil))
+  ([reduce-fn upstream] (init* reduce-fn upstream true nil)))
 
 (defn set-upstream!
   [^Gate gate f] (reset! (.upstream gate) f) gate)

@@ -12,9 +12,12 @@
 
 (defn- retain*
   [maybe-buffer]
-  (if (buffer? maybe-buffer)
-    (retain maybe-buffer)
-    maybe-buffer))
+  (cond
+   (vector? maybe-buffer)
+   (vec (map retain* maybe-buffer))
+
+   :else
+   (retain maybe-buffer)))
 
 ;; TODO:
 ;; - Basic chunked body request / responses
@@ -1683,21 +1686,22 @@
          :abort   :dont-care
          :abort   :dont-care))))
 
-(defcoretest ^{:focus true} upstream-pipelined-request-bodies-are-retained
+(defcoretest upstream-pipelined-request-bodies-are-retained
   [ch1]
   (start
    (fn [dn _]
      (fn [evt val]
        (enqueue ch1 [evt (retain* val)])
        (future
-         (Thread/sleep 50)
+         (Thread/sleep 100)
          (when (= :request evt)
            (dn :response [204 {} nil])))))
    {:pipeline 1})
 
   (with-socket
     (let [body-1 (apply str (repeat 5000 "a"))
-          body-2 (apply str (repeat 5000 "b"))]
+          body-2 (apply str (repeat 5000 "b"))
+          body-3 (apply str (repeat 5000 "c"))]
       (write-socket
        "POST / HTTP/1.1\r\n"
        "Content-Length: 5000\r\n\r\n"
@@ -1710,11 +1714,29 @@
        "Content-Length: 5000\r\n\r\n"
        body-2)
 
+      (Thread/sleep 10)
+
+      (write-socket
+       "POST / HTTP/1.1\r\n"
+       "Content-Length: 5000\r\n\r\n"
+       body-3)
+
       (is (next-msgs
            ch1
            :request [:dont-care body-1]
-           :request [:dont-care body-2]))
+           :request [:dont-care body-2]
+           :request [:dont-care body-3]))
 
       (is (receiving
            "HTTP/1.1 204 No Content\r\n\r\n"
+           "HTTP/1.1 204 No Content\r\n\r\n"
            "HTTP/1.1 204 No Content\r\n\r\n")))))
+
+(deftest upstream-pipelined-chunked-bodies-are-retained
+  (is false))
+
+(deftest downstream-pipelined-response-bodies-are-retained
+  (is false))
+
+(deftest downstream-pipelined-chunked-bodies-are-retained
+  (is false))

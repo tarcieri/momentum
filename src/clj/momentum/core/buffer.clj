@@ -191,7 +191,10 @@
   [^Buffer buf] (and buf (.hasRemaining buf)))
 
 (defn retain
-  [^Buffer buf] (.retain buf))
+  [^Buffer buf]
+  (if (buffer? buf)
+    (.retain buf)
+    buf))
 
 (defn rewind
   [^Buffer buf] (.rewind buf))
