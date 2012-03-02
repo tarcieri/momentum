@@ -208,95 +208,100 @@
 (defcoretest telling-the-application-to-chill-out
   [ch1]
   (start
-   (fn [dn _]
-     (let [latch (atom true)]
-       (fn [evt val]
-         (enqueue ch1 [evt (retain* val)])
-         (when (= :open evt)
-           (future
-             (loop [continue? @latch]
-               (when continue?
-                 (dn :message (buffer "HAMMER TIME!"))
-                 (recur @latch)))))
+   (let [chunk (buffer (apply str (repeat 1000 "HAMMER TIME!!!")))]
+     (fn [dn _]
+       (let [latch (atom true)]
+         (fn [evt val]
+           (enqueue ch1 [evt (retain* val)])
+           (when (= :open evt)
+             (future
+               (loop [continue? @latch]
+                 (when continue?
+                   (dn :message (duplicate chunk))
+                   (Thread/sleep 5)
+                   (recur @latch)))))
 
-         (when (= :pause evt)
-           (reset! latch false))
+           (when (= :pause evt)
+             (reset! latch false))
 
-         (when (= :resume evt)
-           (dn :close nil))))))
+           (when (= :resume evt)
+             (dn :close nil)))))))
 
   (with-socket
-    (Thread/sleep 200)
-    (drain-socket)
-
     (is (next-msgs
          ch1
-         :open   addr-info
-         :pause  nil
-         :resume nil))))
+         :open  addr-info
+         :pause nil))
+
+    (drain-socket)
+
+    (is (next-msgs ch1 :resume nil))))
 
 (defcoretest raising-error-during-pause-event
   [ch1]
-  (start
-   (fn [dn _]
-     (let [latch (atom true)]
-       (fn [evt val]
-         (enqueue ch1 [evt (retain* val)])
-         (when (= :open evt)
-           (future
-             (loop [continue? @latch]
-               (when continue?
-                 (dn :message (buffer "HAMMER TIME!"))
-                 (recur @latch)))))
-         (when (= :pause evt)
-           (reset! latch false)
-           (throw (Exception. "TROLLOLOL")))))))
+  (let [chunk (buffer (apply str (repeat 1000 "HAMMER TIME!!!")))]
+    (start
+     (fn [dn _]
+       (let [latch (atom true)]
+         (fn [evt val]
+           (enqueue ch1 [evt (retain* val)])
+           (when (= :open evt)
+             (future
+               (loop [continue? @latch]
+                 (when continue?
+                   (dn :message (duplicate chunk))
+                   (Thread/sleep 5)
+                   (recur @latch)))))
+           (when (= :pause evt)
+             (reset! latch false)
+             (throw (Exception. "TROLLOLOL"))))))))
 
   (with-socket
-    (Thread/sleep 100)
-    (drain-socket)
-
-    (is (not (open-socket?)))
-
     (is (next-msgs
          ch1
-         :open   addr-info
-         :pause  nil
-         :abort  #(instance? Exception %)))))
+         :open  addr-info
+         :pause nil
+         :abort #(instance? Exception %)))
+
+    (drain-socket)
+    (is (not (open-socket?)))))
 
 (defcoretest raising-error-during-resume-event
   [ch1]
   (start
-   (fn [dn _]
-     (let [latch (atom true)]
-       (fn [evt val]
-         (enqueue ch1 [evt (retain* val)])
-         (when (= :open evt)
-           (future
-             (loop [continue? @latch]
-               (if continue?
-                 (do
-                   (dn :message (buffer "HAMMER TIME!"))
-                   (recur @latch))))))
+   (let [chunk (buffer (apply str (repeat 1000 "HAMMER TIME!!!")))]
+     (fn [dn _]
+       (let [latch (atom true)]
+         (fn [evt val]
+           (enqueue ch1 [evt (retain* val)])
+           (when (= :open evt)
+             (future
+               (loop [continue? @latch]
+                 (when continue?
+                   (dn :message (duplicate chunk))
+                   (Thread/sleep 10)
+                   (recur @latch)))))
 
-         (when (= :pause evt)
-           (reset! latch false))
+           (when (= :pause evt)
+             (reset! latch false))
 
-         (when (= :resume evt)
-           (throw (Exception. "TROLLOLOL")))))))
+           (when (= :resume evt)
+             (throw (Exception. "TROLLOLOL"))))))))
 
   (with-socket
-    (Thread/sleep 100)
-    (drain-socket)
+    (is (next-msgs
+         ch1
+         :open  addr-info
+         :pause nil))
 
-    (is (not (open-socket?)))
+    (drain-socket)
 
     (is (next-msgs
          ch1
-         :open   addr-info
-         :pause  nil
          :resume nil
-         :abort  #(instance? Exception %)))))
+         :abort  #(instance? Exception %)))
+
+    (is (not (open-socket?)))))
 
 (defcoretest telling-the-server-to-chill-out
   [ch1 ch2]
