@@ -4,11 +4,29 @@ import java.net.SocketAddress;
 import java.nio.channels.*;
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 import momentum.buffer.Buffer;
 import momentum.util.ArrayAtomicQueue;
 import momentum.util.LinkedArrayStack;
 
 public final class Reactor implements Runnable {
+
+  class RegisterTask implements ReactorTask {
+
+    final ReactorChannelHandler handler;
+
+    final boolean sendOpen;
+
+    RegisterTask(ReactorChannelHandler h, boolean so) {
+      handler  = h;
+      sendOpen = so;
+    }
+
+    public void run() throws IOException {
+      doRegister(handler, sendOpen);
+    }
+  }
 
   class BindTask implements ReactorTask {
 
@@ -113,18 +131,29 @@ public final class Reactor implements Runnable {
   Thread thread = null;
 
   /*
+   * Latch that coordinates the multi-reactor startup process.
+   */
+  final CountDownLatch startLatch;
+
+  /*
    * Flag that tracks whether the reactor should shutdown
    */
   boolean shutdown;
 
   /*
+   * Counts the number of registered channels
+   */
+  final AtomicInteger channelCount = new AtomicInteger();
+
+  /*
    * Reactor gets initialized with the cluster that owns it. Starting the
    * reactor happens when the cluster submits the reactor to a thread pool.
    */
-  Reactor(ReactorCluster c, Pipe.SourceChannel ch, long timerInterval) throws IOException {
+  Reactor(ReactorCluster c, CountDownLatch latch, Pipe.SourceChannel ch, long timerInterval) throws IOException {
     cluster       = c;
-    selector      = Selector.open();
     tickerChannel = ch;
+    startLatch    = latch;
+    selector      = Selector.open();
 
     // The ticker channel needs to be non blocking
     tickerChannel.configureBlocking(false);
@@ -143,16 +172,33 @@ public final class Reactor implements Runnable {
     shutdown = true;
   }
 
+  int channelCount() {
+    return channelCount.get();
+  }
+
+  void incrementChannelCount() {
+    channelCount.lazySet(channelCount.get() + 1);
+  }
+
+  void decrementChannelCount() {
+    channelCount.lazySet(channelCount.get() - 1);
+  }
+
   /*
    * Registers a new channel with this reactor
    */
   void register(ReactorChannelHandler handler, boolean sendOpen) throws IOException {
-    // TODO, pass this off to the cluster
-    doRegister(handler, sendOpen);
+    if (onReactorThread()) {
+      doRegister(handler, sendOpen);
+    }
+    else {
+      pushTask(new RegisterTask(handler, sendOpen));
+    }
   }
 
   void doRegister(ReactorChannelHandler handler, boolean sendOpen) throws IOException {
     handler.register(this, sendOpen);
+    incrementChannelCount();
   }
 
   /*
@@ -200,6 +246,22 @@ public final class Reactor implements Runnable {
     thread = Thread.currentThread();
     timer  = new ReactorTimer(this, TICKS_PER_WHEEL);
 
+    // Register the thread w/ the cluster
+    cluster.registerReactorThread(this, thread);
+
+    // Inform the main thread that the setup work has been completed.
+    startLatch.countDown();
+
+    // Now wait for all the other reactor threads to finish their startup work
+    // and establish a happens-before relationship w/ variables that might be
+    // accessed from inside the reactor loop.
+    try {
+      startLatch.await();
+    }
+    catch (InterruptedException e) {
+      // Do nothing
+    }
+
     try {
       tickerKey = tickerChannel.register(selector, SelectionKey.OP_READ);
     }
@@ -207,31 +269,34 @@ public final class Reactor implements Runnable {
       // TODO: Seeeeems bad bro
     }
 
-    while (!shutdown) {
-      try {
-        selector.select();
-
-        processTaskQueue();
-        processIO(tickerKey);
-      }
-      catch (Throwable t) {
-        debug(" ++++ ERROR : " + t.getClass().getName());
-        debug(t.getMessage());
-        t.printStackTrace();
-        // Something wack is going on...
-
-        // Prevent possible consecutive immediate failures that lead to
-        // excessive CPU consumption.
+    try {
+      while (!shutdown) {
         try {
-          Thread.sleep(100);
+          selector.select();
+
+          processTaskQueue();
+          processIO(tickerKey);
         }
-        catch (InterruptedException e) {
-          // Ignore
+        catch (Throwable t) {
+          debug(" ++++ ERROR : " + t.getClass().getName());
+          debug(t.getMessage());
+          t.printStackTrace();
+          // Something wack is going on...
+
+          // Prevent possible consecutive immediate failures that lead to
+          // excessive CPU consumption.
+          try {
+            Thread.sleep(100);
+          }
+          catch (InterruptedException e) {
+            // Ignore
+          }
         }
       }
     }
-
-    // TODO: Cleanup all open connections
+    finally {
+      // TODO: Cleanup all open connections
+    }
   }
 
   /*

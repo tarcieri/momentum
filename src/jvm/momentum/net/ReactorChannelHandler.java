@@ -394,6 +394,7 @@ public final class ReactorChannelHandler {
   }
 
   void doClose() throws IOException {
+    reactor.decrementChannelCount();
     markClosed();
     sendCloseUpstream();
   }

@@ -1,6 +1,8 @@
 package momentum.net;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -24,6 +26,11 @@ public final class ReactorCluster {
    */
   final Reactor [] reactors;
 
+  /*
+   * Map of the reactor thread to the reactor
+   */
+  final HashMap<Thread, Reactor> reactorMap = new HashMap<Thread, Reactor>();
+
   ReactorTicker ticker;
 
   static ReactorCluster instance;
@@ -36,7 +43,7 @@ public final class ReactorCluster {
   }
 
   ReactorCluster() throws IOException {
-    this(Runtime.getRuntime().availableProcessors());
+    this(3 * Runtime.getRuntime().availableProcessors());
   }
 
   public ReactorCluster(int count) throws IOException {
@@ -54,24 +61,32 @@ public final class ReactorCluster {
     if (isStarted())
       return;
 
+    // Used to coordinate the multi-reactor startup process
+    CountDownLatch startLatch = new CountDownLatch(reactors.length);
+
     // Need an extra spot for the ticker thread
     ExecutorService tp = Executors.newFixedThreadPool(reactors.length + 1);
 
     ticker = new ReactorTicker(reactors.length, TIMER_INTERVAL);
 
     for (int i = 0; i < reactors.length; ++i) {
-      reactors[i] = new Reactor(this, ticker.sources[i], TIMER_INTERVAL);
-    }
-
-    // Start the reactors once all of them have been initialized. This creates
-    // a proper happens-before relationship between all the reactor threads and
-    // the list of reactors.
-    for (int i = 0; i < reactors.length; ++i) {
+      reactors[i] = new Reactor(this, startLatch, ticker.sources[i], TIMER_INTERVAL);
       tp.submit(reactors[i]);
     }
 
+    // Wait for all the reactor threads to finish setting themselves up.
+    try {
+      startLatch.await();
+    }
+    catch (InterruptedException e) {
+      // Do nothing
+    }
+
+    // Start the ticker
     tp.submit(ticker);
 
+    // Save a reference to the thread pool. This also indicates that the
+    // reactor is started.
     threadPool = tp;
   }
 
@@ -84,6 +99,8 @@ public final class ReactorCluster {
       reactors[i] = null;
     }
 
+    reactorMap.clear();
+
     try {
       threadPool.awaitTermination(1000, TimeUnit.MILLISECONDS);
     }
@@ -92,24 +109,56 @@ public final class ReactorCluster {
     }
   }
 
+  void registerReactorThread(Reactor r, Thread t) {
+    synchronized(reactorMap) {
+      reactorMap.put(t, r);
+    }
+  }
+
+  Reactor reactorWithLeastLoad() {
+    Reactor curr, ret = null;
+    int currLoad, load = Integer.MAX_VALUE;
+
+    for (int i = 0; i < reactors.length; ++i) {
+      curr     = reactors[i];
+      currLoad = curr.channelCount();
+
+      if (currLoad < load) {
+        ret  = curr;
+        load = currLoad;
+      }
+    }
+
+    if (ret == null)
+      throw new IllegalStateException("Apparently there are no reactors running.");
+
+    return ret;
+  }
+
+  Reactor currentReactor() {
+    Reactor ret = reactorMap.get(Thread.currentThread());
+
+    if (ret != null)
+      return ret;
+
+    return reactorWithLeastLoad();
+  }
+
   void register(ReactorChannelHandler handler, boolean sendOpen) throws IOException {
-    // TODO: Do this right
-    reactors[0].register(handler, sendOpen);
+    reactorWithLeastLoad().register(handler, sendOpen);
   }
 
   public void scheduleTimeout(Timeout timeout, long ms) throws IOException {
     if (!isStarted())
       start();
 
-    // TODO: Do this right
-    reactors[0].scheduleTimeout(timeout, ms);
+    currentReactor().scheduleTimeout(timeout, ms);
   }
 
   public ReactorServerHandler startTcpServer(TCPServer srv) throws IOException {
     if (!isStarted())
       start();
 
-    // TODO: Do this right
-    return reactors[0].startTcpServer(srv);
+    return reactorWithLeastLoad().startTcpServer(srv);
   }
 }
