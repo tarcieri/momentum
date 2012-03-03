@@ -43,7 +43,7 @@ public final class ReactorCluster {
   }
 
   ReactorCluster() throws IOException {
-    this(3 * Runtime.getRuntime().availableProcessors());
+    this(1 * Runtime.getRuntime().availableProcessors());
   }
 
   public ReactorCluster(int count) throws IOException {
@@ -155,7 +155,7 @@ public final class ReactorCluster {
     currentReactor().scheduleTimeout(timeout, ms);
   }
 
-  public ReactorServerHandler startTcpServer(TCPServer srv) throws IOException {
+  public ReactorServerHandler startTcpServer(ReactorUpstreamFactory srv) throws IOException {
     if (!isStarted())
       start();
 

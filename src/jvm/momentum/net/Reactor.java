@@ -400,7 +400,7 @@ public final class Reactor implements Runnable {
       cluster.register(chHandler, true);
   }
 
-  ReactorServerHandler startTcpServer(TCPServer srv) throws IOException {
+  ReactorServerHandler startTcpServer(ReactorUpstreamFactory srv) throws IOException {
     ReactorServerHandler handler = new ReactorServerHandler(this, srv);
 
     if (onReactorThread()) {

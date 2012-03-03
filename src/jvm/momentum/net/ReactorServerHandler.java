@@ -14,7 +14,7 @@ public class ReactorServerHandler {
 
   final Reactor reactor;
 
-  final TCPServer server;
+  final ReactorUpstreamFactory server;
 
   final AsyncVal bound = new AsyncVal();
 
@@ -24,7 +24,7 @@ public class ReactorServerHandler {
 
   SelectionKey key;
 
-  ReactorServerHandler(Reactor r, TCPServer s) {
+  ReactorServerHandler(Reactor r, ReactorUpstreamFactory s) {
     reactor = r;
     server  = s;
   }
@@ -44,7 +44,7 @@ public class ReactorServerHandler {
     channel = ServerSocketChannel.open();
     channel.configureBlocking(false);
 
-    channel.socket().bind(server.getBindAddr());
+    channel.socket().bind(server.getAddr());
 
     key = channel.register(selector, SelectionKey.OP_ACCEPT, this);
 

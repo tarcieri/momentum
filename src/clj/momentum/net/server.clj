@@ -7,8 +7,7 @@
     ReactorCluster
     ReactorServerHandler
     ReactorUpstream
-    ReactorUpstreamFactory
-    TCPServer]
+    ReactorUpstreamFactory]
    [java.net
     InetSocketAddress
     Socket]
@@ -80,8 +79,8 @@
 (defn- mk-tcp-server
   [app {host :host port :port :as opts}]
   (let [addr (to-socket-addr [host (or port 4040)])]
-    (reify TCPServer
-      (getBindAddr [_] addr)
+    (reify ReactorUpstreamFactory
+      (getAddr [_] addr)
       (getUpstream [_ dn]
         (mk-upstream dn (app (mk-downstream dn) {}))))))
 
