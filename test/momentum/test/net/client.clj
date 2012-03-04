@@ -10,13 +10,15 @@
    [java.net
     ConnectException]))
 
+(def hammer-time (buffer (apply str (repeat 1000 "HAMMER TIME!!!"))))
+
 (defn- start-echo-server
   ([] (start-echo-server nil))
   ([ch]
      (server/start
       (fn [dn _]
         (fn [evt val]
-          (when ch (enqueue ch [evt val]))
+          (when ch (enqueue ch [evt (retain val)]))
           (when (= :message evt)
             (dn :message val)))))))
 
@@ -40,7 +42,7 @@
   (connect
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch2 [evt val])
+       (enqueue ch2 [evt (retain val)])
        (let [msg (first (seq ch3))]
          (apply dn msg))))
    {:host "localhost" :port 4040})
@@ -71,7 +73,7 @@
   (connect
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain val)])
        (when (= :open evt)
          (future
            (Thread/sleep 60)
@@ -84,8 +86,9 @@
   (is (next-msgs
        ch1
        :open   client-addr-info
-       :close  nil
-       :abort  #(instance? java.io.IOException %))))
+       :close  nil))
+
+  (is (no-msgs ch1)))
 
 (defcoretest connecting-to-invalid-host
   [ch1]
@@ -109,17 +112,12 @@
   [ch1 ch2]
   (start-echo-server ch1)
 
-  (try
-    (connect
-     (fn [dn _]
-       (throw (Exception. "TROLLOLOL")))
-     {:host "localhost" :port 4040})
-    (catch Exception e
-      (enqueue ch2 [:exception e])))
+  (connect
+   (fn [dn _]
+     (throw (Exception. "TROLLOLOL")))
+   {:host "localhost" :port 4040})
 
-  (is (no-msgs ch1))
-
-  (is (next-msgs ch2 :exception #(instance? Exception %))))
+  (is (no-msgs ch1 ch2)))
 
 (defcoretest handling-exception-after-open-event
   [ch1 ch2]
@@ -261,7 +259,8 @@
           (future
             (loop [continue? @latch]
               (when continue?
-                (dn :message (buffer "HAMMER TIME!"))
+                (dn :message (duplicate hammer-time))
+                (Thread/sleep 5)
                 (recur @latch))))
 
           (= :pause evt)
@@ -297,7 +296,7 @@
            (future
              (loop [continue? @latch]
                (when continue?
-                 (dn :message (buffer "HAMMER TIME!"))
+                 (dn :message (duplicate hammer-time))
                  (recur @latch)))))
 
          (when (= :pause evt)
@@ -325,7 +324,8 @@
           (future
             (loop [continue? @latch]
               (when continue?
-                (dn :message (buffer "HAMMER TIME!"))
+                (dn :message (duplicate hammer-time))
+                (Thread/sleep 10)
                 (recur @latch))))
 
           (= :pause evt)
@@ -366,7 +366,7 @@
      (let [latch (atom true)]
        (fn [evt val]
          (when-not (#{:pause :resume} evt)
-           (enqueue ch1 [evt val]))
+           (enqueue ch1 [evt (retain val)]))
 
          (when (and (= :message evt) @latch)
            (dn :pause nil)

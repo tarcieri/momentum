@@ -463,6 +463,9 @@ public final class Reactor implements Runnable {
     ReactorChannelHandler handler =
       Reactor.bindChannel(SocketChannel.open(), factory);
 
+    if (handler == null)
+      return;
+
     handler.connect(factory.getAddr());
     doRegister(handler);
   }
