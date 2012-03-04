@@ -1,10 +1,18 @@
 package momentum.net;
 
 import java.io.IOException;
+import java.net.SocketAddress;
 import java.nio.channels.*;
 import momentum.buffer.Buffer;
 
 public final class ReactorChannelHandler {
+
+  enum State {
+    BOUND,
+    CONNECTED,
+    OPEN,
+    CLOSED
+  }
 
   /*
    * Used to communicate a write that was initiated off of the reactor thread.
@@ -155,6 +163,11 @@ public final class ReactorChannelHandler {
   }
 
   /*
+   * The current state of the channel
+   */
+  State cs = State.BOUND;
+
+  /*
    * The reactor that owns the channel. This could change throughout the life
    * of the channel as channels can be moved across reactors to minimize cross
    * thread communication.
@@ -201,7 +214,7 @@ public final class ReactorChannelHandler {
   }
 
   boolean isOpen() {
-    return key != null;
+    return cs == State.OPEN;
   }
 
   void sendOpenUpstream() throws IOException {
@@ -378,10 +391,12 @@ public final class ReactorChannelHandler {
   }
 
   void markClosed() throws IOException {
-    if (!isOpen())
+    if (cs == State.CLOSED)
       return;
 
-    key = null;
+    cs = State.CLOSED;
+
+    reactor.decrementChannelCount();
     channel.close();
   }
 
@@ -394,7 +409,6 @@ public final class ReactorChannelHandler {
   }
 
   void doClose() throws IOException {
-    reactor.decrementChannelCount();
     markClosed();
     sendCloseUpstream();
   }
@@ -421,25 +435,66 @@ public final class ReactorChannelHandler {
   /*
    * Registers the handler with a given reactor
    */
-  void register(Reactor r, boolean sendOpen) throws IOException {
+  void register(Reactor r) throws IOException {
     if (reactor != null)
       return;
 
     reactor = r;
+    reactor.incrementChannelCount();
 
-    key = channel.register(r.selector, SelectionKey.OP_READ, this);
+    switch (cs) {
+      case CONNECTED:
+        cs  = State.OPEN;
+        key = channel.register(r.selector, SelectionKey.OP_READ, this);
+        sendOpenUpstream();
+        return;
 
-    if (sendOpen)
-      sendOpenUpstream();
+      case OPEN:
+        key = channel.register(r.selector, SelectionKey.OP_READ, this);
+        return;
+
+      case BOUND:
+        key = channel.register(r.selector, SelectionKey.OP_CONNECT, this);
+        return;
+    }
+  }
+
+  void connect(SocketAddress addr) throws IOException {
+    if (cs != State.BOUND)
+      return;
+
+    if (channel.connect(addr)) {
+      cs = State.CONNECTED;
+    }
+  }
+
+  void setConnected() {
+    cs = State.CONNECTED;
   }
 
   /*
-   * ==== Handling key ready events ====
+   * ==== Handling key events ====
    */
 
+  // TODO: Figure out what could cause this to be invoked
+  void processInvalidKey() throws IOException {
+    // Just close the connection for now, there might be cases where we would
+    // want to doAbort() instead.
+    doClose();
+  }
+
   void processIO(Buffer readBuffer) throws IOException {
-    if (processReads(readBuffer))
-      processWrites();
+    if (processReads(readBuffer)) {
+      if (cs == State.CLOSED)
+        return;
+
+      if (key.isWritable()) {
+        processWrites();
+      }
+      else if (key.isConnectable()) {
+        processConnect();
+      }
+    }
   }
 
   boolean processReads(Buffer readBuffer) throws IOException {
@@ -477,12 +532,6 @@ public final class ReactorChannelHandler {
   }
 
   void processWrites() throws IOException {
-    if (!isOpen())
-      return;
-
-    if (!key.isWritable())
-      return;
-
     Buffer curr;
 
     while ((curr = messageQueue.peek()) != null) {
@@ -500,6 +549,30 @@ public final class ReactorChannelHandler {
     // and send an upstream resume
     clearOpWrite();
     sendResumeUpstream();
+    return;
+  }
+
+  void processConnect() throws IOException {
+    // ZOMG, no more interest in OP_CONNECT
+    clearOpConnect();
+
+    // Alright, let's try to finish connecting.. SOMETHING MIGHT GO WRONG.
+    try {
+      if (channel.finishConnect()) {
+        // YAY, let'swhat they have to say...
+        cs = State.OPEN;
+        setOpRead();
+        sendOpenUpstream();
+      }
+      else {
+        // Connecting sockets is hard, let's go shopping.
+        doClose();
+      }
+    }
+    catch (IOException e) {
+      // I am crying :'(
+      doAbort(e);
+    }
   }
 
   /*
@@ -507,57 +580,65 @@ public final class ReactorChannelHandler {
    */
 
   boolean isOpRead() {
-    return (key.interestOps() & SelectionKey.OP_READ) != 0;
+    return isOp(SelectionKey.OP_READ);
   }
 
   void setOpRead() {
-    if (key == null)
-      return;
-
-    int ops = key.interestOps();
-
-    if ((ops & SelectionKey.OP_READ) == 0) {
-      ops |= SelectionKey.OP_READ;
-      key.interestOps(ops);
-    }
+    setOp(SelectionKey.OP_READ);
   }
 
   void clearOpRead() {
-    if (key == null)
-      return;
-
-    int ops = key.interestOps();
-
-    if ((ops & SelectionKey.OP_READ) != 0) {
-      ops &= ~SelectionKey.OP_READ;
-      key.interestOps(ops);
-    }
+    clearOp(SelectionKey.OP_READ);
   }
 
   boolean isOpWrite() {
-    return (key.interestOps() & SelectionKey.OP_WRITE) != 0;
+    return isOp(SelectionKey.OP_WRITE);
   }
 
   void setOpWrite() {
+    setOp(SelectionKey.OP_WRITE);
+  }
+
+  void clearOpWrite() {
+    clearOp(SelectionKey.OP_WRITE);
+  }
+
+  boolean isOpConnect() {
+    return isOp(SelectionKey.OP_CONNECT);
+  }
+
+  void setOpConnect() {
+    setOp(SelectionKey.OP_CONNECT);
+  }
+
+  void clearOpConnect() {
+    clearOp(SelectionKey.OP_CONNECT);
+  }
+
+  boolean isOp(int op) {
+    return (key.interestOps() & op) != 0;
+  }
+
+  void setOp(int op) {
     if (key == null)
       return;
 
     int ops = key.interestOps();
 
-    if ((ops & SelectionKey.OP_WRITE) == 0) {
-      ops |= SelectionKey.OP_WRITE;
+    if ((ops & op) == 0) {
+      ops |= op;
       key.interestOps(ops);
     }
   }
 
-  void clearOpWrite() {
+  void clearOp(int op) {
     if (key == null)
       return;
 
     int ops = key.interestOps();
 
-    if ((ops & SelectionKey.OP_WRITE) != 0) {
-      ops &= SelectionKey.OP_WRITE;
+    if ((ops & op) != 0) {
+      ops &= ~op;
       key.interestOps(ops);
     }
   }

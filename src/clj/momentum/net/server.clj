@@ -76,7 +76,7 @@
     (sendAbort [_ err]
       (upstream :abort err))))
 
-(defn- mk-tcp-server
+(defn- mk-upstream-factory
   [app {host :host port :port :as opts}]
   (let [addr (to-socket-addr [host (or port 4040)])]
     (reify ReactorUpstreamFactory
@@ -87,8 +87,8 @@
 (defn start
   ([app] (start app {}))
   ([app opts]
-     (let [srv    (mk-tcp-server app opts)
-           handle (.startTcpServer reactor-cluster srv)]
+     (let [factory (mk-upstream-factory app opts)
+           handle  (.startTcpServer reactor-cluster factory)]
        (reify
          clojure.lang.IFn
          (invoke [_]

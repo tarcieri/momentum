@@ -144,8 +144,8 @@ public final class ReactorCluster {
     return reactorWithLeastLoad();
   }
 
-  void register(ReactorChannelHandler handler, boolean sendOpen) throws IOException {
-    reactorWithLeastLoad().register(handler, sendOpen);
+  void register(ReactorChannelHandler handler) throws IOException {
+    reactorWithLeastLoad().register(handler);
   }
 
   public void scheduleTimeout(Timeout timeout, long ms) throws IOException {
@@ -155,10 +155,21 @@ public final class ReactorCluster {
     currentReactor().scheduleTimeout(timeout, ms);
   }
 
-  public ReactorServerHandler startTcpServer(ReactorUpstreamFactory srv) throws IOException {
+  public ReactorServerHandler startTcpServer(ReactorUpstreamFactory factory)
+      throws IOException {
+
     if (!isStarted())
       start();
 
-    return reactorWithLeastLoad().startTcpServer(srv);
+    return reactorWithLeastLoad().startTcpServer(factory);
+  }
+
+  public void connectTcpClient(ReactorUpstreamFactory factory)
+      throws IOException {
+
+    if (!isStarted())
+      start();
+
+    currentReactor().connectTcpClient(factory);
   }
 }

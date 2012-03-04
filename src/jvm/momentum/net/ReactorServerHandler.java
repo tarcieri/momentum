@@ -52,24 +52,12 @@ public class ReactorServerHandler {
   }
 
   ReactorChannelHandler accept() throws IOException {
-    SocketChannel ch;
-    ReactorChannelHandler handler;
+    ReactorChannelHandler h = Reactor.bindChannel(channel.accept(), server);
 
-    ch = channel.accept();
-    ch.configureBlocking(false);
+    if (h != null)
+      h.setConnected();
 
-    handler = new ReactorChannelHandler(ch);
-
-    try {
-      handler.upstream = server.getUpstream(handler);
-    }
-    catch (Throwable t) {
-      // TODO: Add logging
-      ch.close();
-      return null;
-    }
-
-    return handler;
+    return h;
   }
 
   public AsyncVal close() throws IOException {

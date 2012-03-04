@@ -16,15 +16,12 @@ public final class Reactor implements Runnable {
 
     final ReactorChannelHandler handler;
 
-    final boolean sendOpen;
-
-    RegisterTask(ReactorChannelHandler h, boolean so) {
-      handler  = h;
-      sendOpen = so;
+    RegisterTask(ReactorChannelHandler h) {
+      handler = h;
     }
 
     public void run() throws IOException {
-      doRegister(handler, sendOpen);
+      doRegister(handler);
     }
   }
 
@@ -38,6 +35,19 @@ public final class Reactor implements Runnable {
 
     public void run() throws IOException {
       doStartTcpServer(handler);
+    }
+  }
+
+  class ConnectTask implements ReactorTask {
+
+    final ReactorUpstreamFactory factory;
+
+    ConnectTask(ReactorUpstreamFactory f) {
+      factory = f;
+    }
+
+    public void run() throws IOException {
+      doConnectTcpClient(factory);
     }
   }
 
@@ -159,6 +169,24 @@ public final class Reactor implements Runnable {
     tickerChannel.configureBlocking(false);
   }
 
+  static ReactorChannelHandler bindChannel(SocketChannel ch, ReactorUpstreamFactory factory)
+      throws IOException {
+    ReactorChannelHandler handler = new ReactorChannelHandler(ch);
+
+    ch.configureBlocking(false);
+
+    try {
+      handler.upstream = factory.getUpstream(handler);
+    }
+    catch (Throwable t) {
+      // TODO: Add logging
+      ch.close();
+      return null;
+    }
+
+    return handler;
+  }
+
   public void shutdown() {
     if (onReactorThread()) {
       doShutdown();
@@ -187,18 +215,17 @@ public final class Reactor implements Runnable {
   /*
    * Registers a new channel with this reactor
    */
-  void register(ReactorChannelHandler handler, boolean sendOpen) throws IOException {
+  void register(ReactorChannelHandler handler) throws IOException {
     if (onReactorThread()) {
-      doRegister(handler, sendOpen);
+      doRegister(handler);
     }
     else {
-      pushTask(new RegisterTask(handler, sendOpen));
+      pushTask(new RegisterTask(handler));
     }
   }
 
-  void doRegister(ReactorChannelHandler handler, boolean sendOpen) throws IOException {
-    handler.register(this, sendOpen);
-    incrementChannelCount();
+  void doRegister(ReactorChannelHandler handler) throws IOException {
+    handler.register(this);
   }
 
   /*
@@ -356,6 +383,11 @@ public final class Reactor implements Runnable {
 
       // Is this a necessary check?
       if (!k.isValid()) {
+        Object h = k.attachment();
+
+        if (h instanceof ReactorChannelHandler)
+          ((ReactorChannelHandler) h).processInvalidKey();
+
         continue;
       }
 
@@ -397,7 +429,7 @@ public final class Reactor implements Runnable {
     chHandler  = srvHandler.accept();
 
     if (chHandler != null)
-      cluster.register(chHandler, true);
+      cluster.register(chHandler);
   }
 
   ReactorServerHandler startTcpServer(ReactorUpstreamFactory srv) throws IOException {
@@ -415,6 +447,24 @@ public final class Reactor implements Runnable {
 
   void doStartTcpServer(ReactorServerHandler h) throws IOException {
     h.open(selector);
+  }
+
+  void connectTcpClient(ReactorUpstreamFactory factory) throws IOException {
+    if (onReactorThread()) {
+      doConnectTcpClient(factory);
+    }
+    else {
+      pushTask(new ConnectTask(factory));
+    }
+  }
+
+
+  void doConnectTcpClient(ReactorUpstreamFactory factory) throws IOException {
+    ReactorChannelHandler handler =
+      Reactor.bindChannel(SocketChannel.open(), factory);
+
+    handler.connect(factory.getAddr());
+    doRegister(handler);
   }
 
   void debug(String msg) {
