@@ -1,6 +1,7 @@
 package momentum.net;
 
 import java.io.IOException;
+import java.net.ConnectException;
 import java.net.SocketAddress;
 import java.nio.channels.*;
 import momentum.buffer.Buffer;
@@ -65,6 +66,17 @@ public final class ReactorChannelHandler {
   final class ResumeTask implements ReactorTask {
     public void run() throws IOException {
       setOpRead();
+    }
+  }
+
+  final class ConnectTimeout implements Runnable {
+    public void run() {
+      try {
+        doConnectTimeout();
+      }
+      catch (IOException e) {
+        // TODO: Log the exception
+      }
     }
   }
 
@@ -203,6 +215,11 @@ public final class ReactorChannelHandler {
    * Are we currently in an upstream call?
    */
   boolean inUpstream;
+
+  /*
+   * Handle to the connect timeout
+   */
+  Timeout connectTimeout;
 
   /*
    * The exception that the channel was aborted with
@@ -455,6 +472,8 @@ public final class ReactorChannelHandler {
 
       case BOUND:
         key = channel.register(r.selector, SelectionKey.OP_CONNECT, this);
+        connectTimeout = new Timeout(new ConnectTimeout());
+        reactor.scheduleTimeout(connectTimeout, 1000);
         return;
     }
   }
@@ -470,6 +489,13 @@ public final class ReactorChannelHandler {
 
   void setConnected() {
     cs = State.CONNECTED;
+  }
+
+  void doConnectTimeout() throws IOException {
+    if (cs != State.BOUND)
+      return;
+
+    doAbort(new ConnectException("Connection timed out"));
   }
 
   /*
@@ -553,6 +579,9 @@ public final class ReactorChannelHandler {
   }
 
   void processConnect() throws IOException {
+    // Cancel the connect timeout
+    connectTimeout.cancel();
+
     // ZOMG, no more interest in OP_CONNECT
     clearOpConnect();
 

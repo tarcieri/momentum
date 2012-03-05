@@ -100,7 +100,9 @@
      (fn [evt val]
        (enqueue ch1 [evt val])))
    ;; Hopefully this is an invalid IP address and port
-   {:host "192.168.32.123" :port 13845})
+   {:host "192.168.32.123" :port 13845}
+   ;; {:host "www.asdfoifhoshvslkjwoijskjsdjaosdfasdf.com" :port 2342}
+   )
 
   (Thread/sleep 2100)
   (is (next-msgs
