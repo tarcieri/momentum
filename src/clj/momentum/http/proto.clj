@@ -154,7 +154,8 @@
   [^HttpConnection conn]
   (or (.upgraded? conn)
       (and (not (.request-body conn))
-           (not (.response-body conn))
+           (or (not (.response-body conn))
+               (= :until-close (.response-body conn)))
            (or (not (.response-queue conn))
                (= (depth conn) 0)))))
 
@@ -487,7 +488,12 @@
        (do
          (cleanup* conn)
          (if (connection-closable? conn)
-           true
+           (do
+             (when (= :until-close (.response-body conn))
+               (handle-response-chunk
+                (.handler  conn)
+                nil false true))
+             true)
            (let [handler (.handler conn)]
              (handle-abort handler (ClosedChannelException.))
              false)))
