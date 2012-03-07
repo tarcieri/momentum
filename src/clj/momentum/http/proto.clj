@@ -2,8 +2,6 @@
   (:use
    momentum.core
    momentum.util.atomic)
-  (:require
-   [momentum.core.timer :as timer])
   (:import
    [java.nio.channels
     ClosedChannelException]))
@@ -65,7 +63,7 @@
 
 (defn- cleanup*
   [^HttpConnection conn]
-  (timer/cancel (.timeout conn)))
+  (cancel-timeout (.timeout conn)))
 
 (defn cleanup
   [state]
@@ -176,7 +174,7 @@
 
 (defn- mk-exchange-timer
   [state opts]
-  (timer/register
+  (schedule-timeout
    (* (opts :timeout 5) 1000)
    #(get-swap-then!
      state
@@ -192,7 +190,7 @@
 
 (defn- mk-keep-alive-timer
   [state opts]
-  (timer/register
+  (schedule-timeout
    (* (opts :keepalive 60) 1000)
    #(get-swap-then!
      state
@@ -228,7 +226,7 @@
          (assoc conn :timeout timeout)
          conn))
      (fn [^HttpConnection old-conn ^HttpConnection new-conn]
-       (timer/cancel
+       (cancel-timeout
         (if (= (.timeout new-conn) timeout)
           (.timeout old-conn) timeout))))))
 
@@ -242,7 +240,7 @@
          (assoc conn :timeout timeout)
          conn))
      (fn [^HttpConnection old-conn ^HttpConnection new-conn]
-       (timer/cancel
+       (cancel-timeout
         (if (= (.timeout new-conn) timeout)
           (.timeout old-conn) timeout))))))
 
@@ -250,7 +248,7 @@
   [state ^HttpConnection conn]
   (cond
    (.upgraded? conn)
-   (timer/cancel (.timeout conn))
+   (cancel-timeout (.timeout conn))
 
    (processing-exchange? conn)
    (bump-exchange-timer state conn)
@@ -260,7 +258,7 @@
 
 
    :else
-   (timer/cancel (.timeout conn))))
+   (cancel-timeout (.timeout conn))))
 
 (defn request
   [state [hdrs body :as request]]

@@ -2,8 +2,9 @@
   momentum.core
   (:use momentum.util.namespace)
   (:require
-   [momentum.core.buffer :as buffer]
-   [momentum.core.async  :as async]))
+   [momentum.core.async   :as async]
+   [momentum.core.buffer  :as buffer]
+   [momentum.core.reactor :as reactor]))
 
 ;; ==== Buffer helpers
 
@@ -69,3 +70,10 @@
 (import-macro #'async/async-seq)
 (import-macro #'async/doseq*)
 (import-macro #'async/future*)
+
+;; ==== Reactor helpers
+
+(import-fn #'reactor/start-reactors)
+(import-fn #'reactor/stop-reactors)
+(import-fn #'reactor/schedule-timeout)
+(import-fn #'reactor/cancel-timeout)
