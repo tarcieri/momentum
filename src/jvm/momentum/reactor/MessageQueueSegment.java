@@ -1,4 +1,4 @@
-package momentum.net;
+package momentum.reactor;
 
 import momentum.buffer.Buffer;
 

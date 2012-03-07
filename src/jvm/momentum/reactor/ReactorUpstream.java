@@ -1,4 +1,4 @@
-package momentum.net;
+package momentum.reactor;
 
 import java.nio.channels.*;
 import momentum.buffer.Buffer;

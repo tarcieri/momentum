@@ -1,4 +1,4 @@
-package momentum.net;
+package momentum.reactor;
 
 import java.net.SocketAddress;
 import java.nio.channels.*;

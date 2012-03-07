@@ -73,6 +73,8 @@
 
 ;; ==== Reactor helpers
 
+(def reactors reactor/reactors)
+
 (import-fn #'reactor/start-reactors)
 (import-fn #'reactor/stop-reactors)
 (import-fn #'reactor/schedule-timeout)

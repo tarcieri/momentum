@@ -2,9 +2,8 @@
   (:use
    momentum.core)
   (:import
-   [momentum.net
+   [momentum.reactor
     ReactorChannelHandler
-    ReactorCluster
     ReactorServerHandler
     ReactorUpstream
     ReactorUpstreamFactory]
@@ -13,8 +12,6 @@
     Socket]
    [java.nio.channels
     SocketChannel]))
-
-(def ^ReactorCluster reactor-cluster (ReactorCluster/getInstance))
 
 (defn- ^InetSocketAddress to-socket-addr
   [[^String host port]]
@@ -87,7 +84,7 @@
 (defn start-tcp-server
   [app opts]
   (let [factory (mk-upstream-factory app opts)
-        handle  (.startTcpServer reactor-cluster factory)]
+        handle  (.startTcpServer reactors factory)]
     (reify
       clojure.lang.IFn
       (invoke [_] (.close handle))
@@ -100,4 +97,4 @@
 (defn connect-tcp-client
   [app opts]
   (let [factory (mk-upstream-factory app opts)]
-    (.connectTcpClient reactor-cluster factory)))
+    (.connectTcpClient reactors factory)))

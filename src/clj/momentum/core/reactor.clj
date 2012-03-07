@@ -1,6 +1,6 @@
 (ns momentum.core.reactor
   (:import
-   [momentum.net
+   [momentum.reactor
     ReactorCluster
     Timeout]))
 

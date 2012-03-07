@@ -1,4 +1,4 @@
-package momentum.net;
+package momentum.reactor;
 
 import java.io.IOException;
 import java.net.ConnectException;
