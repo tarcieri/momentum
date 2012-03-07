@@ -47,7 +47,8 @@
           (f))
         (finally
          (close-channels)
-         (stop-servers server)))
+         (stop-servers server)
+         (Thread/sleep 10)))
       (f))))
 
 (defmacro defcoretest

@@ -150,7 +150,7 @@
   (connect
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch2 [evt val])
+       (enqueue ch2 [evt (retain val)])
        (when (= :open evt)
          (dn :message (buffer "Hello world")))
        (when (= :message evt)
@@ -176,10 +176,17 @@
   (connect
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch2 [evt val])
+       (enqueue ch2 [evt (retain val)])
        (when (#{:open :abort} evt)
          (throw (Exception. "TROLLOLOL")))))
-   {:host "localhost" :port 4040}))
+   {:host "localhost" :port 4040})
+
+  (is (next-msgs
+       ch2
+       :open :dont-care
+       :abort :dont-care))
+
+  (is (no-msgs ch2)))
 
 (defcoretest abort-messages-get-prioritized-over-other-events
   [ch1 ch2 ch3]
@@ -190,7 +197,7 @@
      (let [depth (atom 0)]
        (fn [evt val]
          (let [count (swap! depth inc)]
-           (enqueue ch2 [evt val])
+           (enqueue ch2 [evt (retain val)])
            (enqueue ch3 [:depth count])
 
            (when (= :open evt)
@@ -223,7 +230,7 @@
   (connect
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch2 [evt val])
+       (enqueue ch2 [evt (retain val)])
        (when (= :open evt)
          (dn :message (buffer "Hello world")))
        (when (= :message evt)
@@ -255,7 +262,7 @@
    (fn [dn _]
      (let [latch (atom true)]
        (fn [evt val]
-         (enqueue ch1 [evt val])
+         (enqueue ch1 [evt (retain val)])
          (cond
           (= :open evt)
           (future
@@ -292,7 +299,7 @@
    (fn [dn _]
      (let [latch (atom true)]
        (fn [evt val]
-         (enqueue ch1 [evt val])
+         (enqueue ch1 [evt (retain val)])
 
          (when (= :open evt)
            (future
@@ -320,7 +327,7 @@
    (fn [dn _]
      (let [latch (atom true)]
        (fn [evt val]
-         (enqueue ch1 [evt val])
+         (enqueue ch1 [evt (retain val)])
          (cond
           (= :open evt)
           (future
@@ -397,7 +404,7 @@
   (connect
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain val)])
        (dn :abort (Exception. "TROLLOLOL"))))
    {:host "localhost" :port 4040})
 

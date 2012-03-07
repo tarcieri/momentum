@@ -50,7 +50,7 @@
      (server/start
       (fn [dn _]
         (fn [evt val]
-          (when ch (enqueue ch [evt val]))
+          (when ch (enqueue ch [evt (retain* val)]))
           (when (= :request evt)
             (dn :response [200 {"content-type"   "text/plain"
                                 "content-length" "5"
@@ -64,7 +64,7 @@
     (connect
      (fn [dn _]
        (fn [evt val]
-         (enqueue ch2 [evt val])
+         (enqueue ch2 [evt (retain* val)])
          (when (= :open evt)
            (dn :request [{:path-info "/" :request-method method} (buffer "")]))))
      {:host "localhost" :port 4040})
@@ -98,7 +98,7 @@
   (connect
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch2 [evt val])
+       (enqueue ch2 [evt (retain* val)])
        (when (= :open evt)
          (dn :request [{:request-method "GET"
                         :path-info      "/"
@@ -145,7 +145,7 @@
   (server/start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [200 {"content-length" "0"
                              "connection"     "close"
@@ -156,7 +156,7 @@
   (connect
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch2 [evt val])
+       (enqueue ch2 [evt (retain* val)])
        (when (= :open evt)
          (dn :request [{:request-method "GET"
                         :path-info      "/"
@@ -207,7 +207,7 @@
                        :path-info      "/"}])
 
         (= :response evt)
-        (enqueue ch1 [evt val]))))
+        (enqueue ch1 [evt (retain* val)]))))
    {:host "127.0.0.1" :port 4040})
 
   (is (next-msgs
@@ -273,7 +273,7 @@
   (connect
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :open evt)
          (dn :request [{:request-method "GET" :path-info "/"} nil]))))
    {:host "127.0.0.1" :port 4040})
@@ -294,7 +294,7 @@
   (connect
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch2 [evt val])
+       (enqueue ch2 [evt (retain* val)])
        (when (= :open evt)
          (dn :request [{:request-method "GET"
                         :path-info      "/"
@@ -335,7 +335,7 @@
              (dn evt val))
 
      (fn [evt val]
-       (enqueue ch2 [evt (retain val)])))
+       (enqueue ch2 [evt (retain* val)])))
    {:host "localhost" :port 4040})
 
   (is (next-msgs ch2 :open :dont-care))
@@ -384,7 +384,7 @@
   (connect
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch2 [evt val])
+       (enqueue ch2 [evt (retain* val)])
        (cond
         (= :open evt)
         (dn :request [{:request-method "HEAD" :path-info "/"} nil])
@@ -405,36 +405,39 @@
        :response :dont-care
        :response :dont-care)))
 
-;; (defcoretest keepalive-head-requests-te-chunked
-;;   [ch1 ch2]
-;;   (tracking-connections
-;;    ch1 (fn [dn _]
-;;          (fn [evt val]
-;;            (when (= :request evt)
-;;              (dn :response [200 {"transfer-encoding" "chunked"
-;;                                  "foo" "bar"} nil])))))
+(defcoretest keepalive-head-requests-te-chunked
+  [ch1 ch2]
+  (start-server
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt (retain* val)])
+       (when (= :request evt)
+         (dn :response [200 {"transfer-encoding" "chunked"} nil]))))
+   {:pipeline false})
 
-;;   (let [pool (client {:pool {:keepalive 1}})]
-;;     (dotimes [_ 3]
-;;       (connect
-;;        pool
-;;        (fn [dn _]
-;;          (fn [evt val]
-;;            (enqueue ch2 [evt val])
-;;            (when (= :open evt)
-;;              (dn :request [{:request-method "HEAD" :path-info "/"}]))))
-;;        {:host "localhost" :port 4040})
+  (connect
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch2 [evt (retain* val)])
+       (cond
+        (= :open evt)
+        (dn :request [{:request-method "HEAD" :path-info "/"} nil])
 
-;;       (is (next-msgs
-;;            ch2
-;;            :open     :dont-care
-;;            :response [200 {:http-version [1 1] "foo" "bar" "transfer-encoding" "chunked"} nil]
-;;            :done     nil))
+        (= :response evt)
+        (dn :request [{:request-method "HEAD" :path-info "/zomg"} nil]))))
+   {:host "localhost" :port 4040})
 
-;;       (Thread/sleep 50)))
+  (is (next-msgs
+       ch1
+       :open    :dont-care
+       :request [#(includes-hdrs {:request-method "HEAD"} %) nil]
+       :request [#(includes-hdrs {:request-method "HEAD"} %) nil]))
 
-;;   (is (next-msgs ch1 :connect nil))
-;;   (is (no-msgs ch1 ch2)))
+  (is (next-msgs
+       ch2
+       :open :dont-care
+       :response [200 #(includes-hdrs {"transfer-encoding" "chunked"} %) nil]
+       :response [200 #(includes-hdrs {"transfer-encoding" "chunked"} %) nil])))
 
 ;; (defcoretest keepalive-204-responses
 ;;   [ch1 ch2]
@@ -538,7 +541,7 @@
   (server/start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [100]))
 
@@ -550,7 +553,7 @@
      (doseq* [args (seq ch3)]
        (apply dn args))
      (fn [evt val]
-       (enqueue ch2 [evt val])
+       (enqueue ch2 [evt (retain* val)])
 
        (when (= :open evt)
          (dn :request [{:path-info       "/"

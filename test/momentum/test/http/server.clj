@@ -27,7 +27,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch [evt val])
+       (enqueue ch [evt (retain* val)])
        (when (= :request evt)
          (dn :response [200 {"content-type"   "text/plain"
                              "content-length" "5"
@@ -106,7 +106,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= [:body  nil] [evt val])
          (future
            (Thread/sleep 50)
@@ -239,7 +239,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (let [[hdrs] val]
            (try
@@ -264,7 +264,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (let [[hdrs] val]
            (try
@@ -307,7 +307,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response
              [200 {"content-length" "0"
@@ -357,7 +357,7 @@
    (fn [dn _]
      (enqueue ch2 [:binding nil])
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [200 {"content-length" "5"} (buffer "Hello")]))))
    {:pipeline false})
@@ -411,7 +411,7 @@
    (fn [dn _]
      (enqueue ch2 [:binding nil])
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [200 {"content-type"   "text/plain"
                              "content-length" "5"} (buffer "Hello")]))))
@@ -466,7 +466,7 @@
    (fn [dn _]
      (enqueue ch2 [:binding nil])
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [204 {} nil]))))
    {:pipeline false})
@@ -507,7 +507,7 @@
    (fn [dn _]
      (enqueue ch2 [:binding nil])
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [304 {} nil]))))
    {:pipeline false})
@@ -547,7 +547,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [200 {"connection" "close"} (buffer "Hello")]))))
    {:pipeline false})
@@ -567,7 +567,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [200 {"connection" "close"} :chunked])
          (future
@@ -593,7 +593,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [200 {"connection" "close"} :chunked])
          (dn :body (buffer "Hello "))
@@ -708,7 +708,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (try
          (when (= :request evt)
            (dn :response [200 {"content-length" "5"} :chunked])
@@ -738,7 +738,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [200 {"content-length" "5"} (buffer "Hello")]))))
    {:pipeline false})
@@ -795,7 +795,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])))
+       (enqueue ch1 [evt (retain* val)])))
    {:pipeline false})
 
   (with-socket
@@ -820,7 +820,7 @@
    (fn [dn _]
      (fn [evt val]
        (when-not (= :body evt)
-         (enqueue ch1 [evt val]))
+         (enqueue ch1 [evt (retain* val)]))
 
        (when (= :request evt)
          (dn :response [200 {"content-type"   "text/plain"
@@ -851,7 +851,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (cond
         (= :request evt)
         (dn :response [100])
@@ -886,7 +886,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (let [[{request-method :request-method}] val]
            (if (= "GET" request-method)
@@ -966,7 +966,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= [:body nil] [evt val])
          (dn :response [204 {"connection" "close"} nil]))))
    {:pipeline false})
@@ -994,7 +994,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (cond
         (= :request evt)
         (dn :response [100])
@@ -1027,7 +1027,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (try
            (dn :response [100])
@@ -1058,7 +1058,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])))
+       (enqueue ch1 [evt (retain* val)])))
    {:pipeline false :keepalive 1})
 
   (with-socket
@@ -1075,7 +1075,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])))
+       (enqueue ch1 [evt (retain* val)])))
    {:pipeline false :timeout 1})
 
   (with-socket
@@ -1102,7 +1102,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])))
+       (enqueue ch1 [evt (retain* val)])))
    {:pipeline false :timeout 1})
 
   (with-socket
@@ -1134,7 +1134,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
          (dn :body (buffer "Hello"))
@@ -1159,7 +1159,7 @@
      (fn [evt val]
        (when (= :abort evt)
          (.printStackTrace val))
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [200 {"content-length" "5"} (buffer "Hello")]))))
    {:pipeline false :keepalive 1})
@@ -1181,7 +1181,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [200 {"content-length" "5"} (buffer "Hello")]))))
    {:pipeline false})
@@ -1210,7 +1210,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [200 {"content-length" 5} :chunked])
          (dn :body (buffer "Hello")))))
@@ -1239,7 +1239,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :close nil))))
    {:pipeline false})
@@ -1263,7 +1263,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :body evt)
          (dn :close nil))))
    {:pipeline false})
@@ -1292,7 +1292,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
          (dn :body (buffer "Hello"))
@@ -1371,7 +1371,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [400 {"content-length" "5"} (buffer "FAIL!")]))))
    {:pipeline false})
@@ -1407,7 +1407,7 @@
      (doasync (seq ch2)
        (fn [_] (dn :response [200 {"content-length" "5"} (buffer "Hello")])))
      (fn [evt val]
-       (enqueue ch1 [evt val]))))
+       (enqueue ch1 [evt (retain* val)]))))
 
   (with-socket
     (write-socket
@@ -1568,7 +1568,7 @@
     (start
      (fn [dn _]
        (fn [evt val]
-         (enqueue ch1 [evt val])
+         (enqueue ch1 [evt (retain* val)])
          (when (and (= :request evt) (= 1 (swap! cnt inc)))
            (future
              (Thread/sleep 10)
@@ -1594,7 +1594,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val]))))
+       (enqueue ch1 [evt (retain* val)]))))
 
   (with-socket
     (write-socket
@@ -1618,7 +1618,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (let [[{path-info :path-info} _] val]
            (when (= "/foo" path-info)
@@ -1642,7 +1642,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (let [[{path-info :path-info} _] val]
            (when (= "/bar" path-info)
@@ -1668,7 +1668,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (let [[{path-info :path-info} _] val]
            (when (= "/bar" path-info)
