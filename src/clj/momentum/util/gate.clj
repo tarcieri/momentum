@@ -8,7 +8,8 @@
        throttle messages. However, sometimes there are semantic
        reasons to dealy further events."}
   momentum.util.gate
-  (:use momentum.core.atomic))
+  (:use
+   momentum.util.atomic))
 
 (def empty-queue clojure.lang.PersistentQueue/EMPTY)
 

@@ -1,4 +1,4 @@
-(ns momentum.core.atomic)
+(ns momentum.util.atomic)
 
 (defn get-and-set!
   "Atomically sets to the given value and returns the old value."

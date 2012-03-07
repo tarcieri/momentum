@@ -1,7 +1,7 @@
 (ns momentum.net.test
   (:use
    momentum.core
-   momentum.core.atomic)
+   momentum.util.atomic)
   (:require
    [momentum.net.core :as net]))
 

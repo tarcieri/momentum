@@ -1,8 +1,8 @@
 (ns momentum.http.server
   (:use
    momentum.core
-   momentum.core.atomic
-   momentum.http.core)
+   momentum.http.core
+   momentum.util.atomic)
   (:require
    [momentum.net.server  :as net]
    [momentum.http.parser :as parser]

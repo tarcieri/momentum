@@ -129,7 +129,7 @@
        handling behaves as expected."}
   momentum.core.async
   (:use
-   momentum.core.atomic)
+   momentum.util.atomic)
   (:import
    [momentum.async
     Async

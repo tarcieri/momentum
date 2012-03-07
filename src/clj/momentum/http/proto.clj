@@ -1,7 +1,7 @@
 (ns momentum.http.proto
   (:use
    momentum.core
-   momentum.core.atomic)
+   momentum.util.atomic)
   (:require
    [momentum.core.timer :as timer])
   (:import

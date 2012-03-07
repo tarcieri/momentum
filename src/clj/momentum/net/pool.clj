@@ -1,7 +1,7 @@
 (ns momentum.net.pool
   (:refer-clojure :exclude [count drop])
   (:use
-   momentum.core.atomic)
+   momentum.util.atomic)
   (:require
    [momentum.core.timer :as timer])
   (:import

@@ -1,7 +1,7 @@
 (ns momentum.http.websocket
   (:use
    momentum.core
-   momentum.core.atomic)
+   momentum.util.atomic)
   (:require
    [momentum.util.base64 :as base64]
    [momentum.util.digest :as digest])
