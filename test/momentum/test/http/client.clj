@@ -319,7 +319,7 @@
 
   (is (no-msgs ch1 ch2)))
 
-(defcoretest ^{:focus true} simple-keep-alive-requests
+(defcoretest simple-keep-alive-requests
   [ch1 ch2 ch3]
   (start-server
    (fn [dn _]
@@ -369,46 +369,41 @@
        :body    "World"
        :body    nil
        :request :dont-care
-       :close   nil))
+       :close   nil)))
 
-  ;; (connect
-  ;;  (fn [dn _]
-  ;;    (fn [evt val]
-  ;;      (enqueue ch2 [evt val])
-  ;;      (when (= :open evt)
-  ;;        (dn :request [{:request-method "GET" :path-info "/zomg"
-  ;;                       "transfer-encoding" "chunked" "connection" "close"} :chunked])
-  ;;        (dn :body (buffer "HELLO"))
-  ;;        (dn :body (buffer "WORLD"))
-  ;;        (dn :body nil))))
-  ;;  {:host "localhost" :port 4040})
-  )
+(defcoretest keepalive-head-requests
+  [ch1 ch2]
+  (start-server
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt (retain* val)])
+       (when (= :request evt)
+         (dn :response [200 {"content-length" "5"} nil]))))
+   {:pipeline false})
 
-;; (defcoretest keepalive-head-requests
-;;   [ch1 ch2]
-;;   (start-conn-tracking-hello-world ch1)
+  (connect
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch2 [evt val])
+       (cond
+        (= :open evt)
+        (dn :request [{:request-method "HEAD" :path-info "/"} nil])
 
-;;   (let [pool (client {:pool {:keepalive 1}})]
-;;     (dotimes [_ 3]
-;;       (connect
-;;        pool
-;;        (fn [dn _]
-;;          (fn [evt val]
-;;            (enqueue ch2 [evt val])
-;;            (when (= :open evt)
-;;              (dn :request [{:request-method "HEAD" :path-info "/"}]))))
-;;        {:host "localhost" :port 4040})
+        (= :response evt)
+        (dn :request [{:request-method "HEAD" :path-info "/zomg"} nil]))))
+   {:host "localhost" :port 4040})
 
-;;       (is (next-msgs
-;;            ch2
-;;            :open     :dont-care
-;;            :response [200 {:http-version [1 1] "content-length" "5"} nil]
-;;            :done     nil))
+  (is (next-msgs
+       ch1
+       :open    :dont-care
+       :request :dont-care
+       :request :dont-care))
 
-;;       (Thread/sleep 50)))
-
-;;   (is (next-msgs ch1 :connect nil))
-;;   (is (no-msgs ch1 ch2)))
+  (is (next-msgs
+       ch2
+       :open :dont-care
+       :response :dont-care
+       :response :dont-care)))
 
 ;; (defcoretest keepalive-head-requests-te-chunked
 ;;   [ch1 ch2]

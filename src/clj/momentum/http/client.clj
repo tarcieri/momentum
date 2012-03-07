@@ -6,16 +6,22 @@
   (:require
    [momentum.net.client  :as net]
    [momentum.http.parser :as parser]
-   [momentum.http.proto  :as proto]))
+   [momentum.http.proto  :as proto])
+  (:import
+   [java.util.concurrent
+    LinkedBlockingQueue]))
 
 (def default-options
   {:keepalive 60
    :timeout   5})
 
 (defn- mk-handler
-  [dn up opts]
+  [dn up ^LinkedBlockingQueue queue opts]
   (reify proto/HttpHandler
     (handle-request-head [_ [hdrs body] _]
+      ;; Put the request method onto the queue
+      (.put queue (hdrs :request-method))
+
       (dn :message (encode-request-head hdrs))
 
       (when (buffer? body)
@@ -88,8 +94,8 @@
 
 (defn- response-parser
   "Wraps an upstream function with the basic HTTP parser."
-  [f]
-  (let [p (parser/response f)]
+  [queue f]
+  (let [p (parser/response queue f)]
     (fn [evt val]
       (if (= :message evt)
         (p val)
@@ -101,12 +107,14 @@
   ([app opts]
      (let [opts (merge default-options opts)]
        (fn [dn env]
-         (let [state (proto/init opts)
-               up (app (mk-downstream state dn) env)]
+         (let [queue (LinkedBlockingQueue.)
+               state (proto/init opts)
+               up    (app (mk-downstream state dn) env)]
 
-           (proto/set-handler state (mk-handler dn up opts))
+           (proto/set-handler state (mk-handler dn up queue opts))
 
            (response-parser
+            queue
             (fn [evt val]
               (cond
                (= :response evt)
