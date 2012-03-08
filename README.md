@@ -1,3 +1,5 @@
+![Momentum](https://github.com/tarcieri/momentum/raw/master/logo.png)
+===========
 __This is still a very young project. As such, do not expect stability
 or documentation yet.__
 
