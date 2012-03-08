@@ -23,6 +23,7 @@ public final class HttpParser extends AFn {
   public static final byte SP = (byte) 0x20; // Space
   public static final byte HT = (byte) 0x09; // Horizontal tab
   public static final String SLASH = new String("/").intern();
+  public static final String UTF_8 = new String("UTF-8").intern();
   public static final String EMPTY_STRING = new String("").intern();
   public static final byte[] EMPTY_BUFFER = new byte[0];
   public static final Buffer SPACE = Buffer.wrap(new byte[] { SP });
@@ -155,7 +156,7 @@ public final class HttpParser extends AFn {
   }
 
   
-// line 564 "src/rl/momentum/http/HttpParser.rl"
+// line 572 "src/rl/momentum/http/HttpParser.rl"
 
 
   public static final long ALMOST_MAX_LONG     = Long.MAX_VALUE / 10;
@@ -172,7 +173,7 @@ public final class HttpParser extends AFn {
   public static final int  ERROR           = 1 << 7;
 
   
-// line 176 "src/jvm/momentum/http/HttpParser.java"
+// line 177 "src/jvm/momentum/http/HttpParser.java"
 private static byte[] init__http_actions_0()
 {
 	return new byte [] {
@@ -2723,7 +2724,7 @@ static final int http_en_upgraded = 752;
 static final int http_en_main = 1;
 
 
-// line 580 "src/rl/momentum/http/HttpParser.rl"
+// line 588 "src/rl/momentum/http/HttpParser.rl"
 
   /*
   * Variable used by ragel to represent the current state of the
@@ -2790,13 +2791,19 @@ static final int http_en_main = 1;
   private short status;
 
   /*
+   * Temporary buffer.
+   */
+  private Buffer tmpBuf = Buffer.allocate(1024);
+
+  /*
    * Tracks the various message information
    */
-  private URI          uri;
-  private ChunkedValue uriMark;
-  private String       headerName;
-  private ChunkedValue headerNameChunks;
-  private HeaderValue  headerValue;
+  private int mark = -1;
+  private int headerValueMark = -1;
+  private int maybeHeaderValueEnd = -1;
+
+  private URI    uri;
+  private String headerName;
 
   /*
    * Track the content length of the HTTP message
@@ -2836,12 +2843,12 @@ static final int http_en_main = 1;
 
   public HttpParser(MessageType type, Queue<String> q, HttpParserCallback callback) {
     
-// line 2840 "src/jvm/momentum/http/HttpParser.java"
+// line 2847 "src/jvm/momentum/http/HttpParser.java"
 	{
 	cs = http_start;
 	}
 
-// line 692 "src/rl/momentum/http/HttpParser.rl"
+// line 706 "src/rl/momentum/http/HttpParser.rl"
 
     this.type        = type;
     this.callback    = callback;
@@ -2945,7 +2952,7 @@ static final int http_en_main = 1;
     return qs;
   }
 
-  public int execute(Buffer buf) {
+  public int execute(Buffer buf) throws Exception {
     // First make sure that the parser isn't in an error state
     if (isError()) {
       throw new HttpParserException("The parser is in an error state.");
@@ -2956,18 +2963,12 @@ static final int http_en_main = 1;
     int pe  = buf.limit();
     int eof = pe + 1;
 
-    if (isParsingHead()) {
-      bridge(buf, uriMark);
-      bridge(buf, headerNameChunks);
-      bridge(buf, headerValue);
-    }
-
     try {
       parseLoop: {
         
-// line 815 "src/rl/momentum/http/HttpParser.rl"
+// line 823 "src/rl/momentum/http/HttpParser.rl"
         
-// line 2971 "src/jvm/momentum/http/HttpParser.java"
+// line 2972 "src/jvm/momentum/http/HttpParser.java"
 	{
 	int _klen;
 	int _trans = 0;
@@ -3010,7 +3011,7 @@ case 1:
 	case 0: {
 		_widec = 65536 + (( buf.getUnsigned(p)) - 0);
 		if ( 
-// line 448 "src/rl/momentum/http/HttpParser.rl"
+// line 456 "src/rl/momentum/http/HttpParser.rl"
 
       contentLength > 0
      ) _widec += 65536;
@@ -3082,7 +3083,7 @@ case 1:
 			switch ( _http_actions[_acts++] )
 			{
 	case 0:
-// line 158 "src/rl/momentum/http/HttpParser.rl"
+// line 159 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (type != MessageType.REQUEST) {
         throw new HttpParserException("Expecting HTTP response but got request");
@@ -3090,7 +3091,7 @@ case 1:
     }
 	break;
 	case 1:
-// line 164 "src/rl/momentum/http/HttpParser.rl"
+// line 165 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (type != MessageType.RESPONSE) {
         throw new HttpParserException("Expecting HTTP request but got response");
@@ -3100,372 +3101,372 @@ case 1:
     }
 	break;
 	case 2:
-// line 172 "src/rl/momentum/http/HttpParser.rl"
+// line 173 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_HEAD;        }
 	break;
 	case 3:
-// line 173 "src/rl/momentum/http/HttpParser.rl"
+// line 174 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_GET;         }
 	break;
 	case 4:
-// line 174 "src/rl/momentum/http/HttpParser.rl"
+// line 175 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_POST;        }
 	break;
 	case 5:
-// line 175 "src/rl/momentum/http/HttpParser.rl"
+// line 176 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_PUT;         }
 	break;
 	case 6:
-// line 176 "src/rl/momentum/http/HttpParser.rl"
+// line 177 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_DELETE;      }
 	break;
 	case 7:
-// line 177 "src/rl/momentum/http/HttpParser.rl"
+// line 178 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_CONNECT;     }
 	break;
 	case 8:
-// line 178 "src/rl/momentum/http/HttpParser.rl"
+// line 179 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_OPTIONS;     }
 	break;
 	case 9:
-// line 179 "src/rl/momentum/http/HttpParser.rl"
+// line 180 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_TRACE;       }
 	break;
 	case 10:
-// line 180 "src/rl/momentum/http/HttpParser.rl"
+// line 181 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_COPY;        }
 	break;
 	case 11:
-// line 181 "src/rl/momentum/http/HttpParser.rl"
+// line 182 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_LOCK;        }
 	break;
 	case 12:
-// line 182 "src/rl/momentum/http/HttpParser.rl"
+// line 183 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_MKCOL;       }
 	break;
 	case 13:
-// line 183 "src/rl/momentum/http/HttpParser.rl"
+// line 184 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_MOVE;        }
 	break;
 	case 14:
-// line 184 "src/rl/momentum/http/HttpParser.rl"
+// line 185 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_PROPFIND;    }
 	break;
 	case 15:
-// line 185 "src/rl/momentum/http/HttpParser.rl"
+// line 186 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_PROPPATCH;   }
 	break;
 	case 16:
-// line 186 "src/rl/momentum/http/HttpParser.rl"
+// line 187 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_UNLOCK;      }
 	break;
 	case 17:
-// line 187 "src/rl/momentum/http/HttpParser.rl"
+// line 188 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_REPORT;      }
 	break;
 	case 18:
-// line 188 "src/rl/momentum/http/HttpParser.rl"
+// line 189 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_MKACTIVITY;  }
 	break;
 	case 19:
-// line 189 "src/rl/momentum/http/HttpParser.rl"
+// line 190 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_CHECKOUT;    }
 	break;
 	case 20:
-// line 190 "src/rl/momentum/http/HttpParser.rl"
+// line 191 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_MERGE;       }
 	break;
 	case 21:
-// line 191 "src/rl/momentum/http/HttpParser.rl"
+// line 192 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_MSEARCH;     }
 	break;
 	case 22:
-// line 192 "src/rl/momentum/http/HttpParser.rl"
+// line 193 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_NOTIFY;      }
 	break;
 	case 23:
-// line 193 "src/rl/momentum/http/HttpParser.rl"
+// line 194 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_SUBSCRIBE;   }
 	break;
 	case 24:
-// line 194 "src/rl/momentum/http/HttpParser.rl"
+// line 195 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_UNSUBSCRIBE; }
 	break;
 	case 25:
-// line 195 "src/rl/momentum/http/HttpParser.rl"
+// line 196 "src/rl/momentum/http/HttpParser.rl"
 	{ method = MTH_PATCH;       }
 	break;
 	case 26:
-// line 197 "src/rl/momentum/http/HttpParser.rl"
+// line 198 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_ACCEPT);                    }
 	break;
 	case 27:
-// line 198 "src/rl/momentum/http/HttpParser.rl"
+// line 199 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_ACCEPT_CHARSET);            }
 	break;
 	case 28:
-// line 199 "src/rl/momentum/http/HttpParser.rl"
+// line 200 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_ACCEPT_ENCODING);           }
 	break;
 	case 29:
-// line 200 "src/rl/momentum/http/HttpParser.rl"
+// line 201 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_ACCEPT_LANGUAGE);           }
 	break;
 	case 30:
-// line 201 "src/rl/momentum/http/HttpParser.rl"
+// line 202 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_ACCEPT_RANGES);             }
 	break;
 	case 31:
-// line 202 "src/rl/momentum/http/HttpParser.rl"
+// line 203 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_AGE);                       }
 	break;
 	case 32:
-// line 203 "src/rl/momentum/http/HttpParser.rl"
+// line 204 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_ALLOW);                     }
 	break;
 	case 33:
-// line 204 "src/rl/momentum/http/HttpParser.rl"
+// line 205 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_AUTHORIZATION);             }
 	break;
 	case 34:
-// line 205 "src/rl/momentum/http/HttpParser.rl"
+// line 206 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_CACHE_CONTROL);             }
 	break;
 	case 35:
-// line 206 "src/rl/momentum/http/HttpParser.rl"
+// line 207 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONNECTION);                }
 	break;
 	case 36:
-// line 207 "src/rl/momentum/http/HttpParser.rl"
+// line 208 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONTENT_ENCODING);          }
 	break;
 	case 37:
-// line 208 "src/rl/momentum/http/HttpParser.rl"
+// line 209 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONTENT_LANGUAGE);          }
 	break;
 	case 38:
-// line 209 "src/rl/momentum/http/HttpParser.rl"
+// line 210 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONTENT_LENGTH);            }
 	break;
 	case 39:
-// line 210 "src/rl/momentum/http/HttpParser.rl"
+// line 211 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONTENT_LOCATION);          }
 	break;
 	case 40:
-// line 211 "src/rl/momentum/http/HttpParser.rl"
+// line 212 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONTENT_MD5);               }
 	break;
 	case 41:
-// line 212 "src/rl/momentum/http/HttpParser.rl"
+// line 213 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONTENT_DISPOSITION);       }
 	break;
 	case 42:
-// line 213 "src/rl/momentum/http/HttpParser.rl"
+// line 214 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONTENT_RANGE);             }
 	break;
 	case 43:
-// line 214 "src/rl/momentum/http/HttpParser.rl"
+// line 215 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_CONTENT_TYPE);              }
 	break;
 	case 44:
-// line 215 "src/rl/momentum/http/HttpParser.rl"
+// line 216 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_COOKIE);                    }
 	break;
 	case 45:
-// line 216 "src/rl/momentum/http/HttpParser.rl"
+// line 217 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_DATE);                      }
 	break;
 	case 46:
-// line 217 "src/rl/momentum/http/HttpParser.rl"
+// line 218 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_DNT);                       }
 	break;
 	case 47:
-// line 218 "src/rl/momentum/http/HttpParser.rl"
+// line 219 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_ETAG);                      }
 	break;
 	case 48:
-// line 219 "src/rl/momentum/http/HttpParser.rl"
+// line 220 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_EXPECT);                    }
 	break;
 	case 49:
-// line 220 "src/rl/momentum/http/HttpParser.rl"
+// line 221 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_EXPIRES);                   }
 	break;
 	case 50:
-// line 221 "src/rl/momentum/http/HttpParser.rl"
+// line 222 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_FROM);                      }
 	break;
 	case 51:
-// line 222 "src/rl/momentum/http/HttpParser.rl"
+// line 223 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_HOST);                      }
 	break;
 	case 52:
-// line 223 "src/rl/momentum/http/HttpParser.rl"
+// line 224 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_IF_MATCH);                  }
 	break;
 	case 53:
-// line 224 "src/rl/momentum/http/HttpParser.rl"
+// line 225 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_IF_MODIFIED_SINCE);         }
 	break;
 	case 54:
-// line 225 "src/rl/momentum/http/HttpParser.rl"
+// line 226 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_IF_NONE_MATCH);             }
 	break;
 	case 55:
-// line 226 "src/rl/momentum/http/HttpParser.rl"
+// line 227 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_IF_RANGE);                  }
 	break;
 	case 56:
-// line 227 "src/rl/momentum/http/HttpParser.rl"
+// line 228 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_IF_UNMODIFIED_SINCE);       }
 	break;
 	case 57:
-// line 228 "src/rl/momentum/http/HttpParser.rl"
+// line 229 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_KEEP_ALIVE);                }
 	break;
 	case 58:
-// line 229 "src/rl/momentum/http/HttpParser.rl"
+// line 230 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_LAST_MODIFIED);             }
 	break;
 	case 59:
-// line 230 "src/rl/momentum/http/HttpParser.rl"
+// line 231 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_LINK);                      }
 	break;
 	case 60:
-// line 231 "src/rl/momentum/http/HttpParser.rl"
+// line 232 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_LOCATION);                  }
 	break;
 	case 61:
-// line 232 "src/rl/momentum/http/HttpParser.rl"
+// line 233 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_MAX_FORWARDS);              }
 	break;
 	case 62:
-// line 233 "src/rl/momentum/http/HttpParser.rl"
+// line 234 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_P3P);                       }
 	break;
 	case 63:
-// line 234 "src/rl/momentum/http/HttpParser.rl"
+// line 235 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_PRAGMA);                    }
 	break;
 	case 64:
-// line 235 "src/rl/momentum/http/HttpParser.rl"
+// line 236 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_PROXY_AUTHENTICATE);        }
 	break;
 	case 65:
-// line 236 "src/rl/momentum/http/HttpParser.rl"
+// line 237 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_PROXY_AUTHORIZATION);       }
 	break;
 	case 66:
-// line 237 "src/rl/momentum/http/HttpParser.rl"
+// line 238 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_RANGE);                     }
 	break;
 	case 67:
-// line 238 "src/rl/momentum/http/HttpParser.rl"
+// line 239 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_REFERER);                   }
 	break;
 	case 68:
-// line 239 "src/rl/momentum/http/HttpParser.rl"
+// line 240 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_REFRESH);                   }
 	break;
 	case 69:
-// line 240 "src/rl/momentum/http/HttpParser.rl"
+// line 241 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_RETRY_AFTER);               }
 	break;
 	case 70:
-// line 241 "src/rl/momentum/http/HttpParser.rl"
+// line 242 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_SERVER);                    }
 	break;
 	case 71:
-// line 242 "src/rl/momentum/http/HttpParser.rl"
+// line 243 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_SET_COOKIE);                }
 	break;
 	case 72:
-// line 243 "src/rl/momentum/http/HttpParser.rl"
+// line 244 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_STRICT_TRANSPORT_SECURITY); }
 	break;
 	case 73:
-// line 244 "src/rl/momentum/http/HttpParser.rl"
+// line 245 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_TE);                        }
 	break;
 	case 74:
-// line 245 "src/rl/momentum/http/HttpParser.rl"
+// line 246 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_TRAILER);                   }
 	break;
 	case 75:
-// line 246 "src/rl/momentum/http/HttpParser.rl"
+// line 247 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_TRANSFER_ENCODING);         }
 	break;
 	case 76:
-// line 247 "src/rl/momentum/http/HttpParser.rl"
+// line 248 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_UPGRADE);                   }
 	break;
 	case 77:
-// line 248 "src/rl/momentum/http/HttpParser.rl"
+// line 249 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_USER_AGENT);                }
 	break;
 	case 78:
-// line 249 "src/rl/momentum/http/HttpParser.rl"
+// line 250 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_VARY);                      }
 	break;
 	case 79:
-// line 250 "src/rl/momentum/http/HttpParser.rl"
+// line 251 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_VIA);                       }
 	break;
 	case 80:
-// line 251 "src/rl/momentum/http/HttpParser.rl"
+// line 252 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_WARNING);                   }
 	break;
 	case 81:
-// line 252 "src/rl/momentum/http/HttpParser.rl"
+// line 253 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_WWW_AUTHENTICATE);          }
 	break;
 	case 82:
-// line 253 "src/rl/momentum/http/HttpParser.rl"
+// line 254 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_X_CONTENT_TYPE_OPTIONS);    }
 	break;
 	case 83:
-// line 254 "src/rl/momentum/http/HttpParser.rl"
+// line 255 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_X_DO_NOT_TRACK);            }
 	break;
 	case 84:
-// line 255 "src/rl/momentum/http/HttpParser.rl"
+// line 256 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_X_FORWARDED_FOR);           }
 	break;
 	case 85:
-// line 256 "src/rl/momentum/http/HttpParser.rl"
+// line 257 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_X_FORWARDED_PROTO);         }
 	break;
 	case 86:
-// line 257 "src/rl/momentum/http/HttpParser.rl"
+// line 258 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_X_FRAME_OPTIONS);           }
 	break;
 	case 87:
-// line 258 "src/rl/momentum/http/HttpParser.rl"
+// line 259 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_X_POWERED_BY);              }
 	break;
 	case 88:
-// line 259 "src/rl/momentum/http/HttpParser.rl"
+// line 260 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_X_REQUESTED_WITH);          }
 	break;
 	case 89:
-// line 260 "src/rl/momentum/http/HttpParser.rl"
+// line 261 "src/rl/momentum/http/HttpParser.rl"
 	{ setHeaderName(HDR_X_XSS_PROTECTION);          }
 	break;
 	case 90:
-// line 262 "src/rl/momentum/http/HttpParser.rl"
+// line 263 "src/rl/momentum/http/HttpParser.rl"
 	{
       status *= 10;
       status += ( buf.getUnsigned(p)) - '0';
     }
 	break;
 	case 91:
-// line 267 "src/rl/momentum/http/HttpParser.rl"
+// line 268 "src/rl/momentum/http/HttpParser.rl"
 	{
       httpMinor = 0;
     }
 	break;
 	case 92:
-// line 271 "src/rl/momentum/http/HttpParser.rl"
+// line 272 "src/rl/momentum/http/HttpParser.rl"
 	{
       httpMajor *= 10;
       httpMajor += ( buf.getUnsigned(p)) - '0';
@@ -3476,7 +3477,7 @@ case 1:
     }
 	break;
 	case 93:
-// line 280 "src/rl/momentum/http/HttpParser.rl"
+// line 281 "src/rl/momentum/http/HttpParser.rl"
 	{
       httpMinor *= 10;
       httpMinor += ( buf.getUnsigned(p)) - '0';
@@ -3487,17 +3488,27 @@ case 1:
     }
 	break;
 	case 94:
-// line 289 "src/rl/momentum/http/HttpParser.rl"
+// line 290 "src/rl/momentum/http/HttpParser.rl"
 	{
-      uriMark = new ChunkedValue(buf, p);
+      mark = p;
     }
 	break;
 	case 95:
-// line 293 "src/rl/momentum/http/HttpParser.rl"
+// line 294 "src/rl/momentum/http/HttpParser.rl"
 	{
-      uriMark.push(p);
+      String uriStr;
 
-      String uriStr = uriMark.materializeStr();
+      if (tmpBuf.position() > 0) {
+        tmpBuf.put(buf, mark, p - mark);
+        tmpBuf.flip();
+
+        uriStr = tmpBuf.toString(UTF_8);
+
+        tmpBuf.clear();
+      }
+      else {
+        uriStr = buf.toString(mark, p - mark, UTF_8);
+      }
 
       try {
         uri = new URI(uriStr);
@@ -3506,11 +3517,11 @@ case 1:
         throw new HttpParserException("The URI is not valid: " + uriStr);
       }
 
-      uriMark = null;
+      mark = -1;
     }
 	break;
 	case 96:
-// line 308 "src/rl/momentum/http/HttpParser.rl"
+// line 319 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (contentLength >= ALMOST_MAX_LONG) {
         throw new HttpParserException("The content-length is WAY too big");
@@ -3521,7 +3532,7 @@ case 1:
     }
 	break;
 	case 97:
-// line 317 "src/rl/momentum/http/HttpParser.rl"
+// line 328 "src/rl/momentum/http/HttpParser.rl"
 	{
       // Hack to get Java to compile
       if (true) {
@@ -3530,7 +3541,7 @@ case 1:
     }
 	break;
 	case 98:
-// line 324 "src/rl/momentum/http/HttpParser.rl"
+// line 335 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (isChunkedBody()) {
         throw new HttpParserException("The message head is invalid");
@@ -3538,13 +3549,12 @@ case 1:
 
       flags |= IDENTITY_BODY;
 
-      headerName  = null;
-      headerValue = null;
-      headers     = callback.header(headers, HDR_CONTENT_LENGTH, String.valueOf(contentLength));
+      headerName = null;
+      headers = callback.header(headers, HDR_CONTENT_LENGTH, String.valueOf(contentLength));
     }
 	break;
 	case 99:
-// line 336 "src/rl/momentum/http/HttpParser.rl"
+// line 346 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (isIdentityBody()) {
         throw new HttpParserException("The message head is invalid");
@@ -3552,45 +3562,41 @@ case 1:
 
       flags |= CHUNKED_BODY;
 
-      headerName  = null;
-      headerValue = null;
-      headers     = callback.header(headers, HDR_TRANSFER_ENCODING, VAL_CHUNKED);
+      headerName = null;
+      headers = callback.header(headers, HDR_TRANSFER_ENCODING, VAL_CHUNKED);
     }
 	break;
 	case 100:
-// line 348 "src/rl/momentum/http/HttpParser.rl"
+// line 357 "src/rl/momentum/http/HttpParser.rl"
 	{
       flags |= CONN_CLOSE;
 
-      headerName  = null;
-      headerValue = null;
-      headers     = callback.header(headers, HDR_CONNECTION, VAL_CLOSE);
+      headerName = null;
+      headers = callback.header(headers, HDR_CONNECTION, VAL_CLOSE);
     }
 	break;
 	case 101:
-// line 356 "src/rl/momentum/http/HttpParser.rl"
+// line 364 "src/rl/momentum/http/HttpParser.rl"
 	{
       flags |= UPGRADE;
 
-      headerName  = null;
-      headerValue = null;
-      headers     = callback.header(headers, HDR_CONNECTION, VAL_UPGRADE);
+      headerName = null;
+      headers = callback.header(headers, HDR_CONNECTION, VAL_UPGRADE);
     }
 	break;
 	case 102:
-// line 364 "src/rl/momentum/http/HttpParser.rl"
+// line 371 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (isHttp11()) {
         flags |= EXPECT_CONTINUE;
       }
 
-      headerName  = null;
-      headerValue = null;
-      headers     = callback.header(headers, HDR_EXPECT, VAL_100_CONTINUE);
+      headerName = null;
+      headers = callback.header(headers, HDR_EXPECT, VAL_100_CONTINUE);
     }
 	break;
 	case 103:
-// line 374 "src/rl/momentum/http/HttpParser.rl"
+// line 380 "src/rl/momentum/http/HttpParser.rl"
 	{
       reset();
 
@@ -3599,7 +3605,7 @@ case 1:
     }
 	break;
 	case 104:
-// line 381 "src/rl/momentum/http/HttpParser.rl"
+// line 387 "src/rl/momentum/http/HttpParser.rl"
 	{
       // Not parsing the HTTP message head anymore
       flags ^= PARSING_HEAD;
@@ -3627,6 +3633,8 @@ case 1:
           }
           // If the entire body is less than a set maximum (default 4kb), just
           // allocate a new buffer and copy the chunks into it.
+          //
+          // TODO: Just use tmpBuf
           else if (contentLength <= MAX_BUFFERED && !isExpectingContinue()) {
             body   = Buffer.allocate((int) contentLength);
             toRead = remaining - 1;
@@ -3668,7 +3676,7 @@ case 1:
     }
 	break;
 	case 105:
-// line 452 "src/rl/momentum/http/HttpParser.rl"
+// line 460 "src/rl/momentum/http/HttpParser.rl"
 	{
       int toRead = min(contentLength, buf.limit() - p);
 
@@ -3710,7 +3718,7 @@ case 1:
     }
 	break;
 	case 106:
-// line 492 "src/rl/momentum/http/HttpParser.rl"
+// line 500 "src/rl/momentum/http/HttpParser.rl"
 	{
       int toRead = buf.limit() - p;
 
@@ -3721,7 +3729,7 @@ case 1:
     }
 	break;
 	case 107:
-// line 501 "src/rl/momentum/http/HttpParser.rl"
+// line 509 "src/rl/momentum/http/HttpParser.rl"
 	{
       int toRead = min(contentLength, buf.limit() - p);
 
@@ -3735,7 +3743,7 @@ case 1:
     }
 	break;
 	case 108:
-// line 513 "src/rl/momentum/http/HttpParser.rl"
+// line 521 "src/rl/momentum/http/HttpParser.rl"
 	{
       int remaining = buf.limit() - p;
 
@@ -3746,19 +3754,19 @@ case 1:
     }
 	break;
 	case 109:
-// line 522 "src/rl/momentum/http/HttpParser.rl"
+// line 530 "src/rl/momentum/http/HttpParser.rl"
 	{
       callback.body(this, null);
     }
 	break;
 	case 110:
-// line 526 "src/rl/momentum/http/HttpParser.rl"
+// line 534 "src/rl/momentum/http/HttpParser.rl"
 	{
       contentLength = 0;
     }
 	break;
 	case 111:
-// line 530 "src/rl/momentum/http/HttpParser.rl"
+// line 538 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (contentLength >= ALMOST_MAX_LONG_HEX) {
         throw new HttpParserException("The content-length is WAY too big");
@@ -3769,7 +3777,7 @@ case 1:
     }
 	break;
 	case 112:
-// line 539 "src/rl/momentum/http/HttpParser.rl"
+// line 547 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (true) {
         throw new HttpParserException("Invalid chunk size");
@@ -3777,7 +3785,7 @@ case 1:
     }
 	break;
 	case 114:
-// line 549 "src/rl/momentum/http/HttpParser.rl"
+// line 557 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (++hread > MAX_HEADER_SIZE) {
         throw new HttpParserException("The HTTP message head is too large");
@@ -3785,7 +3793,7 @@ case 1:
     }
 	break;
 	case 115:
-// line 555 "src/rl/momentum/http/HttpParser.rl"
+// line 563 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (true) {
         String msg = parseErrorMsg(buf, p);
@@ -3796,63 +3804,99 @@ case 1:
 	case 116:
 // line 7 "src/rl/momentum/http/common.rl"
 	{
-      headerNameChunks = new ChunkedValue(buf, p);
+    mark = p;
   }
 	break;
 	case 117:
 // line 11 "src/rl/momentum/http/common.rl"
 	{
-      if (headerNameChunks != null) {
-          headerNameChunks.push(p);
+    if (headerName == null) {
+      if (tmpBuf.position() > 0) {
+        tmpBuf.put(buf, mark, p - mark);
+        tmpBuf.flip();
 
-          headerName       = headerNameChunks.materializeStr().toLowerCase();
-          headerNameChunks = null;
+        headerName = tmpBuf.toString(UTF_8).toLowerCase();
+
+        tmpBuf.clear();
       }
+      else {
+        headerName = buf.toString(mark, p - mark, UTF_8).toLowerCase();
+      }
+    }
+
+    mark = -1;
   }
 	break;
 	case 118:
-// line 20 "src/rl/momentum/http/common.rl"
+// line 29 "src/rl/momentum/http/common.rl"
 	{
-      if (headerValue == null) {
-          headerValue = new HeaderValue(buf, p);
-      }
-      else {
-          headerValue.startLine(buf, p);
-      }
+    if (headerValueMark >= mark) {
+      if (headerValueMark > mark)
+        tmpBuf.put(buf, mark, headerValueMark - mark);
+
+      maybeHeaderValueEnd = -1;
+    }
+
+    if (tmpBuf.position() > 0) {
+      if (maybeHeaderValueEnd >= 0)
+        tmpBuf.position(maybeHeaderValueEnd);
+
+      tmpBuf.put(HttpParser.SP);
+    }
+
+    mark = p;
+    headerValueMark = -1;
   }
 	break;
 	case 119:
-// line 29 "src/rl/momentum/http/common.rl"
+// line 48 "src/rl/momentum/http/common.rl"
 	{
-      if (headerValue != null) {
-          headerValue.mark(p);
-      }
+    headerValueMark = p;
   }
 	break;
 	case 120:
-// line 35 "src/rl/momentum/http/common.rl"
+// line 52 "src/rl/momentum/http/common.rl"
 	{
-      if (headerValue != null) {
-          headerValue.push();
-      }
   }
 	break;
 	case 121:
-// line 41 "src/rl/momentum/http/common.rl"
+// line 55 "src/rl/momentum/http/common.rl"
 	{
-      if (headerValue != null) {
-          headers = callback.header(headers, headerName, headerValue.materializeStr());
+    if (headerName != null) {
+      String val;
 
-          headerName  = null;
-          headerValue = null;
+      if (tmpBuf.position() > 0) {
+        if (headerValueMark >= mark) {
+          // if (mark == -1)
+          //   mark = 0;
+          if (headerValueMark > mark)
+            tmpBuf.put(buf, mark, headerValueMark - mark);
+        }
+        else if (maybeHeaderValueEnd >= 0) {
+          tmpBuf.position(maybeHeaderValueEnd);
+        }
+
+        tmpBuf.flip();
+        val = tmpBuf.toString(UTF_8);
+
+        tmpBuf.clear();
       }
-      else if (headerName != null) {
-          headers = callback.header(headers, headerName, HttpParser.EMPTY_STRING);
-          headerName = null;
+      else if (headerValueMark > mark) {
+        val = buf.toString(mark, headerValueMark - mark, UTF_8);
       }
+      else {
+        val = HttpParser.EMPTY_STRING;
+      }
+
+      headers = callback.header(headers, headerName, val);
+      headerName = null;
+    }
+
+    mark = -1;
+    headerValueMark = -1;
   }
 	break;
-// line 3856 "src/jvm/momentum/http/HttpParser.java"
+// line 3900 "src/jvm/momentum/http/HttpParser.java"
 			}
 		}
 	}
@@ -3863,12 +3907,12 @@ case 2:
 	while ( _nacts-- > 0 ) {
 		switch ( _http_actions[_acts++] ) {
 	case 113:
-// line 545 "src/rl/momentum/http/HttpParser.rl"
+// line 553 "src/rl/momentum/http/HttpParser.rl"
 	{
       cs = 1;
     }
 	break;
-// line 3872 "src/jvm/momentum/http/HttpParser.java"
+// line 3916 "src/jvm/momentum/http/HttpParser.java"
 		}
 	}
 
@@ -3888,7 +3932,7 @@ case 4:
 	while ( __nacts-- > 0 ) {
 		switch ( _http_actions[__acts++] ) {
 	case 97:
-// line 317 "src/rl/momentum/http/HttpParser.rl"
+// line 328 "src/rl/momentum/http/HttpParser.rl"
 	{
       // Hack to get Java to compile
       if (true) {
@@ -3897,7 +3941,7 @@ case 4:
     }
 	break;
 	case 112:
-// line 539 "src/rl/momentum/http/HttpParser.rl"
+// line 547 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (true) {
         throw new HttpParserException("Invalid chunk size");
@@ -3905,7 +3949,7 @@ case 4:
     }
 	break;
 	case 115:
-// line 555 "src/rl/momentum/http/HttpParser.rl"
+// line 563 "src/rl/momentum/http/HttpParser.rl"
 	{
       if (true) {
         String msg = parseErrorMsg(buf, p);
@@ -3913,7 +3957,7 @@ case 4:
       }
     }
 	break;
-// line 3917 "src/jvm/momentum/http/HttpParser.java"
+// line 3961 "src/jvm/momentum/http/HttpParser.java"
 		}
 	}
 	}
@@ -3923,10 +3967,22 @@ case 5:
 	break; }
 	}
 
-// line 816 "src/rl/momentum/http/HttpParser.rl"
+// line 824 "src/rl/momentum/http/HttpParser.rl"
+      }
+
+      // If a point in the buffer is marked, then we must save it to the
+      // temporary buffer
+      if (mark >= 0) {
+        if (headerValueMark >= 0) {
+          maybeHeaderValueEnd = tmpBuf.position() + (headerValueMark - mark);
+          headerValueMark = -1;
+        }
+
+        tmpBuf.put(buf, mark, pe - mark);
+        mark = 0;
       }
     }
-    catch (RuntimeException e) {
+    catch (Exception e) {
       flags |= ERROR;
       throw e;
     }
@@ -3935,14 +3991,7 @@ case 5:
   }
 
   private void setHeaderName(String name) {
-    headerName       = name;
-    headerNameChunks = null;
-  }
-
-  private void bridge(Buffer buf, ChunkedValue chunk) {
-    if (chunk != null) {
-      chunk.bridge(buf);
-    }
+    headerName = name;
   }
 
   private void reset() {
@@ -3952,16 +4001,17 @@ case 5:
     httpMajor     = 0;
     httpMinor     = 9;
     contentLength = 0;
+
+    tmpBuf.clear();
   }
 
   private void resetHeadState() {
-    headers          = null;
-    method           = null;
-    uri              = null;
-    uriMark          = null;
-    headerName       = null;
-    headerNameChunks = null;
-    headerValue      = null;
+    headers         = null;
+    method          = null;
+    uri             = null;
+    headerName      = null;
+    mark            = -1;
+    headerValueMark = -1;
   }
 
   private Buffer slice(Buffer buf, int from, int to) {

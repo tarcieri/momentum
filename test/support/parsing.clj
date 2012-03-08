@@ -1,7 +1,7 @@
 (ns support.parsing
   (:use
    clojure.test
-   support.helpers
+   support.assertions
    momentum.core.buffer)
   (:require
    [momentum.http.parser :as http])

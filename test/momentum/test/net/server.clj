@@ -2,19 +2,30 @@
   (:use
    clojure.test
    support.helpers
-   momentum.core
-   momentum.net.server))
+   momentum.core)
+  (:require
+   [momentum.net.server :as server]))
 
 (def addr-info
   {:local-addr  ["127.0.0.1" 4040]
    :remote-addr ["127.0.0.1" :dont-care]})
+
+(defn- start [& args]
+  (doto (apply server/start args)
+    deref))
+
+(defn- retain*
+  [maybe-buffer]
+  (if (buffer? maybe-buffer)
+    (retain maybe-buffer)
+    maybe-buffer))
 
 (defcoretest simple-echo-server
   [ch1]
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :message evt)
          (dn :message val)))))
 
@@ -35,7 +46,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val]))))
+       (enqueue ch1 [evt (retain* val)]))))
 
   (with-socket
     (write-socket "Hello world")
@@ -56,7 +67,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :open evt)
          (dn :message (buffer "Hello world"))
          (dn :close nil)))))
@@ -69,28 +80,6 @@
          ch1
          :open  addr-info
          :close nil))))
-
-(defcoretest writing-to-closed-socket
-  [ch1]
-  (start
-   (fn [dn _]
-     (fn [evt val]
-       (enqueue ch1 [evt val])
-       (when (= :open evt)
-         (future
-          (Thread/sleep 30)
-          (try
-            (dn :message (buffer "Hello"))
-            (catch Exception err
-              (enqueue ch1 [:abort err]))))))))
-
-  (with-socket
-    (close-socket)
-    (is (next-msgs
-         ch1
-         :open   addr-info
-         :close  nil
-         :abort  #(instance? java.io.IOException %)))))
 
 (defcoretest handling-exception-in-bind-function
   [ch1]
@@ -106,7 +95,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :open evt)
          (throw (Exception. "TROLLOLOL"))))))
 
@@ -121,7 +110,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :message evt)
          (throw (Exception. "TROLLOLOL"))))))
 
@@ -139,7 +128,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (#{:open :abort} evt)
          (throw (Exception. "TROLLOLOL"))))))
 
@@ -160,12 +149,13 @@
      (let [depth (atom 0)]
        (fn [evt val]
          (let [count (swap! depth inc)]
-           (enqueue ch1 [evt val])
+           (enqueue ch1 [evt (retain* val)])
            (enqueue ch2 [:depth count])
 
            (when (= :open evt)
              (dn :close nil)
              (dn :abort (Exception. "TROLLOLOL")))
+
            (swap! depth dec))))))
 
   (with-socket
@@ -179,12 +169,29 @@
          :depth 1
          :depth 1))))
 
-(defcoretest thrown-exceptions-get-prioritized-over-other-events
+(defcoretest thrown-exceptions-on-open-get-prioritized-over-other-events
+  [ch1 ch2]
+  (start
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt (retain* val)])
+
+       (when (= :open evt)
+         (dn :close nil)
+         (throw (Exception. "TROLLOLOL"))))))
+
+  (with-socket
+    (is (next-msgs
+         ch1
+         :open  addr-info
+         :abort #(instance? Exception %)))))
+
+(defcoretest thrown-exceptions-on-message-get-prioritized-over-other-events
   [ch1]
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :message evt)
          (dn :close nil)
          (throw (Exception. "LULZ"))))))
@@ -201,95 +208,100 @@
 (defcoretest telling-the-application-to-chill-out
   [ch1]
   (start
-   (fn [dn _]
-     (let [latch (atom true)]
-       (fn [evt val]
-         (enqueue ch1 [evt val])
-         (when (= :open evt)
-           (future
-             (loop [continue? @latch]
-               (when continue?
-                 (dn :message (buffer "HAMMER TIME!"))
-                 (recur @latch)))))
+   (let [chunk (buffer (apply str (repeat 1000 "HAMMER TIME!!!")))]
+     (fn [dn _]
+       (let [latch (atom true)]
+         (fn [evt val]
+           (enqueue ch1 [evt (retain* val)])
+           (when (= :open evt)
+             (future
+               (loop [continue? @latch]
+                 (when continue?
+                   (dn :message (duplicate chunk))
+                   (Thread/sleep 5)
+                   (recur @latch)))))
 
-         (when (= :pause evt)
-           (reset! latch false))
+           (when (= :pause evt)
+             (reset! latch false))
 
-         (when (= :resume evt)
-           (dn :close nil))))))
+           (when (= :resume evt)
+             (dn :close nil)))))))
 
   (with-socket
-    (Thread/sleep 200)
-    (drain-socket)
-
     (is (next-msgs
          ch1
-         :open   addr-info
-         :pause  nil
-         :resume nil))))
+         :open  addr-info
+         :pause nil))
+
+    (drain-socket)
+
+    (is (next-msgs ch1 :resume nil))))
 
 (defcoretest raising-error-during-pause-event
   [ch1]
-  (start
-   (fn [dn _]
-     (let [latch (atom true)]
-       (fn [evt val]
-         (enqueue ch1 [evt val])
-         (when (= :open evt)
-           (future
-             (loop [continue? @latch]
-               (when continue?
-                 (dn :message (buffer "HAMMER TIME!"))
-                 (recur @latch)))))
-         (when (= :pause evt)
-           (reset! latch false)
-           (throw (Exception. "TROLLOLOL")))))))
+  (let [chunk (buffer (apply str (repeat 1000 "HAMMER TIME!!!")))]
+    (start
+     (fn [dn _]
+       (let [latch (atom true)]
+         (fn [evt val]
+           (enqueue ch1 [evt (retain* val)])
+           (when (= :open evt)
+             (future
+               (loop [continue? @latch]
+                 (when continue?
+                   (dn :message (duplicate chunk))
+                   (Thread/sleep 5)
+                   (recur @latch)))))
+           (when (= :pause evt)
+             (reset! latch false)
+             (throw (Exception. "TROLLOLOL"))))))))
 
   (with-socket
-    (Thread/sleep 100)
-    (drain-socket)
-
-    (is (not (open-socket?)))
-
     (is (next-msgs
          ch1
-         :open   addr-info
-         :pause  nil
-         :abort  #(instance? Exception %)))))
+         :open  addr-info
+         :pause nil
+         :abort #(instance? Exception %)))
+
+    (drain-socket)
+    (is (not (open-socket?)))))
 
 (defcoretest raising-error-during-resume-event
   [ch1]
   (start
-   (fn [dn _]
-     (let [latch (atom true)]
-       (fn [evt val]
-         (enqueue ch1 [evt val])
-         (when (= :open evt)
-           (future
-             (loop [continue? @latch]
-               (if continue?
-                 (do
-                   (dn :message (buffer "HAMMER TIME!"))
-                   (recur @latch))))))
+   (let [chunk (buffer (apply str (repeat 1000 "HAMMER TIME!!!")))]
+     (fn [dn _]
+       (let [latch (atom true)]
+         (fn [evt val]
+           (enqueue ch1 [evt (retain* val)])
+           (when (= :open evt)
+             (future
+               (loop [continue? @latch]
+                 (when continue?
+                   (dn :message (duplicate chunk))
+                   (Thread/sleep 10)
+                   (recur @latch)))))
 
-         (when (= :pause evt)
-           (reset! latch false))
+           (when (= :pause evt)
+             (reset! latch false))
 
-         (when (= :resume evt)
-           (throw (Exception. "TROLLOLOL")))))))
+           (when (= :resume evt)
+             (throw (Exception. "TROLLOLOL"))))))))
 
   (with-socket
-    (Thread/sleep 100)
-    (drain-socket)
+    (is (next-msgs
+         ch1
+         :open  addr-info
+         :pause nil))
 
-    (is (not (open-socket?)))
+    (drain-socket)
 
     (is (next-msgs
          ch1
-         :open   addr-info
-         :pause  nil
          :resume nil
-         :abort  #(instance? Exception %)))))
+         :abort  #(instance? Exception %)))
+
+    (is (not (open-socket?)))))
 
 (defcoretest telling-the-server-to-chill-out
   [ch1 ch2]
@@ -300,7 +312,7 @@
      (let [latch (atom true)]
        (fn [evt val]
          (when-not (#{:pause :resume} evt)
-           (enqueue ch1 [evt val]))
+           (enqueue ch1 [evt (retain* val)]))
          (when (and (= :message evt) @latch)
            (dn :pause nil)
            (reset! latch false))))))
@@ -331,7 +343,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (dn :abort (Exception. "TROLLOLOL")))))
 
   (with-socket
@@ -347,7 +359,7 @@
   (start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :open evt)
          (dn :zomg 1)))))
 
@@ -356,28 +368,3 @@
          ch1
          :open  addr-info
          :abort #(instance? Exception %)))))
-
-;; ==== Core tests
-
-(defcoretest scheduling-fn-in-reactor
-  [ch1]
-  (start
-   (fn [dn _]
-     (fn [evt val]
-       (when (= :open evt)
-         (dn :schedule
-             (fn []
-               (Thread/sleep 50)
-               (enqueue ch1 [:scheduled nil])))
-         (enqueue ch1 [:schedule nil]))
-       (when (= :message evt)
-         (enqueue ch1 [:message nil])))))
-
-  (with-socket
-    (write-socket "Hello")
-
-    (is (next-msgs
-         ch1
-         :schedule  nil
-         :scheduled nil
-         :message   nil))))

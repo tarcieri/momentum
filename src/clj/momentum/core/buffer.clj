@@ -20,7 +20,7 @@
  write)
 
 (defprotocol Conversion
-  (^{:private true} to-buffer [_]))
+  (^{:private true} ^Buffer to-buffer [_]))
 
 (extend-protocol Conversion
   (class (byte-array 0))
@@ -53,11 +53,11 @@
 (extend-protocol Manipulation
   (class (byte-array 0))
   (into-buffer* [arr dst _]
-    (.put dst arr))
+    (.put ^Buffer dst ^bytes arr))
 
   Buffer
   (into-buffer* [src dst _]
-    (.put dst src (.position src) (.remaining src)))
+    (.put ^Buffer dst src (.position src) (.remaining src)))
 
   Collection
   (into-buffer* [coll dst type-f]
@@ -72,16 +72,16 @@
 
   String
   (into-buffer* [str dst _]
-    (.put dst (.getBytes str "UTF-8")))
+    (.put ^Buffer dst (.getBytes str "UTF-8")))
 
   nil
   (into-buffer* [_ dst _] dst)
 
   Object
   (into-buffer* [o dst _]
-    (.put dst (Buffer/wrap o))))
+    (.put ^Buffer dst (Buffer/wrap o))))
 
-(defn buffer*
+(defn ^Buffer buffer*
   ([]    (dynamic-buffer))
   ([val] (to-buffer val)))
 
@@ -143,18 +143,19 @@
   (instance? Buffer maybe-buffer))
 
 (defn capacity
-  [buf]
-  (.capacity buf))
+  [^Buffer buf] (.capacity buf))
+
+(defn clear
+  [^Buffer buf] (.clear buf))
 
 (defn collapsed?
-  [buf]
-  (not (remaining? buf)))
+  [^Buffer buf] (not (remaining? buf)))
 
 (defn direct-buffer
   [size]
   (Buffer/allocateDirect size))
 
-(defn dynamic-buffer
+(defn ^Buffer dynamic-buffer
   ([]        (Buffer/dynamic))
   ([est]     (Buffer/dynamic est))
   ([est max] (Buffer/dynamic est max)))
@@ -171,68 +172,67 @@
   [^Buffer buf size]
   (.limit buf (+ size (.position buf))))
 
-;; (defn freeze
-;;   [^Buffer buf]
-;;   (.freeze buf))
-
-;; (defn frozen?
-;;   [^Buffer buf]
-;;   (.isFrozen buf))
-
-;; ;; Temporary
-;; (def frozen frozen?)
-
 (defn holds?
   [^Buffer dst ^Buffer src]
   (>= (.remaining dst)
       (.remaining src)))
 
 (defn limit
-  ([^Buffer buf]
-     (.limit buf))
-  ([^Buffer buf val]
-     (.limit buf val)))
+  ([^Buffer buf]     (.limit buf))
+  ([^Buffer buf val] (.limit buf val)))
 
 (defn position
-  ([^Buffer buf]
-     (.position buf))
-  ([^Buffer buf val]
-     (.position buf val)))
+  ([^Buffer buf]     (.position buf))
+  ([^Buffer buf val] (.position buf val)))
 
 (defn remaining
-  [buf]
-  (.remaining buf))
+  [^Buffer buf] (and buf (.remaining buf)))
 
 (defn remaining?
-  [buf]
-  (.hasRemaining buf))
+  [^Buffer buf] (and buf (.hasRemaining buf)))
 
-(defn reset
+(defn retain
   [^Buffer buf]
-  (.reset buf))
+  (if (buffer? buf)
+    (.retain buf)
+    buf))
 
 (defn rewind
-  [^Buffer buf]
-  (.rewind buf))
+  [^Buffer buf] (.rewind buf))
 
 (defn slice
-  ([buf]         (.slice buf))
-  ([buf idx len] (.slice buf idx len)))
+  ([^Buffer buf]         (.slice buf))
+  ([^Buffer buf idx len] (.slice buf idx len)))
+
+(defn transient!
+  [^Buffer buf] (.makeTransient buf))
+
+(defn transient?
+  [^Buffer buf] (.isTransient buf))
 
 (defn to-byte-array
-  [^Buffer buf]
-  (.toByteArray buf))
+  [^Buffer buf] (.toByteArray buf))
 
 (defn to-channel-buffer
-  [^Buffer buf]
-  (.toChannelBuffer buf))
+  [^Buffer buf] (.toChannelBuffer buf))
 
 (def EMPTY (buffer ""))
 
 (defn to-string
   ([buf] (to-string buf "UTF-8"))
-  ([buf ^String encoding]
-     (.toString (if buf (buffer buf) EMPTY) encoding)))
+  ([^Buffer buf ^String encoding]
+     (cond
+      (string? buf)
+      buf
+
+      (number? buf)
+      (str buf)
+
+      buf
+      (.toString (buffer buf) encoding)
+
+      :else
+      (.toString ^Buffer EMPTY encoding))))
 
 ;; TODO: Revisit the transfer helper
 (defn transfer!
@@ -257,31 +257,31 @@
   (into-buffer* srcs dst nil))
 
 (defn write-byte
-  [buf b]
+  [^Buffer buf b]
   (.put buf (byte b)))
 
 (defn write-ubyte
-  [buf b]
+  [^Buffer buf b]
   (.putUnsigned buf b))
 
 (defn write-short
-  [buf s]
+  [^Buffer buf s]
   (.putShort buf s))
 
 (defn write-ushort
-  [buf s]
+  [^Buffer buf s]
   (.putShortUnsigned buf s))
 
 (defn write-int
-  [buf i]
+  [^Buffer buf i]
   (.putInt buf i))
 
 (defn write-uint
-  [buf i]
+  [^Buffer buf i]
   (.putIntUnsigned buf i))
 
 (defn write-long
-  [buf l]
+  [^Buffer buf l]
   (.putLong buf l))
 
 ;; ==== Misc helpers

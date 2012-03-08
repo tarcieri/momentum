@@ -1,6 +1,10 @@
 package momentum.buffer;
 
+import java.io.UnsupportedEncodingException;
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.WritableByteChannel;
 import java.util.Arrays;
 
 import org.jboss.netty.buffer.ChannelBuffer;
@@ -23,7 +27,12 @@ public final class HeapBuffer extends Buffer {
   }
 
   protected Buffer _slice(int idx, int len) {
-    return new HeapBuffer(arr, offset + idx, 0, len, len, bigEndian);
+    HeapBuffer ret = new HeapBuffer(arr, offset + idx, 0, len, len, bigEndian);
+
+    if (isTransient)
+      ret.isTransient = true;
+
+    return ret;
   }
 
   protected ByteBuffer _toByteBuffer() {
@@ -40,6 +49,11 @@ public final class HeapBuffer extends Buffer {
     }
 
     return Arrays.copyOfRange(arr, offset, offset + capacity);
+  }
+
+  protected String _toString(int off, int len, String charsetName)
+    throws UnsupportedEncodingException {
+    return new String(arr, offset + off, len, charsetName);
   }
 
   public byte _get(int idx) {
@@ -66,5 +80,13 @@ public final class HeapBuffer extends Buffer {
     else {
       src._get(off, arr, offset + idx, len);
     }
+  }
+
+  protected int _transferFrom(ReadableByteChannel chan, int off, int len) throws IOException {
+    return chan.read(ByteBuffer.wrap(arr, offset + off, len));
+  }
+
+  protected int _transferTo(WritableByteChannel chan, int off, int len) throws IOException {
+    return chan.write(ByteBuffer.wrap(arr, offset + off, len));
   }
 }

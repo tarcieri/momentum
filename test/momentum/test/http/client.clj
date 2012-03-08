@@ -11,6 +11,19 @@
    [java.io
     IOException]))
 
+(defn- start-server [& args]
+  (doto (apply server/start args)
+    deref))
+
+(defn- retain*
+  [maybe-buffer]
+  (cond
+   (vector? maybe-buffer)
+   (vec (map retain* maybe-buffer))
+
+   :else
+   (retain maybe-buffer)))
+
 (defn- connection-tracker
   [app ch]
   (fn [dn env]
@@ -37,7 +50,7 @@
      (server/start
       (fn [dn _]
         (fn [evt val]
-          (when ch (enqueue ch [evt val]))
+          (when ch (enqueue ch [evt (retain* val)]))
           (when (= :request evt)
             (dn :response [200 {"content-type"   "text/plain"
                                 "content-length" "5"
@@ -51,7 +64,7 @@
     (connect
      (fn [dn _]
        (fn [evt val]
-         (enqueue ch2 [evt val])
+         (enqueue ch2 [evt (retain* val)])
          (when (= :open evt)
            (dn :request [{:path-info "/" :request-method method} (buffer "")]))))
      {:host "localhost" :port 4040})
@@ -64,8 +77,7 @@
                     :query-string   ""
                     :request-method method
                     :remote-addr    :dont-care
-                    :local-addr     :dont-care} nil]
-         :done nil))
+                    :local-addr     :dont-care} nil]))
 
     (is (next-msgs
          ch2
@@ -75,7 +87,9 @@
                          "content-length" "5"
                          "content-type"   "text/plain"
                          "connection"     "close"} "Hello"]
-         :done nil))))
+         :close nil))
+
+    (is (no-msgs ch1 ch2))))
 
 (defcoretest query-string-request
   [ch1 ch2]
@@ -84,7 +98,7 @@
   (connect
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch2 [evt val])
+       (enqueue ch2 [evt (retain* val)])
        (when (= :open evt)
          (dn :request [{:request-method "GET"
                         :path-info      "/"
@@ -99,8 +113,7 @@
                   :query-string   "zomg"
                   :request-method "GET"
                   :remote-addr    :dont-care
-                  :local-addr     :dont-care} nil]
-       :done nil))
+                  :local-addr     :dont-care} nil]))
 
   (is (next-msgs
        ch2
@@ -109,7 +122,7 @@
                        "content-length" "5"
                        "content-type"   "text/plain"
                        "connection"     "close"} "Hello"]
-       :done nil)))
+       :close nil)))
 
 (defcoretest blank-path-info
   [ch1]
@@ -125,15 +138,14 @@
 
   (is (next-msgs
        ch1
-       :request [#(includes-hdrs {:path-info "/"} %) :dont-care]
-       :done    nil)))
+       :request [#(includes-hdrs {:path-info "/"} %) :dont-care])))
 
 (defcoretest request-and-response-with-duplicated-headers
   [ch1 ch2]
   (server/start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [200 {"content-length" "0"
                              "connection"     "close"
@@ -144,7 +156,7 @@
   (connect
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch2 [evt val])
+       (enqueue ch2 [evt (retain* val)])
        (when (= :open evt)
          (dn :request [{:request-method "GET"
                         :path-info      "/"
@@ -157,8 +169,7 @@
        ch1
        :request [#(includes-hdrs {"baz" "lol"
                                   "bar" ["omg" "hi2u"]
-                                  "lol" ["1" "2" "3"]} %) nil]
-       :done nil))
+                                  "lol" ["1" "2" "3"]} %) nil]))
 
   (is (next-msgs
        ch2
@@ -166,7 +177,9 @@
        :response [200 #(includes-hdrs {"foo" "lol"
                                        "bar" ["omg" "hi2u"]
                                        "baz" ["1" "2" "3"]} %) ""]
-       :done nil)))
+       :close nil))
+
+  (is (no-msgs ch2)))
 
 (defcoretest header-assoc!-regression
   [ch1]
@@ -194,7 +207,7 @@
                        :path-info      "/"}])
 
         (= :response evt)
-        (enqueue ch1 [evt val]))))
+        (enqueue ch1 [evt (retain* val)]))))
    {:host "127.0.0.1" :port 4040})
 
   (is (next-msgs
@@ -225,7 +238,7 @@
   (connect
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :open evt)
          (dn :request [{:request-method "GET"
                         :path-info      "/"
@@ -239,7 +252,7 @@
        :body     "Hello"
        :body     "World"
        :body     nil
-       :done     nil))
+       :close    nil))
 
   (is (no-msgs ch1)))
 
@@ -260,7 +273,7 @@
   (connect
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :open evt)
          (dn :request [{:request-method "GET" :path-info "/"} nil]))))
    {:host "127.0.0.1" :port 4040})
@@ -271,7 +284,8 @@
        :response [200 #(includes-hdrs {"connection" "close"} %) :chunked]
        :body     "hello "
        :body     "world"
-       :body     nil)))
+       :body     nil
+       :close    nil)))
 
 (defcoretest sending-a-chunked-body
   [ch1 ch2]
@@ -280,7 +294,7 @@
   (connect
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch2 [evt val])
+       (enqueue ch2 [evt (retain* val)])
        (when (= :open evt)
          (dn :request [{:request-method "GET"
                         :path-info      "/"
@@ -295,228 +309,225 @@
        :request [#(includes-hdrs {"transfer-encoding" "chunked"} %) :chunked]
        :body    "Foo!"
        :body    "Bar!"
-       :body    nil
-       :done    nil))
+       :body    nil))
 
   (is (next-msgs
        ch2
        :open     :dont-care
        :response [200 :dont-care "Hello"]
-       :done     nil)))
+       :close    nil))
+
+  (is (no-msgs ch1 ch2)))
 
 (defcoretest simple-keep-alive-requests
-  [ch1 ch2]
-  (start-conn-tracking-hello-world ch1)
-
-  (dotimes [_ 2]
-    (connect
-     (fn [dn _]
-       (fn [evt val]
-         (enqueue ch2 [evt val])
-         (when (= :open evt)
-           (dn :request [{:request-method "GET" :path-info "/"} nil]))))
-     {:host "localhost" :port 4040})
-
-    (is (next-msgs
-         ch2
-         :open     :dont-care
-         :response [200 {:http-version [1 1] "content-length" "5"} "Hello"]
-         :done     nil))
-
-    (Thread/sleep 100))
+  [ch1 ch2 ch3]
+  (start-server
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt (retain* val)])
+       (when (= :request evt)
+         (dn :response [200 {"content-length" "5"} (buffer "hello")]))))
+   {:pipeline false})
 
   (connect
    (fn [dn _]
+     (doseq* [[evt val] (seq ch3)]
+             (dn evt val))
+
      (fn [evt val]
-       (enqueue ch2 [evt val])
-       (when (= :open evt)
-         (dn :request [{:request-method "GET" :path-info "/zomg"
-                        "transfer-encoding" "chunked" "connection" "close"} :chunked])
-         (dn :body (buffer "HELLO"))
-         (dn :body (buffer "WORLD"))
-         (dn :body nil))))
+       (enqueue ch2 [evt (retain* val)])))
    {:host "localhost" :port 4040})
 
-  (is (next-msgs
-       ch2
-       :open     :dont-care
-       :response [200 :dont-care "Hello"]
-       :done     nil))
+  (is (next-msgs ch2 :open :dont-care))
 
-  (is (next-msgs ch1 :connect nil))
-  (is (no-msgs ch1 ch2)))
+  (enqueue ch3 [:request [{:request-method "GET" :path-info "/"} nil]])
+
+  (is (next-msgs ch2 :response [200 {:http-version [1 1] "content-length" "5"} "hello"]))
+
+  (enqueue ch3
+           [:request [{:request-method     "POST"
+                       :path-info          "/"
+                       "transfer-encoding" "chunked"} :chunked]])
+  (enqueue ch3 [:body (buffer "Hello")])
+  (enqueue ch3 [:body (buffer "World")])
+  (enqueue ch3 [:body nil])
+
+  (is (next-msgs ch2 :response :dont-care))
+
+  (enqueue ch3 [:request [{:request-method "GET" :path-info "/"} nil]])
+
+  (is (next-msgs ch2 :response [200 {:http-version [1 1] "content-length" "5"} "hello"]))
+
+  (enqueue ch3 [:close nil])
+
+  (is (next-msgs
+       ch1
+       :open    :dont-care
+       :request :dont-care
+       :request :dont-care
+       :body    "Hello"
+       :body    "World"
+       :body    nil
+       :request :dont-care
+       :close   nil)))
 
 (defcoretest keepalive-head-requests
   [ch1 ch2]
-  (start-conn-tracking-hello-world ch1)
-
-  (let [pool (client {:pool {:keepalive 1}})]
-    (dotimes [_ 3]
-      (connect
-       pool
-       (fn [dn _]
-         (fn [evt val]
-           (enqueue ch2 [evt val])
-           (when (= :open evt)
-             (dn :request [{:request-method "HEAD" :path-info "/"}]))))
-       {:host "localhost" :port 4040})
-
-      (is (next-msgs
-           ch2
-           :open     :dont-care
-           :response [200 {:http-version [1 1] "content-length" "5"} nil]
-           :done     nil))
-
-      (Thread/sleep 50)))
-
-  (is (next-msgs ch1 :connect nil))
-  (is (no-msgs ch1 ch2)))
-
-(defcoretest keepalive-head-requests-te-chunked
-  [ch1 ch2]
-  (tracking-connections
-   ch1 (fn [dn _]
-         (fn [evt val]
-           (when (= :request evt)
-             (dn :response [200 {"transfer-encoding" "chunked"
-                                 "foo" "bar"} nil])))))
-
-  (let [pool (client {:pool {:keepalive 1}})]
-    (dotimes [_ 3]
-      (connect
-       pool
-       (fn [dn _]
-         (fn [evt val]
-           (enqueue ch2 [evt val])
-           (when (= :open evt)
-             (dn :request [{:request-method "HEAD" :path-info "/"}]))))
-       {:host "localhost" :port 4040})
-
-      (is (next-msgs
-           ch2
-           :open     :dont-care
-           :response [200 {:http-version [1 1] "foo" "bar" "transfer-encoding" "chunked"} nil]
-           :done     nil))
-
-      (Thread/sleep 50)))
-
-  (is (next-msgs ch1 :connect nil))
-  (is (no-msgs ch1 ch2)))
-
-(defcoretest keepalive-204-responses
-  [ch1 ch2]
-  (tracking-connections
-   ch1 (fn [dn _]
-         (fn [evt val]
-           (when (= :request evt)
-             (dn :response [204 {} nil])))))
-
-  (let [pool (client {:pool {:keepalive 1}})]
-    (dotimes [_ 3]
-      (connect
-       pool
-       (fn [dn _]
-         (fn [evt val]
-           (enqueue ch2 [evt val])
-           (when (= :open evt)
-             (dn :request [{:request-method "GET" :path-info "/"}]))))
-       {:host "localhost" :port 4040})
-
-      (is (next-msgs
-           ch2
-           :open     :dont-care
-           :response [204 {:http-version [1 1]} nil]
-           :done     nil))
-
-      (Thread/sleep 50)))
-
-  (is (next-msgs ch1 :connect nil))
-  (is (no-msgs ch1 ch2)))
-
-(defcoretest keepalive-304-responses
-  [ch1 ch2]
-  (tracking-connections
-   ch1 (fn [dn _]
-         (fn [evt val]
-           (when (= :request evt)
-             (dn :response [304 {"content-length" "10000"} nil])))))
-
-  (let [pool (client {:pool {:keepalive 1}})]
-    (dotimes [_ 3]
-      (connect
-       pool
-       (fn [dn _]
-         (fn [evt val]
-           (enqueue ch2 [evt val])
-           (when (= :open evt)
-             (dn :request [{:request-method "GET" :path-info "/"}]))))
-       {:host "localhost" :port 4040})
-
-      (is (next-msgs
-           ch2
-           :open     :dont-care
-           :response [304 {:http-version [1 1] "content-length" "10000"} nil]
-           :done     nil))
-
-      (Thread/sleep 50)))
-
-  (is (next-msgs ch1 :connect nil))
-  (is (no-msgs ch1 ch2)))
-
-(defcoretest keepalive-304-responses-chunked
-  [ch1 ch2]
-  (tracking-connections
-   ch1 (fn [dn _]
-         (fn [evt val]
-           (when (= :request evt)
-             (dn :response [304 {"transfer-encoding" "chunked"} nil])))))
-
-  (let [pool (client {:pool {:keepalive 1}})]
-    (dotimes [_ 3]
-      (connect
-       pool
-       (fn [dn _]
-         (fn [evt val]
-           (enqueue ch2 [evt val])
-           (when (= :open evt)
-             (dn :request [{:request-method "GET" :path-info "/"}]))))
-       {:host "localhost" :port 4040})
-
-      (is (next-msgs
-           ch2
-           :open     :dont-care
-           :response [304 {:http-version [1 1] "transfer-encoding" "chunked"} nil]
-           :done     nil))
-
-      (Thread/sleep 50)))
-
-  (is (next-msgs ch1 :connect nil))
-  (is (no-msgs ch1 ch2)))
-
-(defcoretest sending-done-after-exchange
-  [ch]
-  (start-hello-world-app)
+  (start-server
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt (retain* val)])
+       (when (= :request evt)
+         (dn :response [200 {"content-length" "5"} nil]))))
+   {:pipeline false})
 
   (connect
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch [evt val])
-       (when (= :open evt)
-         (dn :request [{:request-method "GET" :path-info "/"}]))
-       (when (= :done evt)
-         (try
-           (dn :done nil)
-           (catch Exception err
-             (enqueue ch [:abort err]))))))
+       (enqueue ch2 [evt (retain* val)])
+       (cond
+        (= :open evt)
+        (dn :request [{:request-method "HEAD" :path-info "/"} nil])
+
+        (= :response evt)
+        (dn :request [{:request-method "HEAD" :path-info "/zomg"} nil]))))
    {:host "localhost" :port 4040})
 
   (is (next-msgs
-       ch
-       :open     :dont-care
-       :response [200 :dont-care "Hello"]
-       :done     nil))
+       ch1
+       :open    :dont-care
+       :request :dont-care
+       :request :dont-care))
 
-  (is (no-msgs ch)))
+  (is (next-msgs
+       ch2
+       :open :dont-care
+       :response :dont-care
+       :response :dont-care)))
+
+(defcoretest keepalive-head-requests-te-chunked
+  [ch1 ch2]
+  (start-server
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt (retain* val)])
+       (when (= :request evt)
+         (dn :response [200 {"transfer-encoding" "chunked"} nil]))))
+   {:pipeline false})
+
+  (connect
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch2 [evt (retain* val)])
+       (cond
+        (= :open evt)
+        (dn :request [{:request-method "HEAD" :path-info "/"} nil])
+
+        (= :response evt)
+        (dn :request [{:request-method "HEAD" :path-info "/zomg"} nil]))))
+   {:host "localhost" :port 4040})
+
+  (is (next-msgs
+       ch1
+       :open    :dont-care
+       :request [#(includes-hdrs {:request-method "HEAD"} %) nil]
+       :request [#(includes-hdrs {:request-method "HEAD"} %) nil]))
+
+  (is (next-msgs
+       ch2
+       :open :dont-care
+       :response [200 #(includes-hdrs {"transfer-encoding" "chunked"} %) nil]
+       :response [200 #(includes-hdrs {"transfer-encoding" "chunked"} %) nil])))
+
+;; (defcoretest keepalive-204-responses
+;;   [ch1 ch2]
+;;   (tracking-connections
+;;    ch1 (fn [dn _]
+;;          (fn [evt val]
+;;            (when (= :request evt)
+;;              (dn :response [204 {} nil])))))
+
+;;   (let [pool (client {:pool {:keepalive 1}})]
+;;     (dotimes [_ 3]
+;;       (connect
+;;        pool
+;;        (fn [dn _]
+;;          (fn [evt val]
+;;            (enqueue ch2 [evt val])
+;;            (when (= :open evt)
+;;              (dn :request [{:request-method "GET" :path-info "/"}]))))
+;;        {:host "localhost" :port 4040})
+
+;;       (is (next-msgs
+;;            ch2
+;;            :open     :dont-care
+;;            :response [204 {:http-version [1 1]} nil]
+;;            :done     nil))
+
+;;       (Thread/sleep 50)))
+
+;;   (is (next-msgs ch1 :connect nil))
+;;   (is (no-msgs ch1 ch2)))
+
+;; (defcoretest keepalive-304-responses
+;;   [ch1 ch2]
+;;   (tracking-connections
+;;    ch1 (fn [dn _]
+;;          (fn [evt val]
+;;            (when (= :request evt)
+;;              (dn :response [304 {"content-length" "10000"} nil])))))
+
+;;   (let [pool (client {:pool {:keepalive 1}})]
+;;     (dotimes [_ 3]
+;;       (connect
+;;        pool
+;;        (fn [dn _]
+;;          (fn [evt val]
+;;            (enqueue ch2 [evt val])
+;;            (when (= :open evt)
+;;              (dn :request [{:request-method "GET" :path-info "/"}]))))
+;;        {:host "localhost" :port 4040})
+
+;;       (is (next-msgs
+;;            ch2
+;;            :open     :dont-care
+;;            :response [304 {:http-version [1 1] "content-length" "10000"} nil]
+;;            :done     nil))
+
+;;       (Thread/sleep 50)))
+
+;;   (is (next-msgs ch1 :connect nil))
+;;   (is (no-msgs ch1 ch2)))
+
+;; (defcoretest keepalive-304-responses-chunked
+;;   [ch1 ch2]
+;;   (tracking-connections
+;;    ch1 (fn [dn _]
+;;          (fn [evt val]
+;;            (when (= :request evt)
+;;              (dn :response [304 {"transfer-encoding" "chunked"} nil])))))
+
+;;   (let [pool (client {:pool {:keepalive 1}})]
+;;     (dotimes [_ 3]
+;;       (connect
+;;        pool
+;;        (fn [dn _]
+;;          (fn [evt val]
+;;            (enqueue ch2 [evt val])
+;;            (when (= :open evt)
+;;              (dn :request [{:request-method "GET" :path-info "/"}]))))
+;;        {:host "localhost" :port 4040})
+
+;;       (is (next-msgs
+;;            ch2
+;;            :open     :dont-care
+;;            :response [304 {:http-version [1 1] "transfer-encoding" "chunked"} nil]
+;;            :done     nil))
+
+;;       (Thread/sleep 50)))
+
+;;   (is (next-msgs ch1 :connect nil))
+;;   (is (no-msgs ch1 ch2)))
 
 (defn- request-done?
   [evt val]
@@ -530,7 +541,7 @@
   (server/start
    (fn [dn _]
      (fn [evt val]
-       (enqueue ch1 [evt val])
+       (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
          (dn :response [100]))
 
@@ -542,7 +553,7 @@
      (doseq* [args (seq ch3)]
        (apply dn args))
      (fn [evt val]
-       (enqueue ch2 [evt val])
+       (enqueue ch2 [evt (retain* val)])
 
        (when (= :open evt)
          (dn :request [{:path-info       "/"
@@ -566,13 +577,11 @@
   (is (next-msgs
        ch1
        :body "Hello"
-       :body nil
-       :done nil))
+       :body nil))
 
   (is (next-msgs
        ch2
-       :response [200 {:http-version    [1 1] "content-length" "5"} "Hello"]
-       :done nil)))
+       :response [200 {:http-version [1 1] "content-length" "5"} "Hello"])))
 
 ;; (defcoretest issuing-immediate-abort)
 ;; (defcoretest defaults-to-port-80
@@ -583,225 +592,225 @@
 
 ;; ==== Higher level of abstraction tests
 
-(defcoretest simple-deferred-response-requests
-  [ch1]
-  (start-hello-world-app ch1)
+;; (defcoretest simple-deferred-response-requests
+;;   [ch1]
+;;   (start-hello-world-app ch1)
 
-  (doseq [method ["GET" "POST" "PUT" "DELETE"]]
-    (is (= @(request method "http://localhost:4040/")
-           [200
-            {:http-version [1 1]
-             "content-length" "5"
-             "content-type"   "text/plain"
-             "connection"     "close"}
-            (buffer "Hello")]))
+;;   (doseq [method ["GET" "POST" "PUT" "DELETE"]]
+;;     (is (= @(request method "http://localhost:4040/")
+;;            [200
+;;             {:http-version [1 1]
+;;              "content-length" "5"
+;;              "content-type"   "text/plain"
+;;              "connection"     "close"}
+;;             (buffer "Hello")]))
 
-    (is (next-msgs
-         ch1
-         :request [{:http-version   [1 1]
-                    :script-name    ""
-                    :path-info      "/"
-                    :query-string   ""
-                    :request-method method
-                    :remote-addr    :dont-care
-                    :local-addr     :dont-care
-                    "host"          "localhost"} nil]
-         :done nil))))
+;;     (is (next-msgs
+;;          ch1
+;;          :request [{:http-version   [1 1]
+;;                     :script-name    ""
+;;                     :path-info      "/"
+;;                     :query-string   ""
+;;                     :request-method method
+;;                     :remote-addr    :dont-care
+;;                     :local-addr     :dont-care
+;;                     "host"          "localhost"} nil]
+;;          :done nil))))
 
-(defcoretest passing-headers-to-deferred-request
-  [ch1]
-  (start-hello-world-app ch1)
+;; (defcoretest passing-headers-to-deferred-request
+;;   [ch1]
+;;   (start-hello-world-app ch1)
 
-  (GET "http://localhost:4040/foo" {"x-foo" "barbar"})
+;;   (GET "http://localhost:4040/foo" {"x-foo" "barbar"})
 
-  (is (next-msgs
-       ch1
-       :request [#(includes-hdrs {:path-info "/foo" "x-foo" "barbar"} %) nil])))
+;;   (is (next-msgs
+;;        ch1
+;;        :request [#(includes-hdrs {:path-info "/foo" "x-foo" "barbar"} %) nil])))
 
-(defcoretest connecting-without-uri-string
-  [ch1]
-  (start-hello-world-app ch1)
+;; (defcoretest connecting-without-uri-string
+;;   [ch1]
+;;   (start-hello-world-app ch1)
 
-  (GET {:host "localhost" :port 4040 :path-info "/bar"})
+;;   (GET {:host "localhost" :port 4040 :path-info "/bar"})
 
-  (is (next-msgs
-       ch1
-       :request [#(includes-hdrs {:path-info "/bar"} %) nil])))
+;;   (is (next-msgs
+;;        ch1
+;;        :request [#(includes-hdrs {:path-info "/bar"} %) nil])))
 
-(defcoretest errors-abort-response-with-async-val-api
-  nil
+;; (defcoretest errors-abort-response-with-async-val-api
+;;   nil
 
-  (is (thrown-with-msg? Exception #"Connection refused"
-        @(GET "http://localhost:4040"))))
+;;   (is (thrown-with-msg? Exception #"Connection refused"
+;;         @(GET "http://localhost:4040"))))
 
-(defcoretest simple-cases-with-async-val-api
-  [ch1]
-  (start-hello-world-app ch1)
+;; (defcoretest simple-cases-with-async-val-api
+;;   [ch1]
+;;   (start-hello-world-app ch1)
 
-  (GET "http://localhost:4040")
+;;   (GET "http://localhost:4040")
 
-  (is (next-msgs
-       ch1
-       :request [#(includes-hdrs {:path-info "/" "host" "localhost"} %) nil])))
+;;   (is (next-msgs
+;;        ch1
+;;        :request [#(includes-hdrs {:path-info "/" "host" "localhost"} %) nil])))
 
-(defcoretest handling-chunked-response-bodies-with-async-val-api
-  [ch1]
-  (server/start
-   (fn [dn _]
-     (fn [evt val]
-       (when (= :request evt)
-         (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
-         (dn :body (buffer "Hello"))
-         (dn :body (buffer "World"))
-         (dn :body (buffer "these are"))
-         (dn :body (buffer "chunks"))
-         (dn :body nil)))))
+;; (defcoretest handling-chunked-response-bodies-with-async-val-api
+;;   [ch1]
+;;   (server/start
+;;    (fn [dn _]
+;;      (fn [evt val]
+;;        (when (= :request evt)
+;;          (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
+;;          (dn :body (buffer "Hello"))
+;;          (dn :body (buffer "World"))
+;;          (dn :body (buffer "these are"))
+;;          (dn :body (buffer "chunks"))
+;;          (dn :body nil)))))
 
-  (let [[status hdrs body] @(GET "http://localhost:4040/")]
-    (is (= 200 status))
-    (is (= (hdrs "transfer-encoding") "chunked"))
-    (is (seq? body))
-    (is (= ["Hello" "World" "these are" "chunks"]
-           @(doasync (join body [])
-              (fn [[chunk & more :as chunks] aggregated]
-                (if chunks
-                  (recur* (join more (conj aggregated (to-string chunk))))
-                  aggregated)))))))
+;;   (let [[status hdrs body] @(GET "http://localhost:4040/")]
+;;     (is (= 200 status))
+;;     (is (= (hdrs "transfer-encoding") "chunked"))
+;;     (is (seq? body))
+;;     (is (= ["Hello" "World" "these are" "chunks"]
+;;            @(doasync (join body [])
+;;               (fn [[chunk & more :as chunks] aggregated]
+;;                 (if chunks
+;;                   (recur* (join more (conj aggregated (to-string chunk))))
+;;                   aggregated)))))))
 
-(defcoretest handling-request-bodies-with-async-val-api
-  [ch1]
-  (start-hello-world-app ch1)
+;; (defcoretest handling-request-bodies-with-async-val-api
+;;   [ch1]
+;;   (start-hello-world-app ch1)
 
-  (GET "http://localhost:4040/" {"content-length" "5"} "Hello")
+;;   (GET "http://localhost:4040/" {"content-length" "5"} "Hello")
 
-  (is (next-msgs
-       ch1
-       :request [#(includes-hdrs {"content-length" "5"} %) "Hello"]
-       :done    nil))
+;;   (is (next-msgs
+;;        ch1
+;;        :request [#(includes-hdrs {"content-length" "5"} %) "Hello"]
+;;        :done    nil))
 
-  (GET "http://localhost:4040/"
-    {"transfer-encoding" "chunked"}
-    ["Hello" "world" "these" "are" "some" "chunks"])
+;;   (GET "http://localhost:4040/"
+;;     {"transfer-encoding" "chunked"}
+;;     ["Hello" "world" "these" "are" "some" "chunks"])
 
-  (is (next-msgs
-       ch1
-       :request [#(includes-hdrs {"transfer-encoding" "chunked"} %) :chunked]
-       :body    "Hello"
-       :body    "world"
-       :body    "these"
-       :body    "are"
-       :body    "some"
-       :body    "chunks"
-       :body    nil
-       :done    nil))
+;;   (is (next-msgs
+;;        ch1
+;;        :request [#(includes-hdrs {"transfer-encoding" "chunked"} %) :chunked]
+;;        :body    "Hello"
+;;        :body    "world"
+;;        :body    "these"
+;;        :body    "are"
+;;        :body    "some"
+;;        :body    "chunks"
+;;        :body    nil
+;;        :done    nil))
 
-  (let [ch (channel)]
-    (future
-      (doseq [chunk ["Hello" "world" "these" "are" "some" "chunks"]]
-        (Thread/sleep 10)
-        (put ch chunk))
-      (close ch))
+;;   (let [ch (channel)]
+;;     (future
+;;       (doseq [chunk ["Hello" "world" "these" "are" "some" "chunks"]]
+;;         (Thread/sleep 10)
+;;         (put ch chunk))
+;;       (close ch))
 
-    (GET "http://localhost:4040/"
-      {"transfer-encoding" "chunked"}
-      (seq ch))
+;;     (GET "http://localhost:4040/"
+;;       {"transfer-encoding" "chunked"}
+;;       (seq ch))
 
-    (is (next-msgs
-         ch1
-         :request [#(includes-hdrs {"transfer-encoding" "chunked"} %) :chunked]
-         :body    "Hello"
-         :body    "world"
-         :body    "these"
-         :body    "are"
-         :body    "some"
-         :body    "chunks"
-         :body    nil
-         :done    nil))))
+;;     (is (next-msgs
+;;          ch1
+;;          :request [#(includes-hdrs {"transfer-encoding" "chunked"} %) :chunked]
+;;          :body    "Hello"
+;;          :body    "world"
+;;          :body    "these"
+;;          :body    "are"
+;;          :body    "some"
+;;          :body    "chunks"
+;;          :body    nil
+;;          :done    nil))))
 
 ;; If test fails, make sure max time not reached
-(defcoretest ^{:network true} pause-resume-with-async-val-api
-  [ch1 ch2 ch3]
-  ;; Scumbag server
-  (server/start
-   (fn [dn _]
-     (doasync (seq ch3)
-       (fn [[args]]
-         (apply dn args)))
-     (fn [evt val]
-       (when (= :abort evt)
-         (.printStackTrace val))
-       (when (= :request evt)
-         (dn :pause nil))
+;; (defcoretest ^{:network true} pause-resume-with-async-val-api
+;;   [ch1 ch2 ch3]
+;;   ;; Scumbag server
+;;   (server/start
+;;    (fn [dn _]
+;;      (doasync (seq ch3)
+;;        (fn [[args]]
+;;          (apply dn args)))
+;;      (fn [evt val]
+;;        (when (= :abort evt)
+;;          (.printStackTrace val))
+;;        (when (= :request evt)
+;;          (dn :pause nil))
 
-       (when (= :body evt)
-         (if val
-           (enqueue ch1 val)
-           (do
-             (close ch1)
-             (dn :response [200 {"content-length" "5"} (buffer "Hello")]))))))
-   {:timeout 120})
+;;        (when (= :body evt)
+;;          (if val
+;;            (enqueue ch1 val)
+;;            (do
+;;              (close ch1)
+;;              (dn :response [200 {"content-length" "5"} (buffer "Hello")]))))))
+;;    {:timeout 120})
 
-  (future
-    (dotimes [_ 5]
-      (Thread/sleep 700)
-      (dotimes [_ 10000]
-        (put ch2 (buffer "HAMMER TIME!"))))
-    (close ch2)
+;;   (future
+;;     (dotimes [_ 5]
+;;       (Thread/sleep 700)
+;;       (dotimes [_ 10000]
+;;         (put ch2 (buffer "HAMMER TIME!"))))
+;;     (close ch2)
 
-    (ch3 [:resume nil]))
+;;     (ch3 [:resume nil]))
 
-  (POST "http://localhost:4040/" {"transfer-encoding" "chunked"} (seq ch2))
+;;   (POST "http://localhost:4040/" {"transfer-encoding" "chunked"} (seq ch2))
 
-  (let [actual (buffer (blocking (seq ch1)))
-        times  (* 5 10000)
-        length (* times 12)]
+;;   (let [actual (buffer (blocking (seq ch1)))
+;;         times  (* 5 10000)
+;;         length (* times 12)]
 
-    (is (= (remaining actual) length))
-    (is (= actual (buffer (repeatedly times #(buffer "HAMMER TIME!")))))))
+;;     (is (= (remaining actual) length))
+;;     (is (= actual (buffer (repeatedly times #(buffer "HAMMER TIME!")))))))
 
-(defcoretest exception-handling-request-body
-  [ch1]
-  (server/start
-   (fn [dn _]
-     (fn [evt val]
-       (enqueue ch1 [evt val]))))
+;; (defcoretest exception-handling-request-body
+;;   [ch1]
+;;   (server/start
+;;    (fn [dn _]
+;;      (fn [evt val]
+;;        (enqueue ch1 [evt val]))))
 
-  (POST "http://localhost:4040/"
-    {"transfer-encoding" "chunked"}
-    (async-seq
-      (cons (buffer "Hello")
-            (async-seq
-              (throw (Exception. "BOOM"))))))
+;;   (POST "http://localhost:4040/"
+;;     {"transfer-encoding" "chunked"}
+;;     (async-seq
+;;       (cons (buffer "Hello")
+;;             (async-seq
+;;               (throw (Exception. "BOOM"))))))
 
-  (Thread/sleep 100)
+;;   (Thread/sleep 100)
 
-  (is (next-msgs
-       ch1
-       :request :dont-care
-       :body    "Hello"
-       :abort   :dont-care)))
+;;   (is (next-msgs
+;;        ch1
+;;        :request :dont-care
+;;        :body    "Hello"
+;;        :abort   :dont-care)))
 
-(defcoretest early-response-body-termination
-  [ch1]
-  (server/start
-   (fn [dn _]
-     (fn [evt val]
-       (enqueue ch1 [evt val])
-       (when (= :request evt)
-         (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
-         (dn :body (buffer "Hello"))))))
+;; (defcoretest early-response-body-termination
+;;   [ch1]
+;;   (server/start
+;;    (fn [dn _]
+;;      (fn [evt val]
+;;        (enqueue ch1 [evt val])
+;;        (when (= :request evt)
+;;          (dn :response [200 {"transfer-encoding" "chunked"} :chunked])
+;;          (dn :body (buffer "Hello"))))))
 
-  (let [[_ _ body] @(GET "http://localhost:4040/")
-        body @body more (next body)]
+;;   (let [[_ _ body] @(GET "http://localhost:4040/")
+;;         body @body more (next body)]
 
-    (is (= (buffer "Hello") (first body)))
+;;     (is (= (buffer "Hello") (first body)))
 
-    (is (= true (interrupt more)))
+;;     (is (= true (interrupt more)))
 
-    (is (next-msgs
-         ch1
-         :request :dont-care
-         :abort   #(instance? IOException %)))))
+;;     (is (next-msgs
+;;          ch1
+;;          :request :dont-care
+;;          :abort   #(instance? IOException %)))))
 
 ;; (defcoretest exception-handling-request-body)
 ;; Sending request w/ content-length and invalid body length

@@ -1,6 +1,7 @@
 (ns support.helpers
   (:use
    clojure.test
+   support.assertions
    support.string
    momentum.core)
   (:require
@@ -8,10 +9,6 @@
   (:import
    [momentum.async
     TimeoutException]
-   [org.jboss.netty.buffer
-    ChannelBuffer]
-   [java.nio
-    ByteBuffer]
    [java.net
     Socket]
    [java.util.concurrent
@@ -29,10 +26,11 @@
 
 (defn- stop-servers
   [servers]
-  (if (sequential? servers)
-    (doseq [server servers]
-      (server/stop server))
-    (server/stop servers)))
+  (when servers
+    (if (sequential? servers)
+      (doseq [server servers]
+        (server/stop server))
+      (server/stop servers))))
 
 (defn- close-channels
   []
@@ -49,7 +47,8 @@
           (f))
         (finally
          (close-channels)
-         (stop-servers server)))
+         (stop-servers server)
+         (Thread/sleep 10)))
       (f))))
 
 (defmacro defcoretest
@@ -72,6 +71,7 @@
   ([f] (socket-connect f 4040))
   ([f port]
      (let [sock (Socket. "127.0.0.1" port)]
+       (.setSoTimeout sock 2000)
        (let [in (.getInputStream sock) out (.getOutputStream sock)]
          (try
            (f sock in out)
@@ -134,92 +134,11 @@
   (.write out (.getBytes (apply str strs)))
   (.flush out))
 
-(defn normalize
-  [val]
-  (try
-    (cond
-     (vector? val)
-     (vec (map normalize val))
-
-     (map? val)
-     (into {} (map (comp vec normalize vec) val))
-
-     (buffer? val)
-     (to-string val)
-
-     (instance? ChannelBuffer val)
-     (.toString val "UTF-8")
-
-     (instance? ByteBuffer val)
-     (let [val (.duplicate val)
-           arr (byte-array (.remaining val))]
-       (.get val arr)
-       (String. arr))
-
-     :else
-     val)
-    (catch Exception e (.printStackTrace e))))
-
-(defn match-values
-  [val val*]
-  (cond
-   (= val :dont-care)
-   true
-
-   (set? val)
-   ((first val) val*)
-
-   (and (map? val) (= (count val) (count val*)))
-   (every? (fn [[k v]] (match-values v (val* k))) val)
-
-   (and (vector? val) (vector? val*) (= (count val) (count val*)))
-   (every? #(apply match-values %) (map vector val val*))
-
-   :else
-   (or (= val val*)
-       (and (fn? val) (val val*)))))
-
 (defn includes-hdrs
   [a b]
   (= a (select-keys b (keys a))))
 
 ;; === Matchers
-
-(defn- blocking*
-  [seq]
-  (concat (map normalize (blocking seq 2000)) [::timeout]))
-
-(defn assert-no-msgs-for
-  [f msg chs]
-  (Thread/sleep 50)
-  (let [received (into {} (filter (fn [[_ ch]] (not= 0 (count ch))) chs))]
-    (f {:type     (if (empty? received) :pass :fail)
-        :message  msg
-        :expected []
-        :actual   received})))
-
-(defn assert-next-msgs
-  [f msg ch & expected]
-  (when (odd? (count expected))
-    (throw (IllegalArgumentException. "Requires even number of messages")))
-
-  (let [expected (partition 2 expected)
-        actual   (take (count expected) (blocking* (seq ch)))
-        pass?    (every? identity (map #(match-values (vec %1) %2) expected actual))]
-    (f {:type     (if pass? :pass :fail)
-        :message  msg
-        :expected expected
-        :actual   actual})))
-
-(defmethod assert-expr 'next-msgs
-  [msg form]
-  (let [[_ ch & stmts] form]
-    `(assert-next-msgs #(do-report %) ~msg ~ch ~@stmts)))
-
-(defmethod assert-expr 'no-msgs [msg form]
-  (let [[_ & args] form
-        chs (zipmap (map str args) args)]
-    `(assert-no-msgs-for #(do-report %) ~msg ~chs)))
 
 (defn- read-n-as-str
   [n]
@@ -249,7 +168,7 @@
   (loop [[segment & rest] segments str str]
     (if (and segment (seq str))
       (let [len (segment-len segment)]
-        (when (segment-match? segment (subs str 0 len))
+        (when (segment-match? segment (subs str 0 (min len (count str))))
           (recur rest (subs str len))))
       ;; Otherwise, make sure the segment is nil and the string is
       ;; empty, aka both the expected value and the actual value have

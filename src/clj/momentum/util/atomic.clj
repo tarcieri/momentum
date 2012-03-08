@@ -1,4 +1,4 @@
-(ns momentum.core.atomic)
+(ns momentum.util.atomic)
 
 (defn get-and-set!
   "Atomically sets to the given value and returns the old value."
@@ -17,11 +17,21 @@
 (defmacro swap-then!
   "Invokes swap! with the first two arguments followed by invoking the
   third argument passing the return value of swap!"
-  [atom swap-fn
-   then-fn]
+  [atom swap-fn then-fn]
   `(let [res# (swap! ~atom ~swap-fn)]
      (~then-fn res#)
      res#))
+
+(defn get-swap-then!
+  "Atomically swaps the value of atom with the first function, then
+  invokes the second function with the original value of the atom and
+  the new value it was set to."
+  [atom swap-fn then-fn]
+  (loop [val @atom]
+    (let [new-val (swap-fn val)]
+      (if (compare-and-set! atom val new-val)
+        (then-fn val new-val)
+        (recur @atom)))))
 
 (defmacro swap-assoc!
   "Atomically swaps the value of the atom by calling assoc on the old

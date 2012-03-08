@@ -1,380 +1,99 @@
 (ns momentum.net.core
   (:use
-   momentum.core
-   momentum.core.atomic
-   momentum.net.message)
+   momentum.core)
   (:import
-   [org.jboss.netty.buffer
-    ChannelBuffer
-    ChannelBuffers]
-   [org.jboss.netty.channel
-    Channels
-    ChannelEvent
-    ChannelFuture
-    ChannelFutureListener
-    ChannelHandlerContext
-    ChannelState
-    ChannelStateEvent
-    ChannelUpstreamHandler
-    ExceptionEvent
-    MessageEvent]
-   [org.jboss.netty.channel.group
-    ChannelGroup
-    ChannelGroupFuture
-    ChannelGroupFutureListener
-    DefaultChannelGroup]
+   [momentum.reactor
+    ChannelHandler
+    Upstream
+    UpstreamFactory]
    [java.net
-    InetSocketAddress]
+    InetSocketAddress
+    Socket]
    [java.nio.channels
-    ClosedChannelException]
-   [java.util
-    LinkedList]
-   [java.util.concurrent
-    Executors]))
+    SocketChannel]))
 
-(defn mk-thread-pool
-  []
-  (Executors/newCachedThreadPool))
-
-(defn mk-channel-group
-  []
-  (DefaultChannelGroup.))
-
-(defn mk-channel-pipeline
-  []
-  (Channels/pipeline))
-
-(defn ^InetSocketAddress mk-socket-addr
-  [[host port]]
-  (let [port (or port 80)]
+(defn- ^InetSocketAddress to-socket-addr
+  [[^String host port]]
+  (let [port (int (or port 80))]
     (if host
       (InetSocketAddress. host port)
       (InetSocketAddress. port))))
 
-;; ==== Futures
-
-(defn ch-future-as-async-val
-  [future]
-  (when future
-    (let [d (async-val)]
-      (.addListener
-       future
-       (reify ChannelFutureListener
-         (operationComplete [_ _]
-           (put d (.isSuccess future)))))
-      d)))
-
-(defn ch-group-future-as-async-val
-  [future]
-  (when future
-    (let [d (async-val)]
-      (.addListener
-       future
-       (reify ChannelGroupFutureListener
-         (operationComplete [_ _]
-           (put d (.isCompleteSuccess future))))))))
-
-;; ==== Helper functions for tracking events
-(defn channel-open-event?
-  [^ChannelStateEvent evt]
-  (and (instance? ChannelStateEvent evt)
-       (= ChannelState/OPEN (.getState evt))
-       (.getValue evt)))
-
-(defn channel-connected-event?
-  [^ChannelStateEvent evt]
-  (and (instance? ChannelStateEvent evt)
-       (= ChannelState/CONNECTED (.getState evt))
-       (.getValue evt)))
-
-(defn channel-disconnected-event?
-  [^ChannelStateEvent evt]
-  (and (instance? ChannelStateEvent evt)
-       (= ChannelState/CONNECTED (.getState evt))
-       (not (.getValue evt))))
-
-(defn message-event?
-  [evt]
-  (instance? MessageEvent evt))
-
-(defn interest-changed-event?
-  [^ChannelStateEvent evt]
-  (and (instance? ChannelStateEvent evt)
-       (= ChannelState/INTEREST_OPS (.getState evt))))
-
-(defn exception-event?
-  [evt]
-  (instance? ExceptionEvent evt))
-
-;; ==== Handlers
-
-(defrecord State
-    [upstream
-     downstream
-     open?
-     aborting?
-     writable?
-     event-lock
-     state-queue
-     message-queue])
-
-(defrecord NettyState
-    [ch
-     last-write])
-
-(defn- mk-initial-state
-  [dn]
-  (State.
-   nil             ;; upstream
-   dn              ;; downstream
-   true            ;; open?
-   false           ;; aborting?
-   true            ;; writable?
-   (atom true)     ;; event-lock
-   (LinkedList.)   ;; state-queue
-   (LinkedList.))) ;; message-queue
-
-(defn- mk-initial-netty-state
-  []
-  (NettyState. nil nil))
-
-(declare handle-err)
-
-(defn- addr->ip
-  [addr]
+(defn- from-socket-addr
+  [^InetSocketAddress addr]
   [(.. addr getAddress getHostAddress) (.getPort addr)])
 
 (defn- channel-info
-  [ch]
-  {:local-addr  (addr->ip (.getLocalAddress ch))
-   :remote-addr (addr->ip (.getRemoteAddress ch))})
-
-(defn- close-channel
-  [current-state]
-  (let [ch (.ch current-state)]
-    (doasync (ch-future-as-async-val (.last-write current-state))
-      (fn [_]
-        (when (.isOpen ch)
-          ;; Because there could be a race condition, we still need to
-          ;; catch ClosedChannelExceptions
-          (try
-            (.close ch)
-            (catch ClosedChannelException _)))))))
-
-(defn- try-acquire
-  [current-state evt val]
-  (let [event-lock    (.event-lock current-state)
-        state-queue   (.state-queue current-state)
-        message-queue (.message-queue current-state)]
-    (locking event-lock
-      ;; Clear the queues if the upstream is an abort
-      (when (= :abort evt)
-        (.clear state-queue)
-        (.clear message-queue))
-      ;; Add the event to the appropriate queue
-      (if (#{:pause :resume :abort} evt)
-        (.add state-queue [evt val])
-        (.add message-queue [evt val]))
-      ;; Finally, attempt to get the lock
-      (let [acquired? @event-lock]
-        (when acquired? (reset! event-lock false))
-        acquired?))))
-
-(defn- poll-queue*
-  [current-state]
-  (or (.. current-state state-queue poll)
-      (.. current-state message-queue poll)))
-
-(defn- poll-queue
-  [current-state]
-  (let [event-lock (.event-lock current-state)]
-    (locking event-lock
-      (let [next (poll-queue* current-state)]
-        (when-not next
-          (reset! event-lock true))
-        next))))
-
-(defn- abandon-lock
-  [current-state]
-  (let [event-lock (.event-lock current-state)]
-    (locking event-lock
-      (reset! event-lock true))))
-
-(defn- handle-interest-ops
-  [state evt upstream]
-  (let [current-state @state
-        was-writable? (.writable? current-state)
-        now-writable? (= :resume evt)]
-
-    (when (not= was-writable? now-writable?)
-      (swap! state #(assoc % :writable? now-writable?))
-      (upstream evt nil))))
-
-;; Handles sending messages upstream in a sane and thread-safe way.
-;;
-;; When sending upstream, a lock must first be aquired. When aquired,
-;; the message can be sent upstream, otherwise, the messages are queued
-;; up.
-(defn- send-upstream
-  [state evt val current-state]
-  (let [upstream  (.upstream current-state)
-        acquired? (try-acquire current-state evt val)]
-    (when acquired?
-      (try
-        (loop []
-          (when-let [[evt val] (poll-queue current-state)]
-            (cond
-             (#{:pause :resume} evt)
-             (handle-interest-ops state evt upstream)
-
-             (= :schedule evt)
-             (val)
-
-             :else
-             (upstream evt val))
-            (recur)))
-        (catch Exception err
-          (handle-err state err @state true)
-          (abandon-lock current-state))))))
-
-(defn- handle-err
-  ([state err current-state]
-     (handle-err state err current-state false))
-  ([state err current-state locked?]
-     (when (not (.aborting? current-state))
-       (let [upstream (.upstream current-state)]
-         (swap-then!
-          state
-          #(assoc % :aborting? true)
-          (fn [^State current-state]
-            (try
-              ((.downstream current-state) :close nil)
-              (catch Exception _))
-            (when upstream
-              (try
-                (if locked?
-                  (upstream :abort err)
-                  (send-upstream state :abort err current-state))
-                (catch Exception _)))))))))
+  [^SocketChannel ch]
+  (let [sock (.socket ch)]
+    {:local-addr  (from-socket-addr (.getLocalSocketAddress sock))
+     :remote-addr (from-socket-addr (.getRemoteSocketAddress sock))}))
 
 (defn- mk-downstream
-  [next-dn state]
+  [^ChannelHandler dn]
   (fn [evt val]
-    (let [current-state @state]
-      (when-not (.upstream current-state)
-        (throw (Exception. "Not callbable yet")))
+    (cond
+     (= :message evt)
+     (.sendMessageDownstream dn val)
 
-      (cond
-       (= :schedule evt)
-       (send-upstream state :schedule val current-state)
+     (= :close evt)
+     (.sendCloseDownstream dn)
 
-       (= :abort evt)
-       (handle-err state val current-state)
+     (= :pause evt)
+     (.sendPauseDownstream dn)
 
-       :else
-       (next-dn evt val)))))
+     (= :resume evt)
+     (.sendResumeDownstream dn)
 
-(defn handler
-  [app]
-  (fn [dn env]
-    (let [state    (atom (mk-initial-state dn))
-          upstream (app (mk-downstream dn state) env)]
-      ;; Save off the upstream
-      (swap! state #(assoc % :upstream upstream))
-      ;; And now the upstream
-      (fn [evt val]
-        (try
-          (let [current-state @state]
-            (cond
-             (= :abort evt)
-             (when (and (not (.aborting? current-state))
-                        (.open? current-state))
-               (swap-then!
-                state
-                #(assoc % :aborting? true)
-                #(send-upstream state evt val %)))
+     (= :abort evt)
+     (.sendAbortDownstream dn val)
 
-             (= :close evt)
-             (do
-               (swap-then!
-                state
-                #(assoc % :open? false)
-                #(send-upstream state evt val %)))
+     :else
+     (throw (Exception. (str "Unknown event : " evt))))))
 
-             :else
-             (send-upstream state evt val current-state)))
-          (catch Exception err
-            (handle-err state err @state)))))))
+(defn- mk-upstream
+  [^ChannelHandler downstream upstream]
+  (reify Upstream
+    (sendOpen [_ ch]
+      (upstream :open (channel-info ch)))
 
-(defn- encode
-  [val]
-  (if (buffer? val)
-    (to-channel-buffer val)
-    val))
+    (sendMessage [_ buf]
+      (upstream :message buf))
 
-(defn- mk-netty-downstream-fn
-  [state]
-  (fn [evt val]
-    (let [current-state @state]
-      (cond
-       (= :message evt)
-       (let [ch (.ch current-state)]
-         (when-not (.isOpen ch)
-           (throw (ClosedChannelException.)))
+    (sendClose [_]
+      (upstream :close nil))
 
-         (let [last-write (.write ch (encode val))]
-           (swap! state #(assoc % :last-write last-write))))
+    (sendPause [_]
+      (upstream :pause nil))
 
-       (= :close evt)
-       (close-channel current-state)
+    (sendResume [_]
+      (upstream :resume nil))
 
-       (= :pause evt)
-       (.setReadable (.ch current-state) false)
+    (sendAbort [_ err]
+      (upstream :abort err))))
 
-       (= :resume evt)
-       (.setReadable (.ch current-state) true)
+(defn- mk-upstream-factory
+  [app {host :host port :port :as opts}]
+  (let [addr (to-socket-addr [host port])]
+    (reify UpstreamFactory
+      (getAddr [_] addr)
+      (getUpstream [_ dn]
+        (mk-upstream dn (app (mk-downstream dn) {}))))))
 
-       :else
-       (throw (Exception. (str "Unexpected event: " evt)))))))
+(defn start-tcp-server
+  [app opts]
+  (let [factory (mk-upstream-factory app opts)
+        handle  (.startTcpServer reactors factory)]
+    (reify
+      clojure.lang.IFn
+      (invoke [_] (.close handle))
 
-(defn mk-upstream-handler
-  [^ChannelGroup channel-group app _]
-  (let [state    (atom (mk-initial-netty-state))
-        app      (handler app)
-        upstream (app (mk-netty-downstream-fn state) {})]
+      clojure.lang.IDeref
+      (deref [this]
+        @(.bound handle)
+        true))))
 
-    ;; The actual Netty upstream handler.
-    (reify ChannelUpstreamHandler
-      (^void handleUpstream [_ ^ChannelHandlerContext ctx ^ChannelEvent evt]
-        (let [current-state ^State @state]
-          (cond
-           ;; Handle message events
-           (message-event? evt)
-           (let [[evt val] (decode (.getMessage ^MessageEvent evt))]
-             (upstream evt val))
-
-           (interest-changed-event? evt)
-           (if (.isWritable (.getChannel evt))
-             (upstream :resume nil)
-             (upstream :pause nil))
-
-           ;; The bind function is invoked on channel open, ideally
-           ;; this would always get invoked. However, there is a
-           ;; possibility that opening the socket channel
-           ;; fails. That case isn't handled right now.
-           (channel-open-event? evt)
-           (let [ch (.getChannel evt)]
-             ;; First, track the channel in the channel group
-             (.add channel-group ch)
-             ;; Now, initialize the state with the channel
-             (swap! state #(assoc % :ch ch)))
-
-           (channel-connected-event? evt)
-           (let [ch-info (-> current-state .ch channel-info)]
-             (upstream :open ch-info))
-
-           (channel-disconnected-event? evt)
-           (upstream :close nil)
-
-           (exception-event? evt)
-           (upstream :abort (.getCause evt))))))))
+(defn connect-tcp-client
+  [app opts]
+  (let [factory (mk-upstream-factory app opts)]
+    (.connectTcpClient reactors factory)))

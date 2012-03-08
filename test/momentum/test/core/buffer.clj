@@ -1092,6 +1092,25 @@
        "" nil
        "" ""))
 
+;; ==== transient
+(deftest tracking-transience
+  (are [a] (not (transient? a))
+       (buffer "Hello")
+       (direct-buffer 10)
+       (Buffer/wrap (buffer 10) (buffer 10))
+       (slice
+        (transient! (Buffer/wrap (buffer 10) (buffer 10)))
+        5 10))
+
+  (are [a] (transient? a)
+       (transient! (buffer "Hello"))
+       (slice (transient! (buffer "Hello")) 1 3)
+       (transient! (direct-buffer 10))
+       (transient! (Buffer/wrap (buffer 10) (buffer 10)))
+       (slice
+        (transient! (Buffer/wrap (buffer 300) (buffer 300)))
+        10 300)))
+
 ;; === Regression tests
 (deftest composite-buffer-regression-test-1
   (let [b (Buffer/wrap

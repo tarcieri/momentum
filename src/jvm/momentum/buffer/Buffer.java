@@ -1,11 +1,10 @@
 package momentum.buffer;
 
 import java.io.UnsupportedEncodingException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.BufferOverflowException;
-import java.nio.BufferUnderflowException;
-import java.nio.ReadOnlyBufferException;
+import java.io.IOException;
+import java.nio.*;
+import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.WritableByteChannel;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -14,9 +13,7 @@ import java.util.Iterator;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 
-import clojure.lang.ISeq;
-import clojure.lang.PersistentList;
-import clojure.lang.Seqable;
+import clojure.lang.*;
 
 /*
  * TODO: Add unsigned accessors
@@ -37,6 +34,9 @@ public abstract class Buffer implements Seqable {
 
   // The byte order that any multibyte reads will use.
   boolean bigEndian;
+
+  // Whether the buffer is transient or not
+  boolean isTransient;
 
   public final static Buffer allocate(int cap) {
     return wrapArray(new byte[cap], 0, cap);
@@ -498,9 +498,46 @@ public abstract class Buffer implements Seqable {
     return position(pos).limit(pos + len);
   }
 
+  /**
+   * Returns whether the buffer is transient or not. If a buffer is transient,
+   * it the contents of it can be mutated after the given run loop.
+   */
+  public boolean isTransient() {
+    return isTransient;
+  }
+
+  /**
+   * Sets the buffer as transient
+   */
+  public Buffer makeTransient() {
+    isTransient = true;
+    return this;
+  }
+
+  /**
+   * Makes a deep copy of the buffer
+   */
+  final public Buffer copy() {
+    byte[] arr = new byte[capacity];
+    _get(0, arr, 0, capacity);
+
+    return new HeapBuffer(arr, 0, position, limit, capacity);
+  }
+
+  /**
+   * If the buffer is transient, return a deep copy, otherwise return the
+   * current buffer.
+   */
+  final public Buffer retain() {
+    if (!isTransient())
+      return this;
+
+    return copy();
+  }
+
   /*
    *
-   *  Conversions
+   *  ===== Conversions =====
    *
    */
 
@@ -538,19 +575,77 @@ public abstract class Buffer implements Seqable {
     return _toByteArray();
   }
 
-  public final String toString(String charsetName)
+  protected String _toString(int off, int len, String charsetName)
       throws UnsupportedEncodingException {
-
-    byte[] arr = new byte[remaining()];
-
-    _get(position, arr, 0, arr.length);
+    byte [] arr = new byte[len];
+    _get(off, arr, 0, len);
 
     return new String(arr, charsetName);
   }
 
+  public final String toString(String charsetName)
+      throws UnsupportedEncodingException {
+    return _toString(position, remaining(), charsetName);
+  }
+
+  public final String toString(int off, int len, String charsetName)
+      throws UnsupportedEncodingException {
+
+    if (capacity < off + len) {
+      throw new BufferUnderflowException();
+    }
+
+    return _toString(off, len, charsetName);
+  }
+
   /*
    *
-   *  Unchecked internal accessors
+   * ==== ByteChannel helpers
+   *
+   */
+
+  protected int _transferFrom(ReadableByteChannel chan, int off, int len) throws IOException {
+    ByteBuffer buf = ByteBuffer.allocate(len);
+    int ret = chan.read(buf), i = 0;
+
+    buf.flip();
+
+    while (buf.hasRemaining())
+      put(off + i++, buf.get());
+
+    return ret;
+  }
+
+
+  /*
+   * Transfer data from a ReadableByteChannel into the buffer
+   */
+  public final int transferFrom(ReadableByteChannel chan) throws IOException {
+    int ret = _transferFrom(chan, position, remaining());
+
+    position += ret;
+    return ret;
+  }
+
+  protected int _transferTo(WritableByteChannel chan, int off, int len) throws IOException {
+    return chan.write(_slice(off, len).toByteBuffer());
+  }
+
+  /*
+   * Transfer data from the buffer to the WritableByteChannel
+   */
+  public final int transferTo(WritableByteChannel chan) throws IOException {
+    // Obviously not efficient but overridden in subclasses.
+    int ret = _transferTo(chan, position, remaining());
+
+    position += ret;
+
+    return ret;
+  }
+
+  /*
+   *
+   *  ==== Unchecked internal accessors ====
    *
    */
 
@@ -578,7 +673,7 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   *  BUFFER based accessors
+   *  ==== BUFFER based accessors ====
    *
    */
 
@@ -687,7 +782,7 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   *  BYTE accessors
+   *  ==== BYTE accessors ====
    *
    */
 
@@ -811,7 +906,7 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   *  CHAR accessors
+   *  ==== CHAR accessors ====
    *
    */
 
@@ -878,7 +973,7 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   *  DOUBLE accessors
+   *  ==== DOUBLE accessors ====
    *
    */
 
@@ -932,7 +1027,7 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   *  FLOAT accessors
+   *  ==== FLOAT accessors ====
    *
    */
 
@@ -986,7 +1081,7 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   *  INT accessors
+   *  ==== INT accessors ====
    *
    */
 
@@ -1110,7 +1205,7 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   *  LONG accessors
+   *  ==== LONG accessors ====
    *
    */
 
@@ -1217,7 +1312,7 @@ public abstract class Buffer implements Seqable {
 
   /*
    *
-   *  SHORT accessors
+   *  ==== SHORT accessors ====
    *
    */
 

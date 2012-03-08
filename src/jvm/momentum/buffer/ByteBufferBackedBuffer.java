@@ -1,6 +1,9 @@
 package momentum.buffer;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.WritableByteChannel;
 import java.util.Arrays;
 import java.util.HashMap;
 
@@ -32,7 +35,12 @@ public final class ByteBufferBackedBuffer extends Buffer {
 
     buf.limit(capacity);
 
-    return new ByteBufferBackedBuffer(newBuf, 0, len, len, bigEndian);
+    ByteBufferBackedBuffer ret = new ByteBufferBackedBuffer(newBuf, 0, len, len, bigEndian);
+
+    if (isTransient)
+      ret.isTransient = true;
+
+    return ret;
   }
 
   protected HashMap<String,String> toStringAttrs() {
@@ -88,5 +96,19 @@ public final class ByteBufferBackedBuffer extends Buffer {
   protected void _put(int idx, byte[] src, int off, int len) {
     buf.position(idx);
     buf.put(src, off, len);
+  }
+
+  protected int _transferFrom(ReadableByteChannel chan, int off, int len) throws IOException {
+    buf.position(off);
+    buf.limit(off + len);
+
+    return chan.read(buf);
+  }
+
+  protected int _transferTo(WritableByteChannel chan, int off, int len) throws IOException {
+    buf.position(off);
+    buf.limit(off + len);
+
+    return chan.write(buf);
   }
 }
