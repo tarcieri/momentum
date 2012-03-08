@@ -130,8 +130,8 @@
      server-in server-out)
 
     ;; Simulate opening connections
-    (put server-in  [:open addrs])
     (put server-out [:open addrs])
+    (put server-in  [:open addrs])
 
     ;; Return connection instance
     (Connection. (blocking (seq client-out) ms :timeout) client-in)))
