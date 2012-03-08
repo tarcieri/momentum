@@ -155,7 +155,7 @@ public final class ReactorCluster {
     currentReactor().scheduleTimeout(timeout, ms);
   }
 
-  public ReactorServerHandler startTcpServer(ReactorUpstreamFactory factory)
+  public ServerHandler startTcpServer(ReactorUpstreamFactory factory)
       throws IOException {
 
     if (!isStarted())

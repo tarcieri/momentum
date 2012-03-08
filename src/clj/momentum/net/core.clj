@@ -4,7 +4,6 @@
   (:import
    [momentum.reactor
     ChannelHandler
-    ReactorServerHandler
     ReactorUpstream
     ReactorUpstreamFactory]
    [java.net

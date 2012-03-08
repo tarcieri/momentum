@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.nio.channels.*;
 import momentum.async.AsyncVal;
 
-public class ReactorServerHandler {
+public class ServerHandler {
 
   final class CloseTask implements ReactorTask {
     public void run() throws IOException {
@@ -24,7 +24,7 @@ public class ReactorServerHandler {
 
   SelectionKey key;
 
-  ReactorServerHandler(Reactor r, ReactorUpstreamFactory s) {
+  ServerHandler(Reactor r, ReactorUpstreamFactory s) {
     reactor = r;
     server  = s;
   }

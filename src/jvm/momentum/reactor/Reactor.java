@@ -27,9 +27,9 @@ public final class Reactor implements Runnable {
 
   class BindTask implements ReactorTask {
 
-    final ReactorServerHandler handler;
+    final ServerHandler handler;
 
-    BindTask(ReactorServerHandler h) {
+    BindTask(ServerHandler h) {
       handler = h;
     }
 
@@ -422,18 +422,18 @@ public final class Reactor implements Runnable {
   }
 
   void acceptSocket(SelectionKey k) throws IOException {
-    ReactorServerHandler srvHandler;
+    ServerHandler srvHandler;
     ChannelHandler chHandler;
 
-    srvHandler = (ReactorServerHandler) k.attachment();
+    srvHandler = (ServerHandler) k.attachment();
     chHandler  = srvHandler.accept();
 
     if (chHandler != null)
       cluster.register(chHandler);
   }
 
-  ReactorServerHandler startTcpServer(ReactorUpstreamFactory srv) throws IOException {
-    ReactorServerHandler handler = new ReactorServerHandler(this, srv);
+  ServerHandler startTcpServer(ReactorUpstreamFactory srv) throws IOException {
+    ServerHandler handler = new ServerHandler(this, srv);
 
     if (onReactorThread()) {
       doStartTcpServer(handler);
@@ -445,7 +445,7 @@ public final class Reactor implements Runnable {
     return handler;
   }
 
-  void doStartTcpServer(ReactorServerHandler h) throws IOException {
+  void doStartTcpServer(ServerHandler h) throws IOException {
     h.open(selector);
   }
 
