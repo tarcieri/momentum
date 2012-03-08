@@ -89,5 +89,13 @@
     (let [conn (open)]
       (is (= [:close nil] (second conn))))))
 
+(deftest channel-timeouts-1000-ms
+  (with-endpoint
+    (fn [dn _]
+      (fn [evt val]))
+
+    (let [conn (open)]
+      (is (= (second conn) :timeout)))))
+
 ;; TODO:
 ;; * Upstream / downstream :abort

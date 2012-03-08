@@ -9,10 +9,11 @@
   {:local-addr  ["127.0.0.1" 12345]
    :remote-addr ["127.0.0.1" 12346]})
 
-(declare
- ^:dynamic *endpoint*
- ^:dynamic *client*
- ^:dynamic *connections*)
+(def ms 1000)
+
+(def ^:dynamic *endpoint*    nil)
+(def ^:dynamic *client*      nil)
+(def ^:dynamic *connections* nil)
 
 (deftype Connection [received downstream]
   clojure.lang.Seqable
@@ -71,10 +72,11 @@
     (let [open?        (atom true)
           pause-resume (channel)
           downstream   (mk-downstream open? pause-resume read-ch write-ch)
-          upstream     (endpoint downstream {:test true})]
+          upstream     (endpoint downstream {:test true})
+          messages     (splice [:pr (seq pause-resume)] [:read (seq read-ch)])]
 
       (try
-        (loop [messages (blocking (splice [:pr (seq pause-resume)] [:read (seq read-ch)]))]
+        (loop [messages (blocking messages ms :timeout)]
           (let [[source msg] (first messages)]
             (if (= :pr source)
               (if (= :pause msg)
@@ -132,8 +134,9 @@
     (put server-out [:open addrs])
 
     ;; Return connection instance
-    (Connection. (blocking (seq client-out)) client-in)))
+    (Connection. (blocking (seq client-out) ms :timeout) client-in)))
 
+;; TODO: Allow a configurable timeout for the received channel
 (defn open
   ([] (open {}))
   ([addrs]
@@ -157,5 +160,3 @@
 (defn closed?
   ([]     (closed? (last-connection)))
   ([conn] (first (filter #(= % :close) (map first conn)))))
-
-
