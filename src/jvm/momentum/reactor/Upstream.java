@@ -3,7 +3,7 @@ package momentum.reactor;
 import java.nio.channels.*;
 import momentum.buffer.Buffer;
 
-public interface ReactorUpstream {
+public interface Upstream {
 
   void sendOpen(SocketChannel ch);
 

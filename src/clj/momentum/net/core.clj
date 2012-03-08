@@ -4,8 +4,8 @@
   (:import
    [momentum.reactor
     ChannelHandler
-    ReactorUpstream
-    ReactorUpstreamFactory]
+    Upstream
+    UpstreamFactory]
    [java.net
     InetSocketAddress
     Socket]
@@ -53,7 +53,7 @@
 
 (defn- mk-upstream
   [^ChannelHandler downstream upstream]
-  (reify ReactorUpstream
+  (reify Upstream
     (sendOpen [_ ch]
       (upstream :open (channel-info ch)))
 
@@ -75,7 +75,7 @@
 (defn- mk-upstream-factory
   [app {host :host port :port :as opts}]
   (let [addr (to-socket-addr [host port])]
-    (reify ReactorUpstreamFactory
+    (reify UpstreamFactory
       (getAddr [_] addr)
       (getUpstream [_ dn]
         (mk-upstream dn (app (mk-downstream dn) {}))))))

@@ -14,7 +14,7 @@ public class ServerHandler {
 
   final Reactor reactor;
 
-  final ReactorUpstreamFactory server;
+  final UpstreamFactory server;
 
   final AsyncVal bound = new AsyncVal();
 
@@ -24,7 +24,7 @@ public class ServerHandler {
 
   SelectionKey key;
 
-  ServerHandler(Reactor r, ReactorUpstreamFactory s) {
+  ServerHandler(Reactor r, UpstreamFactory s) {
     reactor = r;
     server  = s;
   }

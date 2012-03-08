@@ -199,7 +199,7 @@ public final class ChannelHandler {
   /*
    * The upstream handler that receives all events for the channel
    */
-  ReactorUpstream upstream;
+  Upstream upstream;
 
   /*
    * Message queue for pending writes

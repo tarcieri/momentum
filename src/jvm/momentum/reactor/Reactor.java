@@ -40,9 +40,9 @@ public final class Reactor implements Runnable {
 
   class ConnectTask implements ReactorTask {
 
-    final ReactorUpstreamFactory factory;
+    final UpstreamFactory factory;
 
-    ConnectTask(ReactorUpstreamFactory f) {
+    ConnectTask(UpstreamFactory f) {
       factory = f;
     }
 
@@ -169,7 +169,7 @@ public final class Reactor implements Runnable {
     tickerChannel.configureBlocking(false);
   }
 
-  static ChannelHandler bindChannel(SocketChannel ch, ReactorUpstreamFactory factory)
+  static ChannelHandler bindChannel(SocketChannel ch, UpstreamFactory factory)
       throws IOException {
     ChannelHandler handler = new ChannelHandler(ch);
 
@@ -432,7 +432,7 @@ public final class Reactor implements Runnable {
       cluster.register(chHandler);
   }
 
-  ServerHandler startTcpServer(ReactorUpstreamFactory srv) throws IOException {
+  ServerHandler startTcpServer(UpstreamFactory srv) throws IOException {
     ServerHandler handler = new ServerHandler(this, srv);
 
     if (onReactorThread()) {
@@ -449,7 +449,7 @@ public final class Reactor implements Runnable {
     h.open(selector);
   }
 
-  void connectTcpClient(ReactorUpstreamFactory factory) throws IOException {
+  void connectTcpClient(UpstreamFactory factory) throws IOException {
     if (onReactorThread()) {
       doConnectTcpClient(factory);
     }
@@ -459,7 +459,7 @@ public final class Reactor implements Runnable {
   }
 
 
-  void doConnectTcpClient(ReactorUpstreamFactory factory) throws IOException {
+  void doConnectTcpClient(UpstreamFactory factory) throws IOException {
     ChannelHandler handler = Reactor.bindChannel(SocketChannel.open(), factory);
 
     if (handler == null)
