@@ -8,9 +8,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBuffers;
-
 public final class CompositeBuffer extends Buffer {
 
   private static int MIN_IDX_ARR_LEN = 10;
@@ -88,26 +85,6 @@ public final class CompositeBuffer extends Buffer {
     else {
       return super._toByteBuffer();
     }
-  }
-
-  protected ChannelBuffer _toChannelBuffer() {
-    ByteBuffer[] arr = new ByteBuffer[bufCount];
-    ByteBuffer curr;
-
-    for (int i = 0; i < bufCount; ++i) {
-      curr = bufs[i]._toByteBuffer();
-      curr.order(order());
-      arr[i] = curr;
-    }
-
-    ChannelBuffer ret = ChannelBuffers.wrappedBuffer(arr);
-
-    if (ret.capacity() > capacity) {
-      ret.writerIndex(capacity);
-      ret = ret.slice();
-    }
-
-    return ret;
   }
 
   protected byte[] _toByteArray() {

@@ -10,9 +10,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBuffers;
-
 import clojure.lang.*;
 
 /*
@@ -114,18 +111,6 @@ public abstract class Buffer implements Seqable {
     }
   }
 
-  public final static Buffer wrap(ChannelBuffer buf) {
-    // Slice first, axe questions later...
-    buf = buf.slice();
-
-    if (buf.hasArray()) {
-      return wrapArray(buf.array(), buf.arrayOffset() + buf.readerIndex(), buf.readableBytes());
-    }
-    else {
-      return new ChannelBufferBackedBuffer(buf);
-    }
-  }
-
   public final static Buffer wrap(Buffer buf) {
     return buf.slice();
   }
@@ -167,9 +152,6 @@ public abstract class Buffer implements Seqable {
     }
     else if (obj instanceof ByteBuffer) {
       return wrap((ByteBuffer) obj);
-    }
-    else if (obj instanceof ChannelBuffer) {
-      return wrap((ChannelBuffer) obj);
     }
     else if (obj instanceof Collection) {
       return wrap((Collection<Object>) obj);
@@ -551,10 +533,6 @@ public abstract class Buffer implements Seqable {
     return ByteBuffer.wrap(toByteArray());
   }
 
-  protected ChannelBuffer _toChannelBuffer() {
-    return ChannelBuffers.wrappedBuffer(_toByteBuffer());
-  }
-
   public final ByteBuffer toByteBuffer() {
     ByteBuffer ret = _toByteBuffer();
 
@@ -562,12 +540,6 @@ public abstract class Buffer implements Seqable {
     ret.limit(limit);
     ret.order(order());
 
-    return ret;
-  }
-
-  public final ChannelBuffer toChannelBuffer() {
-    ChannelBuffer ret = _toChannelBuffer();
-    ret.setIndex(position, limit);
     return ret;
   }
 

@@ -3,8 +3,6 @@
    clojure.test
    momentum.core)
   (:import
-   [org.jboss.netty.buffer
-    ChannelBuffer]
    [java.nio
     ByteBuffer]))
 
@@ -20,9 +18,6 @@
 
      (buffer? val)
      (to-string val)
-
-     (instance? ChannelBuffer val)
-     (.toString val "UTF-8")
 
      (instance? ByteBuffer val)
      (let [val (.duplicate val)

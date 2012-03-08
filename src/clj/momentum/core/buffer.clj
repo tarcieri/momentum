@@ -5,10 +5,7 @@
    [java.nio
     ByteBuffer]
    [java.util
-    Collection]
-   [org.jboss.netty.buffer
-    ChannelBuffer
-    ChannelBuffers]))
+    Collection]))
 
 (declare
  dynamic-buffer
@@ -30,9 +27,6 @@
   (to-buffer [buf] buf)
 
   ByteBuffer
-  (to-buffer [buf] (Buffer/wrap buf))
-
-  ChannelBuffer
   (to-buffer [buf] (Buffer/wrap buf))
 
   Collection
@@ -212,9 +206,6 @@
 
 (defn to-byte-array
   [^Buffer buf] (.toByteArray buf))
-
-(defn to-channel-buffer
-  [^Buffer buf] (.toChannelBuffer buf))
 
 (def EMPTY (buffer ""))
 

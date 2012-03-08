@@ -26,7 +26,6 @@
 (import-fn #'buffer/rewind)
 (import-fn #'buffer/slice)
 (import-fn #'buffer/to-byte-array)
-(import-fn #'buffer/to-channel-buffer)
 (import-fn #'buffer/to-string)
 (import-fn #'buffer/transfer!)
 (import-fn #'buffer/transfer)

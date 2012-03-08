@@ -1,8 +1,7 @@
 (defproject io.tilde.momentum/momentum "0.3.0-SNAPSHOT"
-  :description "Async HTTP framework built on top of Netty"
+  :description "Clojure library for high-performance server and client applications"
 
-  :dependencies [[org.clojure/clojure   "1.3.0"]
-                 [org.jboss.netty/netty "3.2.4.Final"]]
+  :dependencies [[org.clojure/clojure "1.3.0"]]
 
   :source-path      "src/clj"
   :java-source-path "src/jvm"

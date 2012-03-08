@@ -7,9 +7,6 @@ import java.nio.channels.WritableByteChannel;
 import java.util.Arrays;
 import java.util.HashMap;
 
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBuffers;
-
 public final class ByteBufferBackedBuffer extends Buffer {
 
   final ByteBuffer buf;
@@ -53,16 +50,6 @@ public final class ByteBufferBackedBuffer extends Buffer {
 
   protected ByteBuffer _toByteBuffer() {
     return buf.duplicate();
-  }
-
-  protected ChannelBuffer _toChannelBuffer() {
-    ByteBuffer b = buf.duplicate();
-
-    b.position(0);
-    b.limit(capacity);
-    b.order(order());
-
-    return ChannelBuffers.wrappedBuffer(b);
   }
 
   protected byte[] _toByteArray() {

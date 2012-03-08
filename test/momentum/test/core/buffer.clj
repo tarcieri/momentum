@@ -11,9 +11,6 @@
     ByteOrder]
    [java.util
     Arrays]
-   [org.jboss.netty.buffer
-    ChannelBuffer
-    ChannelBuffers]
    [momentum.buffer
     Buffer]))
 
@@ -46,14 +43,6 @@
 (def a-float  (float  0.86666465))
 (def a-int    (int    1199546451))
 (def a-short  (short  1234))
-
-(defn- mk-channel-buffer
-  [size]
-  (ChannelBuffers/wrappedBuffer
-   (into-array
-    [(ByteBuffer/allocate 1)
-     (ByteBuffer/allocate 1)
-     (ByteBuffer/allocate (- size 2))])))
 
 (defn- mk-arr
   [size order f]
@@ -479,28 +468,7 @@
     (is (= 100 (.capacity bb)))
     (is (= bb (ByteBuffer/wrap increasing 10 80))))
 
-  ;; toChannelBuffer conversion
-
   (.clear buf)
-
-  (let [cb  (.toChannelBuffer buf)
-        exp (ChannelBuffers/wrappedBuffer increasing)]
-    (is (= 0 (.readerIndex cb)))
-    (is (= 100 (.writerIndex cb)))
-    (is (= 100 (.capacity cb)))
-
-    (is (= cb exp)))
-
-  (.position buf 10)
-  (.limit buf 90)
-
-  (let [cb (.toChannelBuffer buf)]
-    (is (= 10 (.readerIndex cb)))
-    (is (= 90 (.writerIndex cb)))
-    (is (= 100 (.capacity cb)))
-    (let [expected (ChannelBuffers/wrappedBuffer increasing)]
-      (.setIndex expected 10 90)
-      (is (= cb expected))))
 
   ;; Exceptional cases
   (is (thrown? IndexOutOfBoundsException (.get buf -1)))
@@ -692,29 +660,6 @@
     (.limit buf 150)
     (test-buffer (Buffer/wrap buf))))
 
-(deftest channel-buffer-backed-buffers-usage
-  (let [cb (ChannelBuffers/buffer 100)]
-    (.writerIndex cb 100)
-    (test-buffer (Buffer/wrap cb)))
-
-  (test-buffer (Buffer/wrap (mk-channel-buffer 100)))
-
-  (let [cb (mk-channel-buffer 200)]
-    (.setIndex cb 30 130)
-    (test-buffer (Buffer/wrap cb)))
-
-  (let [cb  (mk-channel-buffer 100)
-        buf (Buffer/wrap cb)]
-
-    (is (= ByteOrder/BIG_ENDIAN
-           (.order buf)
-           (.order cb)))
-
-    (.order buf ByteOrder/LITTLE_ENDIAN)
-
-    (is (= ByteOrder/LITTLE_ENDIAN
-           (.order (.toChannelBuffer buf))))))
-
 (deftest composite-buffer-usage
   (test-buffer
    (Buffer/wrap
@@ -731,22 +676,6 @@
      (Buffer/wrap
       (.position buf1 50)
       (.limit buf2 50)))))
-
-(deftest composite-channel-buffer-backed
-  (let [buf1 (Buffer/wrap (mk-channel-buffer 100))
-        buf2 (Buffer/wrap (mk-channel-buffer 100))]
-    (test-buffer
-     (Buffer/wrap
-      (-> (Buffer/wrap (mk-channel-buffer 100))
-          (.limit 50))
-      (-> (Buffer/wrap (mk-channel-buffer 100))
-          (.position 50))))))
-
-(deftest channel-buffer-backed-subset
-  (let [buf (Buffer/wrap (mk-channel-buffer 200))]
-    (.position buf 50)
-    (.limit buf 150)
-    (test-buffer (.slice buf))))
 
 (deftest dynamic-buffer-usage
   (let [buf (Buffer/dynamic 1 100)]
@@ -943,11 +872,6 @@
   (test-transfers
    (Buffer/allocate 100)
    (Buffer/wrap
-    (mk-channel-buffer 100)))
-
-  (test-transfers
-   (Buffer/allocate 100)
-   (Buffer/wrap
     (Buffer/allocate 20)
     (Buffer/allocate 50)
     (Buffer/allocate 30))))
@@ -960,11 +884,6 @@
   (test-transfers
    (Buffer/allocateDirect 100)
    (Buffer/allocate 100))
-
-  (test-transfers
-   (Buffer/allocateDirect 100)
-   (Buffer/wrap
-    (mk-channel-buffer 100)))
 
   (test-transfers
    (Buffer/allocateDirect 100)
@@ -998,34 +917,7 @@
     (Buffer/allocate 30)
     (Buffer/allocate 30)
     (Buffer/allocate 40))
-   (Buffer/allocateDirect 100))
-
-  (test-transfers
-   (Buffer/wrap
-    (Buffer/allocate 30)
-    (Buffer/allocate 30)
-    (Buffer/allocate 40))
-   (Buffer/wrap
-    (mk-channel-buffer 100))))
-
-;;
-;; === Other stuff ===
-;;
-
-;; (deftest wrapping-buffers-with-one-frozen
-;;   (is (frozen (wrap (freeze (buffer 10)) (buffer 10))))
-;;   (is (frozen (wrap (buffer 10) (freeze (buffer 10))))))
-
-;; (deftest duplicating-frozen-buffer-stays-frozen
-;;   (is (frozen (-> (buffer 10) freeze duplicate)))
-;;   (is (frozen (-> (mk-channel-buffer 10) buffer freeze duplicate)))
-;;   (is (frozen (-> (direct-buffer 10) freeze duplicate)))
-;;   (is (frozen (-> (wrap (buffer 10) (buffer 10)) freeze duplicate))))
-
-;; (deftest throws-when-writing-to-frozen-buffer
-;;   (is (thrown?
-;;        ReadOnlyBufferException
-;;        (.put (freeze (buffer 10)) (byte 1)))))
+   (Buffer/allocateDirect 100)))
 
 ;;
 ;; === Clojure interface ===

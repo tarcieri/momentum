@@ -7,9 +7,6 @@ import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
 import java.util.Arrays;
 
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBuffers;
-
 public final class HeapBuffer extends Buffer {
 
   final int offset;
@@ -37,10 +34,6 @@ public final class HeapBuffer extends Buffer {
 
   protected ByteBuffer _toByteBuffer() {
     return ByteBuffer.wrap(arr, offset, capacity).slice();
-  }
-
-  protected ChannelBuffer _toChannelBuffer() {
-    return ChannelBuffers.wrappedBuffer(arr, offset, capacity);
   }
 
   protected byte[] _toByteArray() {

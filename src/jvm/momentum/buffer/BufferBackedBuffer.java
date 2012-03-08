@@ -1,7 +1,6 @@
 package momentum.buffer;
 
 import java.nio.ByteBuffer;
-import org.jboss.netty.buffer.ChannelBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
 
@@ -49,16 +48,6 @@ public final class BufferBackedBuffer extends Buffer {
       ret.position(offset);
       ret.limit(offset + capacity);
       ret = ret.slice();
-    }
-
-    return ret;
-  }
-
-  protected ChannelBuffer _toChannelBuffer() {
-    ChannelBuffer ret = buf._toChannelBuffer();
-
-    if (offset > 0 || capacity < ret.capacity()) {
-      ret = ret.slice(offset, capacity);
     }
 
     return ret;
