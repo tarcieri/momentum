@@ -230,9 +230,72 @@ public final class ChannelHandler {
     channel = ch;
   }
 
+  /*
+   * ===== Public methods =====
+   */
+
+  public void sendMessageDownstream(Buffer msg) throws IOException {
+    if (reactor.onReactorThread()) {
+      doSendMessageDownstream(msg);
+    }
+    else {
+      reactor.pushTask(new WriteTask(msg));
+    }
+  }
+
+  public void sendCloseDownstream() throws IOException {
+    if (reactor.onReactorThread()) {
+      if (inUpstream) {
+        markClosed();
+      }
+      else {
+        doClose();
+      }
+    }
+    else {
+      reactor.pushTask(new CloseTask());
+    }
+  }
+
+  public void sendPauseDownstream() throws IOException {
+    if (reactor.onReactorThread()) {
+      clearOpRead();
+    }
+    else {
+      reactor.pushTask(new PauseTask());
+    }
+  }
+
+  public void sendResumeDownstream() throws IOException {
+    if (reactor.onReactorThread()) {
+      setOpRead();
+    }
+    else {
+      reactor.pushTask(new ResumeTask());
+    }
+  }
+
+  public void sendAbortDownstream(Exception err) throws IOException {
+    if (reactor.onReactorThread()) {
+      if (inUpstream) {
+        markAborted(err);
+      }
+      else {
+        doAbort(err);
+      }
+    }
+    else {
+      reactor.pushTask(new AbortTask(err));
+    }
+  }
+
   boolean isOpen() {
     return cs == State.OPEN;
   }
+
+  /*
+   * ===== Sending messages upstream =====
+   */
 
   void sendOpenUpstream() throws IOException {
     try {
@@ -330,60 +393,9 @@ public final class ChannelHandler {
     }
   }
 
-  public void sendMessageDownstream(Buffer msg) throws IOException {
-    if (reactor.onReactorThread()) {
-      doSendMessageDownstream(msg);
-    }
-    else {
-      reactor.pushTask(new WriteTask(msg));
-    }
-  }
-
-  public void sendCloseDownstream() throws IOException {
-    if (reactor.onReactorThread()) {
-      if (inUpstream) {
-        markClosed();
-      }
-      else {
-        doClose();
-      }
-    }
-    else {
-      reactor.pushTask(new CloseTask());
-    }
-  }
-
-  public void sendPauseDownstream() throws IOException {
-    if (reactor.onReactorThread()) {
-      clearOpRead();
-    }
-    else {
-      reactor.pushTask(new PauseTask());
-    }
-  }
-
-  public void sendResumeDownstream() throws IOException {
-    if (reactor.onReactorThread()) {
-      setOpRead();
-    }
-    else {
-      reactor.pushTask(new ResumeTask());
-    }
-  }
-
-  public void sendAbortDownstream(Exception err) throws IOException {
-    if (reactor.onReactorThread()) {
-      if (inUpstream) {
-        markAborted(err);
-      }
-      else {
-        doAbort(err);
-      }
-    }
-    else {
-      reactor.pushTask(new AbortTask(err));
-    }
-  }
+  /*
+   * ===== Sending messages upstream =====
+   */
 
   void doSendMessageDownstream(Buffer msg) throws IOException {
     if (!isOpen())
