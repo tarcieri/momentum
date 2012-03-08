@@ -15,8 +15,11 @@
 
 (defn- init-tracked-gate
   []
-  (let [received (atom [])
-        gated    (init (fn [evt val] (swap! received #(conj % [evt val]))))]
+  (let [received (atom []) gated (init)]
+    (set-upstream!
+     gated
+     (fn [evt val]
+       (swap! received #(conj % [evt val]))))
     [gated received]))
 
 (deftest basic-event-proxying
