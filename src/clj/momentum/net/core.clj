@@ -4,6 +4,7 @@
   (:import
    [momentum.reactor
     ChannelHandler
+    ReactorCluster
     Upstream
     UpstreamFactory]
    [java.net
@@ -72,7 +73,7 @@
     (sendAbort [_ err]
       (upstream :abort err))))
 
-(defn- mk-upstream-factory
+(defn- ^UpstreamFactory mk-upstream-factory
   [app {host :host port :port :as opts}]
   (let [addr (to-socket-addr [host port])]
     (reify UpstreamFactory
@@ -83,7 +84,7 @@
 (defn start-tcp-server
   [app opts]
   (let [factory (mk-upstream-factory app opts)
-        handle  (.startTcpServer reactors factory)]
+        handle  (.startTcpServer ^ReactorCluster reactors factory)]
     (reify
       clojure.lang.IFn
       (invoke [_] (.close handle))
@@ -96,4 +97,4 @@
 (defn connect-tcp-client
   [app opts]
   (let [factory (mk-upstream-factory app opts)]
-    (.connectTcpClient reactors factory)))
+    (.connectTcpClient ^ReactorCluster reactors factory)))
