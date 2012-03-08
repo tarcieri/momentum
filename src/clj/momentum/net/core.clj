@@ -3,7 +3,7 @@
    momentum.core)
   (:import
    [momentum.reactor
-    ReactorChannelHandler
+    ChannelHandler
     ReactorServerHandler
     ReactorUpstream
     ReactorUpstreamFactory]
@@ -31,7 +31,7 @@
      :remote-addr (from-socket-addr (.getRemoteSocketAddress sock))}))
 
 (defn- mk-downstream
-  [^ReactorChannelHandler dn]
+  [^ChannelHandler dn]
   (fn [evt val]
     (cond
      (= :message evt)
@@ -53,7 +53,7 @@
      (throw (Exception. (str "Unknown event : " evt))))))
 
 (defn- mk-upstream
-  [^ReactorChannelHandler downstream upstream]
+  [^ChannelHandler downstream upstream]
   (reify ReactorUpstream
     (sendOpen [_ ch]
       (upstream :open (channel-info ch)))

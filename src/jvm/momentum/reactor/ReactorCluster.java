@@ -144,7 +144,7 @@ public final class ReactorCluster {
     return reactorWithLeastLoad();
   }
 
-  void register(ReactorChannelHandler handler) throws IOException {
+  void register(ChannelHandler handler) throws IOException {
     reactorWithLeastLoad().register(handler);
   }
 

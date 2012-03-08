@@ -6,7 +6,7 @@ import java.net.SocketAddress;
 import java.nio.channels.*;
 import momentum.buffer.Buffer;
 
-public final class ReactorChannelHandler {
+public final class ChannelHandler {
 
   enum State {
     BOUND,
@@ -226,7 +226,7 @@ public final class ReactorChannelHandler {
    */
   Exception err;
 
-  ReactorChannelHandler(SocketChannel ch) {
+  ChannelHandler(SocketChannel ch) {
     channel = ch;
   }
 

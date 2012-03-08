@@ -51,8 +51,8 @@ public class ReactorServerHandler {
     bound.put(this);
   }
 
-  ReactorChannelHandler accept() throws IOException {
-    ReactorChannelHandler h = Reactor.bindChannel(channel.accept(), server);
+  ChannelHandler accept() throws IOException {
+    ChannelHandler h = Reactor.bindChannel(channel.accept(), server);
 
     if (h != null)
       h.setConnected();

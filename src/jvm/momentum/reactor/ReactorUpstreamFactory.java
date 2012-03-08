@@ -4,7 +4,7 @@ import java.net.SocketAddress;
 
 public interface ReactorUpstreamFactory {
 
-  ReactorUpstream getUpstream(ReactorChannelHandler downstream);
+  ReactorUpstream getUpstream(ChannelHandler downstream);
 
   SocketAddress getAddr();
 

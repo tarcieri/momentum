@@ -14,9 +14,9 @@ public final class Reactor implements Runnable {
 
   class RegisterTask implements ReactorTask {
 
-    final ReactorChannelHandler handler;
+    final ChannelHandler handler;
 
-    RegisterTask(ReactorChannelHandler h) {
+    RegisterTask(ChannelHandler h) {
       handler = h;
     }
 
@@ -169,9 +169,9 @@ public final class Reactor implements Runnable {
     tickerChannel.configureBlocking(false);
   }
 
-  static ReactorChannelHandler bindChannel(SocketChannel ch, ReactorUpstreamFactory factory)
+  static ChannelHandler bindChannel(SocketChannel ch, ReactorUpstreamFactory factory)
       throws IOException {
-    ReactorChannelHandler handler = new ReactorChannelHandler(ch);
+    ChannelHandler handler = new ChannelHandler(ch);
 
     ch.configureBlocking(false);
 
@@ -215,7 +215,7 @@ public final class Reactor implements Runnable {
   /*
    * Registers a new channel with this reactor
    */
-  void register(ReactorChannelHandler handler) throws IOException {
+  void register(ChannelHandler handler) throws IOException {
     if (onReactorThread()) {
       doRegister(handler);
     }
@@ -224,7 +224,7 @@ public final class Reactor implements Runnable {
     }
   }
 
-  void doRegister(ReactorChannelHandler handler) throws IOException {
+  void doRegister(ChannelHandler handler) throws IOException {
     handler.register(this);
   }
 
@@ -385,8 +385,8 @@ public final class Reactor implements Runnable {
       if (!k.isValid()) {
         Object h = k.attachment();
 
-        if (h instanceof ReactorChannelHandler)
-          ((ReactorChannelHandler) h).processInvalidKey();
+        if (h instanceof ChannelHandler)
+          ((ChannelHandler) h).processInvalidKey();
 
         continue;
       }
@@ -399,7 +399,7 @@ public final class Reactor implements Runnable {
           processTimerTicks();
         }
         else {
-          ReactorChannelHandler handler = (ReactorChannelHandler) k.attachment();
+          ChannelHandler handler = (ChannelHandler) k.attachment();
           handler.processIO(readBuffer);
         }
       }
@@ -423,7 +423,7 @@ public final class Reactor implements Runnable {
 
   void acceptSocket(SelectionKey k) throws IOException {
     ReactorServerHandler srvHandler;
-    ReactorChannelHandler chHandler;
+    ChannelHandler chHandler;
 
     srvHandler = (ReactorServerHandler) k.attachment();
     chHandler  = srvHandler.accept();
@@ -460,8 +460,7 @@ public final class Reactor implements Runnable {
 
 
   void doConnectTcpClient(ReactorUpstreamFactory factory) throws IOException {
-    ReactorChannelHandler handler =
-      Reactor.bindChannel(SocketChannel.open(), factory);
+    ChannelHandler handler = Reactor.bindChannel(SocketChannel.open(), factory);
 
     if (handler == null)
       return;
