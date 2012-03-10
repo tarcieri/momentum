@@ -244,7 +244,7 @@ public final class Reactor implements Runnable {
   /*
    * Run work on the reactor
    */
-  void schedule(Runnable runnable) {
+  public void schedule(Runnable runnable) {
     if (onReactorThread()) {
       doSchedule(runnable);
     }
