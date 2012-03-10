@@ -12,10 +12,6 @@ import java.util.Set;
  */
 class ReactorTimer {
 
-  // Java generics work around
-  static class TimerWheelNode extends HashSet<Timeout> {
-  }
-
   /*
    * The reactor that owns this timer
    */
@@ -29,7 +25,7 @@ class ReactorTimer {
   /*
    * Wheel representing the ticks
    */
-  final TimerWheelNode[] wheel;
+  final Timeout[] wheel;
 
   /*
    * Masks the currentTick to get the wheel index for the tick
@@ -55,10 +51,7 @@ class ReactorTimer {
 
     numTicks = ceilingNextPowerOfTwo(numTicks);
 
-    wheel = new TimerWheelNode[numTicks];
-
-    for (int i = 0; i < wheel.length; ++i)
-      wheel[i] = new TimerWheelNode();
+    wheel = new Timeout[numTicks];
 
     reactor      = r;
     mask         = wheel.length - 1;
@@ -79,28 +72,54 @@ class ReactorTimer {
 
     timeout.targetTick = currentTick + (int) (ms / tickDuration);
 
-    wheel[timeout.targetTick & mask].add(timeout);
+    pushNode(timeout.targetTick & mask, timeout);
   }
 
   void cancel(Timeout timeout) {
-    wheel[timeout.targetTick & mask].remove(timeout);
+    removeNode(timeout.targetTick & mask, timeout);
   }
 
   void tick() {
     // Increment the current tick
-    ++currentTick;
+    int slot = ++currentTick & mask;
 
-    Iterator<Timeout> i = wheel[currentTick & mask].iterator();
+    Timeout curr = wheel[slot];
 
-    while (i.hasNext()) {
-      Timeout curr = i.next();
+    while (curr != null) {
+      if (curr.targetTick <= currentTick) {
+        curr.expire();
 
-      if (curr.targetTick > currentTick)
-        continue;
+        removeNode(slot, curr);
+        curr = curr.next;
+      }
+    }
+  }
 
-      i.remove();
-      curr.expire();
+  /*
+   * ===== Linked list methods =====
+   */
+  void pushNode(int slot, Timeout node) {
+    Timeout curr = wheel[slot];
+
+    node.prev = null;
+    node.next = curr;
+
+    if (curr != null)
+      curr.prev = node;
+
+    wheel[slot] = node;
+  }
+
+  void removeNode(int slot, Timeout node) {
+    if (wheel[slot] == node) {
+      wheel[slot] = node.next;
+    }
+    else if (node.prev != null) {
+      node.prev.next = node.next;
     }
 
+    if (node.next != null) {
+      node.next.prev = node.prev;
+    }
   }
 }

@@ -2,6 +2,7 @@ package momentum.reactor;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
+// Represents a timeout, this is also a node in a doubly linked list
 public class Timeout {
 
   private static final int INIT      = 0;
@@ -16,6 +17,10 @@ public class Timeout {
   int targetTick;
 
   final Runnable task;
+
+  // LL pointers, used in ReactorTimer
+  Timeout next;
+  Timeout prev;
 
   public Timeout(Runnable t) {
     if (t == null)
@@ -38,10 +43,6 @@ public class Timeout {
 
   public boolean isExpired() {
     return cs.get() == EXPIRED;
-  }
-
-  public void reschedule(long ms) {
-    // TODO
   }
 
   public void cancel() {
