@@ -76,5 +76,7 @@
 
 (import-fn #'reactor/start-reactors)
 (import-fn #'reactor/stop-reactors)
+(import-fn #'reactor/schedule)
+(import-fn #'reactor/preschedule)
 (import-fn #'reactor/schedule-timeout)
 (import-fn #'reactor/cancel-timeout)

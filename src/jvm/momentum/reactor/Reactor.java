@@ -58,6 +58,19 @@ public final class Reactor implements Runnable {
     }
   }
 
+  class ScheduleTask implements ReactorTask {
+
+    final Runnable runnable;
+
+    ScheduleTask(Runnable r) {
+      runnable = r;
+    }
+
+    public void run() throws IOException {
+      doSchedule(runnable);
+    }
+  }
+
   class ScheduleTimeoutTask implements ReactorTask {
 
     final Timeout timeout;
@@ -226,6 +239,22 @@ public final class Reactor implements Runnable {
 
   void doRegister(ChannelHandler handler) throws IOException {
     handler.register(this);
+  }
+
+  /*
+   * Run work on the reactor
+   */
+  void schedule(Runnable runnable) {
+    if (onReactorThread()) {
+      doSchedule(runnable);
+    }
+    else {
+      pushTask(new ScheduleTask(runnable));
+    }
+  }
+
+  void doSchedule(Runnable runnable) {
+    runnable.run();
   }
 
   /*

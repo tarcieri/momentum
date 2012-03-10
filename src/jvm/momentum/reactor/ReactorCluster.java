@@ -135,7 +135,7 @@ public final class ReactorCluster {
     return ret;
   }
 
-  Reactor currentReactor() {
+  public Reactor currentReactor() {
     Reactor ret = reactorMap.get(Thread.currentThread());
 
     if (ret != null)
@@ -146,6 +146,13 @@ public final class ReactorCluster {
 
   void register(ChannelHandler handler) throws IOException {
     reactorWithLeastLoad().register(handler);
+  }
+
+  public void schedule(Runnable runnable) throws IOException {
+    if (!isStarted())
+      start();
+
+    currentReactor().schedule(runnable);
   }
 
   public void scheduleTimeout(Timeout timeout, long ms) throws IOException {
