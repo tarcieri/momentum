@@ -1,6 +1,8 @@
 (ns momentum.net.core
   (:use
    momentum.core)
+  (:require
+   [momentum.net.dns :as dns])
   (:import
    [momentum.reactor
     ChannelHandler
@@ -12,13 +14,6 @@
     Socket]
    [java.nio.channels
     SocketChannel]))
-
-(defn- ^InetSocketAddress to-socket-addr
-  [[^String host port]]
-  (let [port (int (or port 80))]
-    (if host
-      (InetSocketAddress. host port)
-      (InetSocketAddress. port))))
 
 (defn- from-socket-addr
   [^InetSocketAddress addr]
@@ -74,16 +69,16 @@
       (upstream :abort err))))
 
 (defn- ^UpstreamFactory mk-upstream-factory
-  [app {host :host port :port :as opts}]
-  (let [addr (to-socket-addr [host port])]
-    (reify UpstreamFactory
-      (getAddr [_] addr)
-      (getUpstream [_ dn]
-        (mk-upstream dn (app (mk-downstream dn) {}))))))
+  [app addr opts]
+  (reify UpstreamFactory
+    (getAddr [_] addr)
+    (getUpstream [_ dn]
+      (mk-upstream dn (app (mk-downstream dn) {})))))
 
 (defn start-tcp-server
-  [app opts]
-  (let [factory (mk-upstream-factory app opts)
+  [app {port :port :as opts}]
+  (let [addr    (InetSocketAddress. port)
+        factory (mk-upstream-factory app addr opts)
         handle  (.startTcpServer ^ReactorCluster reactors factory)]
     (reify
       clojure.lang.IFn
@@ -95,6 +90,10 @@
         true))))
 
 (defn connect-tcp-client
-  [app opts]
-  (let [factory (mk-upstream-factory app opts)]
-    (.connectTcpClient ^ReactorCluster reactors factory)))
+  [app {host :host port :port :as opts}]
+  (doasync (dns/lookup host)
+    (preschedule
+      (fn [addr]
+        (let [addr    (InetSocketAddress. addr port)
+              factory (mk-upstream-factory app addr opts)]
+          (.connectTcpClient ^ReactorCluster reactors factory))))))
