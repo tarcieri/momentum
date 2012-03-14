@@ -1,4 +1,4 @@
-(defproject io.tilde.momentum/momentum "0.3.0-SNAPSHOT"
+(defproject io.tilde.momentum/momentum "0.3.0-alpha1"
   :description "Clojure library for high-performance server and client applications"
 
   :dependencies [[org.clojure/clojure "1.3.0"]]
