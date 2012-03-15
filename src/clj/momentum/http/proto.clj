@@ -256,7 +256,6 @@
    (connection-waiting? conn)
    (bump-keep-alive-timer state conn)
 
-
    :else
    (cancel-timeout (.timeout conn))))
 
