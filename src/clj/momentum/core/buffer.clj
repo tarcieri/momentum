@@ -1,4 +1,63 @@
-(ns momentum.core.buffer
+(ns ^{:author "Carl Lerche"
+      :doc
+      "Provides an abstraction around byte arrays similar to Java's
+       ByteBuffer.
+
+       # Overview
+
+       A buffer provides a linear, finite sequence of bytes, that is
+       accessible both randomly and sequentially, backed by one of a
+       number of possible data backends with various properties. The
+       possible buffer backends include, byte[], NIO buffers, and a
+       dynamic byte list.
+
+       Just like with Java buffers, a momentum buffer tracks the
+       content of the buffer, total capacity, limit, and position. The
+       _capacity_ of a buffer is the number of bytes it may contain.
+       This value is never negative and never changes. The _limit_ of
+       a buffer is the index of the first byte that should not be read
+       or written to. This value is never negative and never is
+       greater than the capacity. The _position_ of a buffer is the
+       index of the next byte to read or write to. This value is
+       positive and less than or equal to the limit.
+
+       # Dynamic Buffers
+
+       A dynamic buffer is a buffer that is capable of growing in
+       capacity. This is achieved by backing the dynamic buffer with
+       an array of buffers (usually byte array babcked buffers, but
+       there is no reason why a dynamic buffer can't be backed by
+       another dynamic buffer).
+
+       Once created, they should be interacted with no differently
+       than any other buffer.
+
+       # Creation
+
+       The `momentum.core.buffer/buffer` macro is a convinient helper
+       to create a new buffer or convert existing types into a buffer.
+       A dynamic buffer can be explicitly created with
+       `momentum.core.buffer/dynamic-buffer`.
+
+       # Random Access
+
+       Buffers use zero-based indexing (same as arrays). The first
+       byte in the buffer is at offset 0 and the last byte in the
+       buffer is at length - 1. Any index can be read, regardless of
+       the current position and limit, by using the absolute getters.
+       Similarly, any index can be written to by using the absolute
+       setters.
+
+       # Sequential Access
+
+       Buffers provide sequential access via a limit index and a
+       position index exactly the same way
+
+       # Transient Buffers
+
+       # Converting From Java Types
+
+       # Converting To Java Types"} momentum.core.buffer
   (:import
    [momentum.buffer
     Buffer]

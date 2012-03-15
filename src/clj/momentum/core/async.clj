@@ -1,10 +1,9 @@
 (ns ^{:author "Carl Lerche"
       :doc
-      "The purpose of this namespace is to provide a collection of
-       asynchronous primitives and functions to operate on those
-       primitives.
+      "Provides a collection of asynchronous primitives and functions
+       to operate on those primitives.
 
-       ### Asynchronous values
+       ## Asynchronous values
 
        The core primitive is AsyncVal. This is basically just a
        future (except...), but the name future is already used in
@@ -35,7 +34,7 @@
        dereference an AsyncVal inside an event loop since doing so
        will freeze the entire system.
 
-       ### doasync
+       ## doasync
 
        You register callbacks on an AsyncVal using the doasync
        macro. A full example might look something like:
@@ -71,7 +70,7 @@
        Additionally, doasync can handle any clojure type or java
        object, in which case, the callback gets invoked immediately.
 
-       ### Joining asynchronous values
+       ## Joining asynchronous values
 
        The join function takes an arbitrary number of both
        asynchronous values and regular types / objects and returns an
@@ -91,7 +90,7 @@
        combined AsyncVal will also become aborted with the same
        exception.
 
-       ### AsyncSeq
+       ## AsyncSeq
 
        AsyncSeq is an AsyncVal that is always realized with a clojure
        sequence or nil. It also implements the clojure sequence
@@ -117,7 +116,7 @@
        scenario and become aborted with an exception. These exceptions
        may be handled in the same way as the previous catch example
 
-       ### Composability
+       ## Composability
 
        The above primitives are enough to build up some powerful
        asynchronous abstractions. This namespace contains a number of
