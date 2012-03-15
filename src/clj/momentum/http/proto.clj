@@ -310,6 +310,9 @@
   (let [hdrs            (or hdrs {})
         chunked?        (= "chunked" (lower-case (hdrs "transfer-encoding")))
         bytes-remaining (content-length hdrs)
+        expects-body?   (status-expects-body? status)
+        hdrs            (if (or body chunked? (hdrs "content-length") (not expects-body?))
+                          hdrs (assoc hdrs "content-length" "0"))
         response-body   (when (= :chunked body)
                           (cond
                            chunked?
@@ -323,7 +326,7 @@
     (when (and (= :upgraded body) (not= 101 status))
       (throw (Exception. "A body of :upgraded requires a status of 101.")))
 
-    (when (not (or (status-expects-body? status) (nil? body) (= :upgraded body)))
+    (when (not (or expects-body? (nil? body) (= :upgraded body)))
       (throw (Exception. (str status " responses must not include a body."))))
 
     (get-swap-then!
@@ -334,6 +337,10 @@
            (throw (Exception. "Still handling previous response body")))
 
          (let [requirements (peek (.response-queue conn))]
+           ;; Ensure that the response body is sane
+           (when (and chunked? expects-body? (not body) (not= :head requirements))
+             (throw (Exception. "Transfer-encoding chunked responses require a :chunked body")))
+
            (cond
             (= 100 status)
             (if (or (.continue-acked? conn) (not= :continue requirements))

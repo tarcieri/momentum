@@ -259,6 +259,62 @@
 
     (is (closed-socket?))))
 
+(defcoretest content-response-but-no-content
+  (start
+   (fn [dn _]
+     (fn [evt val]
+       (when (= :request evt)
+         (dn :response [200 {} nil]))))
+   {:pipeline false})
+
+  (with-socket
+    (write-socket "GET / HTTP/1.1\r\n\r\n")
+
+    (is (receiving
+         "HTTP/1.1 200 OK\r\n"
+         "content-length: 0\r\n\r\n"))))
+
+(defcoretest respond-transfer-encoding-chunked-but-no-body
+  [ch1]
+  (start
+   (fn [dn _]
+     (fn [evt val]
+       (when (= :request evt)
+         (try
+           (dn :response [200 {"transfer-encoding" "chunked"} nil])
+           (catch Exception e
+             (enqueue ch1 [:abort e]))))))
+   {:pipeline false})
+
+  (with-socket
+    (write-socket "GET / HTTP/1.1\r\n\r\n")
+
+    (is (next-msgs ch1 :abort :dont-care))))
+
+(defcoretest head-request-respond-te-chunked
+  [ch1]
+  (start
+   (fn [dn _]
+     (fn [evt val]
+       (enqueue ch1 [evt val])
+       (when (= :request evt)
+         (dn :response [200 {"transfer-encoding" "chunked"} nil]))))
+   {:pipeline false})
+
+  (with-socket
+    (write-socket "HEAD / HTTP/1.1\r\n\r\n")
+
+    (is (receiving
+         "HTTP/1.1 200 OK\r\n"
+         "transfer-encoding: chunked\r\n\r\n"))
+
+    (is (next-msgs
+         ch1
+         :open    :dont-care
+         :request :dont-care))
+
+    (is (no-msgs ch1))))
+
 (defcoretest not-modified-response-but-with-content
   [ch1]
   (start
