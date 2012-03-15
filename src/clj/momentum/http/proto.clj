@@ -311,17 +311,32 @@
         chunked?        (= "chunked" (lower-case (hdrs "transfer-encoding")))
         bytes-remaining (content-length hdrs)
         expects-body?   (status-expects-body? status)
-        hdrs            (if (or body chunked? (hdrs "content-length") (not expects-body?))
-                          hdrs (assoc hdrs "content-length" "0"))
-        response-body   (when (= :chunked body)
-                          (cond
-                           chunked?
-                           :chunked
+        ;; When the body termination has not been indicated, but it
+        ;; should have been, normalize the headers
+        hdrs (cond
+              (or chunked? (hdrs "content-length") (not expects-body?) (keyword? body))
+              hdrs
 
-                           (= :chunked body)
-                           (if (hdrs "content-length")
-                             :streaming
-                             :until-close)))]
+              (buffer? body)
+              (assoc hdrs "content-length" (remaining body))
+
+              (nil? body)
+              (assoc hdrs "content-length" "0")
+
+              :else
+              hdrs)
+
+        ;; Figure out how the body will be sent in order to properly
+        ;; setup the state
+        response-body (when (= :chunked body)
+                        (cond
+                         chunked?
+                         :chunked
+
+                         (= :chunked body)
+                         (if (hdrs "content-length")
+                           :streaming
+                           :until-close)))]
 
     (when (and (= :upgraded body) (not= 101 status))
       (throw (Exception. "A body of :upgraded requires a status of 101.")))

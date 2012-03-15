@@ -182,14 +182,15 @@
    (fn [dn _]
      (fn [evt val]
        (when (= :request evt)
-         (dn :response [200 {:http-version [1 0]} (buffer "Hello")]))))
+         (dn :response [200 {:http-version [1 0] "content-length" "5"} (buffer "Hello")]))))
    {:pipeline false})
 
   (with-socket
     (write-socket "GET / HTTP/1.1\r\n\r\n")
 
     (is (receiving
-         "HTTP/1.0 200 OK\r\n\r\n"
+         "HTTP/1.0 200 OK\r\n"
+         "content-length: 5\r\n\r\n"
          "Hello"))
 
     (is (closed-socket?))))
@@ -258,6 +259,22 @@
          "ZOMG"))
 
     (is (closed-socket?))))
+
+(defcoretest respond-with-content-but-no-content-length
+  (start
+   (fn [dn _]
+     (fn [evt val]
+       (when (= :request evt)
+         (dn :response [200 {} (buffer "Hello")]))))
+   {:pipeline false})
+
+  (with-socket
+    (write-socket "GET / HTTP/1.1\r\n\r\n")
+
+    (is (receiving
+         "HTTP/1.1 200 OK\r\n"
+         "content-length: 5\r\n\r\n"
+         "Hello"))))
 
 (defcoretest content-response-but-no-content
   (start
@@ -605,7 +622,7 @@
      (fn [evt val]
        (enqueue ch1 [evt (retain* val)])
        (when (= :request evt)
-         (dn :response [200 {"connection" "close"} (buffer "Hello")]))))
+         (dn :response [200 {"connection" "close" "content-length" "5"} (buffer "Hello")]))))
    {:pipeline false})
 
   (with-socket
@@ -613,7 +630,9 @@
 
     (is (receiving
          "HTTP/1.1 200 OK\r\n"
-         "connection: close\r\n\r\n"
+         #{"connection: close\r\n"
+           "content-length: 5\r\n"}
+         "\r\n"
          "Hello"))
 
     (is (closed-socket?))))
