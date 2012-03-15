@@ -99,10 +99,10 @@
       (= "keep-alive" connection))))
 
 (defn- keepalive-response?
-  [[status {version           :http-version
-            connection        "connection"
-            content-length    "content-length"
-            transfer-encoding "transfer-encoding"}] head?]
+  [status {version           :http-version
+           connection        "connection"
+           content-length    "content-length"
+           transfer-encoding "transfer-encoding"} head?]
   (and (if (= http-1-0 version)
          (= "keep-alive" (lower-case connection))
          (not= "close" (lower-case connection)))
@@ -306,7 +306,7 @@
              (handle-request-head handler request false))))))))
 
 (defn response
-  [state [status hdrs body :as response]]
+  [state [status hdrs body]]
   (let [hdrs            (or hdrs {})
         chunked?        (= "chunked" (lower-case (hdrs "transfer-encoding")))
         bytes-remaining (content-length hdrs)
@@ -377,7 +377,7 @@
             (let [keep-alive?
                   (and (.keep-alive? conn)
                        (not= :upgrade requirements)
-                       (keepalive-response? response (= :head requirements)))]
+                       (keepalive-response? status hdrs (= :head requirements)))]
               (assoc conn
                 :response-bytes-remaining bytes-remaining
                 :response-queue (when keep-alive? (pop (.response-queue conn)))

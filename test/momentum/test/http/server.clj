@@ -865,6 +865,41 @@
          "content-length: 5\r\n\r\n"
          "Hello"))))
 
+(defcoretest http-1-0-keep-alive
+  (start
+   (fn [dn _]
+     (fn [evt val]
+       (let [hdrs {:http-version [1 0] "connection" "keep-alive" "content-length" "5"}]
+         (case evt
+           :request (dn :response [200 hdrs (buffer "Hello")])
+           nil))))
+   {:pipeline false})
+
+  (with-socket
+    (write-socket
+     "GET / HTTP/1.0\r\n"
+     "Connection: keep-alive\r\n\r\n")
+
+    (is (receiving
+         "HTTP/1.0 200 OK\r\n"
+         #{"connection: keep-alive\r\n"
+           "content-length: 5\r\n"}
+         "\r\n"
+         "Hello"))
+
+    (write-socket
+     "GET / HTTP/1.0\r\n"
+     "Connection: close\r\n\r\n")
+
+    (is (receiving
+         "HTTP/1.0 200 OK\r\n"
+         #{"connection: keep-alive\r\n"
+           "content-length: 5\r\n"}
+         "\r\n"
+         "Hello"))
+
+    (is (closed-socket?))))
+
 (defcoretest aborting-a-request
   [ch1]
   (start
