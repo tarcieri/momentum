@@ -1,4 +1,4 @@
-![Momentum](https://github.com/carllerche/momentum/raw/master/logo.png)
+![Momentum](https://github.com/momentumclj/momentum/raw/master/logo.png)
 ===========
 __This is still a very young project. As such, do not expect stability
 or documentation yet.__
